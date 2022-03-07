@@ -1,3 +1,4 @@
+import math
 from argparse import ArgumentParser
 from functools import partial
 
@@ -5,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 from torch.distributions import Normal
+from torch.nn import init
 from tqdm import trange
 
 from learned_cbf.barrier import NeuralSBF, Barrier
@@ -69,6 +71,15 @@ class Population(StochasticDynamics):
         )
 
 
+class MyLinear(nn.Linear):
+    def reset_parameters(self) -> None:
+        nn.init.xavier_normal_(self.weight)
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            init.uniform_(self.bias, -bound, bound)
+
+
 class PopulationBarrier(Barrier):
     def __init__(self, *args, num_hidden=16):
         if args:
@@ -77,9 +88,9 @@ class PopulationBarrier(Barrier):
             super().__init__(*args)
         else:
             super().__init__(
-                nn.Linear(2, num_hidden),
+                MyLinear(2, num_hidden),
                 nn.Tanh(),
-                nn.Linear(num_hidden, num_hidden),
+                MyLinear(num_hidden, num_hidden),
                 nn.Tanh(),
                 nn.Linear(num_hidden, 1)
             )

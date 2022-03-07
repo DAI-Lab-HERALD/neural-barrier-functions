@@ -80,17 +80,18 @@ class NeuralSBF(nn.Module):
     def beta(self):
         """
         Parameterize beta by mu to allow constraint free optimization
-        TODO: Change parameterization to allow [0, 1)
-        :return: beta in range (0, 1)
+        :return: beta in range [0, 1)
         """
         if self.mu is not None:
+            # Only returns beta in range (0, 1)
+            # TODO: Change parameterization to allow [0, 1)
             return self.mu.sigmoid()
         else:
             assert self.partitioning.safe is not None
 
             _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics)
             lower, _ = self.barrier.interval(self.partitioning.safe)
-            beta = (upper.mean(dim=0) - lower / self.alpha).max()
+            beta = (upper.mean(dim=0) - lower / self.alpha).max().clamp(min=0)
 
             return beta
 
@@ -98,25 +99,25 @@ class NeuralSBF(nn.Module):
     def gamma(self):
         """
         Parameterize gamma by nu to allow constraint free optimization
-        TODO: Change parameterization to allow [0, 1)
-        :return: gamma in range (0, 1)
+        :return: gamma in range [0, 1)
         """
         if self.nu is not None:
+            # Only returns gamma in range (0, 1)
+            # TODO: Change parameterization to allow [0, 1)
             return self.nu.sigmoid()
         else:
             assert self.partitioning.initial is not None
 
             _, upper = self.barrier.interval(self.partitioning.initial)
-            gamma = upper.max()
+            gamma = upper.max().clamp(min=0)
             return gamma
 
     def loss(self, safety_weight=0.05):
         loss_barrier = self.loss_barrier()
-        loss_safety_prob = self.loss_safety_prob()
-
         if loss_barrier.item() >= 1.0e-10:
             return loss_barrier
         else:
+            loss_safety_prob = self.loss_safety_prob()
             return loss_safety_prob
 
         # return (1.0 - safety_weight) * loss_barrier + safety_weight * loss_safety_prob
@@ -199,7 +200,7 @@ class NeuralSBF(nn.Module):
     def certify(self):
         """
         Certify that a trained barrier network is a valid barrier using the barrier loss
-        Allow a small violation to account for potential numerical errors.
+        Allow a small violation to account for potential numerical (FP) errors.
         :return: true if the barrier network is a valid barrier
         """
         return self.loss_barrier().item() <= 1.0e-10
