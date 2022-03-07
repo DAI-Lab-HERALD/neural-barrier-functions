@@ -81,7 +81,7 @@ class PopulationBarrier(Barrier):
                 nn.Tanh(),
                 nn.Linear(num_hidden, num_hidden),
                 nn.Tanh(),
-                nn.Linear(num_hidden, 1),
+                nn.Linear(num_hidden, 1)
             )
 
 

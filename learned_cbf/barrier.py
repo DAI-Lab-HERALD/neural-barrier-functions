@@ -5,14 +5,12 @@ from torch import nn
 
 
 class Barrier(nn.Sequential):
-    def interval(self, partitions, prefix=None, bound_lower=True, bound_upper=True):
+    def interval(self, partitions, prefix=None):
         if prefix is None:
             lower, upper = partitions.lower, partitions.upper
             model = self
         else:
             lower, upper = partitions.lower, partitions.upper
-            # lower = partitions.lower.repeat(prefix.num_samples, 1)
-            # upper = partitions.upper.repeat(prefix.num_samples, 1)
             model = nn.Sequential(*list(prefix.children()), *list(self.children()))
 
         model = crown(model)
@@ -28,7 +26,7 @@ class Barrier(nn.Sequential):
 
 
 class NeuralSBF(nn.Module):
-    def __init__(self, barrier, dynamics, partitioning, horizon):
+    def __init__(self, barrier, dynamics, partitioning, horizon, train_beta=False, train_gamma=False):
         super().__init__()
 
         self.barrier = barrier
@@ -44,8 +42,16 @@ class NeuralSBF(nn.Module):
         self.horizon = horizon
 
         # self.rho = nn.Parameter(torch.empty((1,)))
-        self.mu = nn.Parameter(torch.empty((1,)))
-        self.nu = nn.Parameter(torch.empty((1,)))
+
+        if train_beta:
+            self.mu = nn.Parameter(torch.empty((1,)))
+        else:
+            self.register_buffer('mu', None)
+
+        if train_gamma:
+            self.nu = nn.Parameter(torch.empty((1,)))
+        else:
+            self.register_buffer('nu', None)
 
         # TODO: Sample from state space (place on partitioning) and assert output is 1-D
 
@@ -55,8 +61,11 @@ class NeuralSBF(nn.Module):
         self.barrier.reset_parameters()
 
         # nn.init.normal_(self.rho, 0, 0.1)
-        nn.init.normal_(self.mu, 0, 0.1)
-        nn.init.normal_(self.nu, 0, 0.1)
+
+        if self.mu is not None:
+            nn.init.normal_(self.mu, 0, 0.1)
+        if self.nu is not None:
+            nn.init.normal_(self.nu, 0, 0.1)
 
     @property
     def alpha(self):
@@ -74,7 +83,16 @@ class NeuralSBF(nn.Module):
         TODO: Change parameterization to allow [0, 1)
         :return: beta in range (0, 1)
         """
-        return self.mu.sigmoid()
+        if self.mu is not None:
+            return self.mu.sigmoid()
+        else:
+            assert self.partitioning.safe is not None
+
+            _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics)
+            lower, _ = self.barrier.interval(self.partitioning.safe)
+            beta = (upper.mean(dim=0) - lower / self.alpha).max()
+
+            return beta
 
     @property
     def gamma(self):
@@ -83,13 +101,34 @@ class NeuralSBF(nn.Module):
         TODO: Change parameterization to allow [0, 1)
         :return: gamma in range (0, 1)
         """
-        return self.nu.sigmoid()
+        if self.nu is not None:
+            return self.nu.sigmoid()
+        else:
+            assert self.partitioning.initial is not None
+
+            _, upper = self.barrier.interval(self.partitioning.initial)
+            gamma = upper.max()
+            return gamma
 
     def loss(self, safety_weight=0.05):
-        return (1.0 - safety_weight) * self.loss_barrier() + safety_weight * self.loss_safety_prob()
+        loss_barrier = self.loss_barrier()
+        loss_safety_prob = self.loss_safety_prob()
+
+        if loss_barrier.item() >= 1.0e-10:
+            return loss_barrier
+        else:
+            return loss_safety_prob
+
+        # return (1.0 - safety_weight) * loss_barrier + safety_weight * loss_safety_prob
 
     def loss_barrier(self):
-        return self.loss_init() + self.loss_unsafe() + self.loss_state_space() + self.loss_expectation()
+        loss = self.loss_unsafe() + self.loss_state_space()
+        if self.mu is not None:
+            loss += self.loss_expectation()
+        if self.nu is not None:
+            loss += self.loss_init()
+
+        return loss
 
     def loss_init(self):
         """
@@ -98,7 +137,7 @@ class NeuralSBF(nn.Module):
         """
         assert self.partitioning.initial is not None
 
-        _, upper = self.barrier.interval(self.partitioning.initial, bound_lower=False)
+        _, upper = self.barrier.interval(self.partitioning.initial)
         violation = (upper - self.gamma).clamp(min=0).sum()
         return violation / self.partitioning.initial.volume
 
@@ -109,7 +148,7 @@ class NeuralSBF(nn.Module):
         """
         assert self.partitioning.unsafe is not None
 
-        lower, _ = self.barrier.interval(self.partitioning.unsafe, bound_upper=False)
+        lower, _ = self.barrier.interval(self.partitioning.unsafe)
         violation = (1 - lower).clamp(min=0).sum()
         return violation / self.partitioning.unsafe.volume
 
@@ -120,7 +159,7 @@ class NeuralSBF(nn.Module):
         :return: Loss for state space (zero if not partitioned)
         """
         if self.partitioning.state_space is not None:
-            lower, _ = self.barrier.interval(self.partitioning.state_space, bound_upper=False)
+            lower, _ = self.barrier.interval(self.partitioning.state_space)
             violation = -lower.clamp(max=0).sum()
             return violation / self.partitioning.state_space.volume
         else:
@@ -134,9 +173,9 @@ class NeuralSBF(nn.Module):
         """
         assert self.partitioning.safe is not None
 
-        _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics, bound_lower=False)
-        lower, _ = self.barrier.interval(self.partitioning.safe, bound_upper=False)
-        violation = (upper.sum(dim=0) - lower / self.alpha - self.beta).clamp(min=0).sum()
+        _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics)
+        lower, _ = self.barrier.interval(self.partitioning.safe)
+        violation = (upper.mean(dim=0) - lower / self.alpha - self.beta).clamp(min=0).sum()
 
         return violation / self.partitioning.safe.volume
 
