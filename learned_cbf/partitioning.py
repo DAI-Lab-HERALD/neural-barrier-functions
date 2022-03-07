@@ -6,7 +6,7 @@ class Partitions:
 
     @property
     def volume(self):
-        return self.width.prod(dim=-1)
+        return self.width.prod(dim=-1).sum()
 
     @property
     def width(self):
@@ -14,7 +14,7 @@ class Partitions:
 
 
 class Partitioning:
-    def __init__(self, initial, safe, unsafe, state_space):
+    def __init__(self, initial, safe, unsafe, state_space=None):
         self.initial = Partitions(initial)
         self.safe = Partitions(safe)
         self.unsafe = Partitions(unsafe)

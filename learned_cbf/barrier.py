@@ -1,9 +1,34 @@
 import torch
+import torch.nn.functional as F
+from bound_propagation import crown
 from torch import nn
 
 
+class Barrier(nn.Sequential):
+    def interval(self, partitions, prefix=None, bound_lower=True, bound_upper=True):
+        if prefix is None:
+            lower, upper = partitions.lower, partitions.upper
+            model = self
+        else:
+            lower, upper = partitions.lower, partitions.upper
+            # lower = partitions.lower.repeat(prefix.num_samples, 1)
+            # upper = partitions.upper.repeat(prefix.num_samples, 1)
+            model = nn.Sequential(*list(prefix.children()), *list(self.children()))
+
+        model = crown(model)
+        return model.crown_interval(lower, upper)
+
+    def reset_parameters(self):
+        def _reset_parameters(module):
+            if hasattr(module, 'reset_parameters'):
+                module.reset_parameters()
+
+        for module in self.children():
+            module.apply(_reset_parameters)
+
+
 class NeuralSBF(nn.Module):
-    def __init__(self, barrier, dynamics, partitioning, horizon, num_samples):
+    def __init__(self, barrier, dynamics, partitioning, horizon):
         super().__init__()
 
         self.barrier = barrier
@@ -17,13 +42,21 @@ class NeuralSBF(nn.Module):
         self.partitioning = partitioning
 
         self.horizon = horizon
-        self.num_samples = num_samples
 
         # self.rho = nn.Parameter(torch.empty((1,)))
         self.mu = nn.Parameter(torch.empty((1,)))
         self.nu = nn.Parameter(torch.empty((1,)))
 
         # TODO: Sample from state space (place on partitioning) and assert output is 1-D
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        self.barrier.reset_parameters()
+
+        # nn.init.normal_(self.rho, 0, 0.1)
+        nn.init.normal_(self.mu, 0, 0.1)
+        nn.init.normal_(self.nu, 0, 0.1)
 
     @property
     def alpha(self):
@@ -32,7 +65,7 @@ class NeuralSBF(nn.Module):
         TODO: Change parameterization to allow [1, infty]
         :return: alpha = 1
         """
-        return 1.0  # + self.rho.exp()
+        return 1.0  # + F.softplus(self.rho)
 
     @property
     def beta(self):
@@ -52,14 +85,12 @@ class NeuralSBF(nn.Module):
         """
         return self.nu.sigmoid()
 
-    def loss(self, safety_weight=0.01):
-        return (1.0 - safety_weight) * self.loss_barrier + safety_weight * self.loss_safety_prob
+    def loss(self, safety_weight=0.05):
+        return (1.0 - safety_weight) * self.loss_barrier() + safety_weight * self.loss_safety_prob()
 
-    @property
     def loss_barrier(self):
-        return self.loss_init + self.loss_unsafe + self.loss_state_space + self.loss_expectation
+        return self.loss_init() + self.loss_unsafe() + self.loss_state_space() + self.loss_expectation()
 
-    @property
     def loss_init(self):
         """
         Ensure that B(x) <= gamma for all x in X_0.
@@ -67,11 +98,10 @@ class NeuralSBF(nn.Module):
         """
         assert self.partitioning.initial is not None
 
-        _, upper = self.barrier.crown_interval(self.partitioning.initial, upper_only=True)
+        _, upper = self.barrier.interval(self.partitioning.initial, bound_lower=False)
         violation = (upper - self.gamma).clamp(min=0).sum()
         return violation / self.partitioning.initial.volume
 
-    @property
     def loss_unsafe(self):
         """
         Ensure that B(x) >= 1 for all x in X_u.
@@ -79,11 +109,10 @@ class NeuralSBF(nn.Module):
         """
         assert self.partitioning.unsafe is not None
 
-        lower, _ = self.barrier.crown_interval(self.partitioning.unsafe, lower_only=True)
+        lower, _ = self.barrier.interval(self.partitioning.unsafe, bound_upper=False)
         violation = (1 - lower).clamp(min=0).sum()
         return violation / self.partitioning.unsafe.volume
 
-    @property
     def loss_state_space(self):
         """
         Ensure that B(x) >= 0 for all x in X. If no partitioning is available,
@@ -91,14 +120,13 @@ class NeuralSBF(nn.Module):
         :return: Loss for state space (zero if not partitioned)
         """
         if self.partitioning.state_space is not None:
-            lower, _ = self.barrier.crown_interval(self.partitioning.state_space, bound_upper=False)
+            lower, _ = self.barrier.interval(self.partitioning.state_space, bound_upper=False)
             violation = -lower.clamp(max=0).sum()
             return violation / self.partitioning.state_space.volume
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
             return 0
 
-    @property
     def loss_expectation(self):
         """
         Ensure that B(F(x, sigma)) <= B(x) / alpha + beta for all x in X_s.
@@ -106,15 +134,12 @@ class NeuralSBF(nn.Module):
         """
         assert self.partitioning.safe is not None
 
-        dynamics = self.dynamics.sample(self.num_samples)
-
-        _, upper = self.barrier.crown_interval(self.partitioning.safe, dynamics, bound_lower=False)
-        lower, _ = self.barrier.crown_interval(self.partitioning.safe, bound_upper=False)
+        _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics, bound_lower=False)
+        lower, _ = self.barrier.interval(self.partitioning.safe, bound_upper=False)
         violation = (upper.sum(dim=0) - lower / self.alpha - self.beta).clamp(min=0).sum()
 
         return violation / self.partitioning.safe.volume
 
-    @property
     def loss_safety_prob(self):
         """
         gamma + beta * horizon is an upper bound for probability of B(x) >= 1 in horizon steps.
@@ -138,4 +163,4 @@ class NeuralSBF(nn.Module):
         Allow a small violation to account for potential numerical errors.
         :return: true if the barrier network is a valid barrier
         """
-        return self.loss_barrier.item() <= 1.0e-10
+        return self.loss_barrier().item() <= 1.0e-10
