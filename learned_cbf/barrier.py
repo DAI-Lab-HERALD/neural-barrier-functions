@@ -1,11 +1,11 @@
 import torch
 import torch.nn.functional as F
-from bound_propagation import crown
+from bound_propagation import crown, ibp
 from torch import nn
 
 
 class Barrier(nn.Sequential):
-    def interval(self, partitions, prefix=None):
+    def interval(self, partitions, prefix=None, bound_lower=True, bound_upper=True):
         if prefix is None:
             lower, upper = partitions.lower, partitions.upper
             model = self
@@ -13,8 +13,8 @@ class Barrier(nn.Sequential):
             lower, upper = partitions.lower, partitions.upper
             model = nn.Sequential(*list(prefix.children()), *list(self.children()))
 
-        model = crown(model)
-        return model.crown_interval(lower, upper)
+        model = ibp(model)
+        return model.ibp(lower, upper)  #, bound_lower=bound_lower, bound_upper=bound_upper)
 
     def reset_parameters(self):
         def _reset_parameters(module):
@@ -89,8 +89,8 @@ class NeuralSBF(nn.Module):
         else:
             assert self.partitioning.safe is not None
 
-            _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics)
-            lower, _ = self.barrier.interval(self.partitioning.safe)
+            _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics, bound_lower=False)
+            lower, _ = self.barrier.interval(self.partitioning.safe, bound_upper=False)
             beta = (upper.mean(dim=0) - lower / self.alpha).max().clamp(min=0)
 
             return beta
@@ -108,22 +108,23 @@ class NeuralSBF(nn.Module):
         else:
             assert self.partitioning.initial is not None
 
-            _, upper = self.barrier.interval(self.partitioning.initial)
+            _, upper = self.barrier.interval(self.partitioning.initial, bound_lower=False)
             gamma = upper.max().clamp(min=0)
             return gamma
 
-    def loss(self, safety_weight=0.05):
+    def loss(self, safety_weight=0.5):
         loss_barrier = self.loss_barrier()
-        if loss_barrier.item() >= 1.0e-10:
-            return loss_barrier
-        else:
-            loss_safety_prob = self.loss_safety_prob()
-            return loss_safety_prob
+        loss_safety_prob = self.loss_safety_prob()
 
-        # return (1.0 - safety_weight) * loss_barrier + safety_weight * loss_safety_prob
+        # if loss_barrier.item() >= 1.0e-10:
+        #     return loss_barrier
+        # else:
+        #     return loss_safety_prob
+
+        return (1.0 - safety_weight) * loss_barrier + safety_weight * loss_safety_prob
 
     def loss_barrier(self):
-        loss = self.loss_unsafe() + self.loss_state_space()
+        loss = self.loss_state_space() + self.loss_unsafe()
         if self.mu is not None:
             loss += self.loss_expectation()
         if self.nu is not None:
@@ -138,7 +139,7 @@ class NeuralSBF(nn.Module):
         """
         assert self.partitioning.initial is not None
 
-        _, upper = self.barrier.interval(self.partitioning.initial)
+        _, upper = self.barrier.interval(self.partitioning.initial, bound_upper=False)
         violation = (upper - self.gamma).clamp(min=0).sum()
         return violation / self.partitioning.initial.volume
 
@@ -149,7 +150,7 @@ class NeuralSBF(nn.Module):
         """
         assert self.partitioning.unsafe is not None
 
-        lower, _ = self.barrier.interval(self.partitioning.unsafe)
+        lower, _ = self.barrier.interval(self.partitioning.unsafe, bound_upper=False)
         violation = (1 - lower).clamp(min=0).sum()
         return violation / self.partitioning.unsafe.volume
 
@@ -160,7 +161,7 @@ class NeuralSBF(nn.Module):
         :return: Loss for state space (zero if not partitioned)
         """
         if self.partitioning.state_space is not None:
-            lower, _ = self.barrier.interval(self.partitioning.state_space)
+            lower, _ = self.barrier.interval(self.partitioning.state_space, bound_upper=False)
             violation = -lower.clamp(max=0).sum()
             return violation / self.partitioning.state_space.volume
         else:
@@ -174,13 +175,21 @@ class NeuralSBF(nn.Module):
         """
         assert self.partitioning.safe is not None
 
-        _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics)
-        lower, _ = self.barrier.interval(self.partitioning.safe)
+        _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics, bound_lower=False)
+        lower, _ = self.barrier.interval(self.partitioning.safe, bound_upper=False)
         violation = (upper.mean(dim=0) - lower / self.alpha - self.beta).clamp(min=0).sum()
 
         return violation / self.partitioning.safe.volume
 
     def loss_safety_prob(self):
+        """
+        gamma + beta * horizon is an upper bound for probability of B(x) >= 1 in horizon steps.
+        But we need to account for the fact that we backprop through dynamics in beta, num_samples times.
+        :return: Upper bound for (1 - safety probability) adjusted to construct loss.
+        """
+        return self.gamma + self.beta * self.horizon / 500
+
+    def unsafety_prob(self):
         """
         gamma + beta * horizon is an upper bound for probability of B(x) >= 1 in horizon steps.
         If alpha > 1.0, we can do better but gamma + beta * horizon remains an upper bound.

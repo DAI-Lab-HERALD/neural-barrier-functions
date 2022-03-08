@@ -1,12 +1,14 @@
 import math
 from argparse import ArgumentParser
-from functools import partial
+
+import matplotlib.pyplot as plt
 
 import torch
 import torch.nn.functional as F
 from torch import nn, optim
 from torch.distributions import Normal
 from torch.nn import init
+from torch.optim.lr_scheduler import ExponentialLR
 from tqdm import trange
 
 from learned_cbf.barrier import NeuralSBF, Barrier
@@ -46,81 +48,142 @@ class Population(StochasticDynamics):
             num_samples=num_samples
         )
 
-        x1_space = torch.linspace(-2.0, 2.0, 11)
-        x2_space = torch.linspace(-2.0, 2.0, 11)
 
-        cell_width = torch.stack([(x1_space[1] - x1_space[0]) / 2, (x2_space[1] - x2_space[0]) / 2])
-        x1_slice_centers = (x1_space[:-1] + x1_space[1:]) / 2
-        x2_slice_centers = (x2_space[:-1] + x2_space[1:]) / 2
+def plot_partitioning(partitioning):
+    fig, ax = plt.subplots()
 
-        cell_centers = torch.cartesian_prod(x1_slice_centers, x2_slice_centers)
-        lower_x, upper_x = cell_centers - cell_width, + cell_centers + cell_width
+    for lower, width in zip(partitioning.initial.lower, partitioning.initial.width):
+        rect = plt.Rectangle(lower, width[0], width[1], color='g', alpha=0.1, linewidth=1)
+        ax.add_patch(rect)
 
-        closest_point = torch.min(lower_x.abs(), upper_x.abs())
-        farthest_point = torch.max(lower_x.abs(), upper_x.abs())
+    for lower, width in zip(partitioning.safe.lower, partitioning.safe.width):
+        rect = plt.Rectangle(lower, width[0], width[1], color='b', alpha=0.1, linewidth=1)
+        ax.add_patch(rect)
 
-        initial_mask = closest_point[:, 0]**2 + closest_point[:, 1]**2 <= 1.0**2
-        safe_mask = closest_point[:, 0]**2 + closest_point[:, 1]**2 <= 2.0**2
-        unsafe_mask = farthest_point[:, 0]**2 + farthest_point[:, 1]**2 >= 2.0**2
+    for lower, width in zip(partitioning.unsafe.lower, partitioning.unsafe.width):
+        rect = plt.Rectangle(lower, width[0], width[1], color='r', alpha=0.1, linewidth=1)
+        ax.add_patch(rect)
 
-        self.partitioning = Partitioning(
-            (lower_x[initial_mask], upper_x[initial_mask]),
-            (lower_x[safe_mask], upper_x[safe_mask]),
-            (lower_x[unsafe_mask], upper_x[unsafe_mask]),
-            (lower_x, upper_x)
-        )
+    circle_init = plt.Circle((0, 0), 1.0, color='g', fill=False)
+    ax.add_patch(circle_init)
+
+    circle_safe = plt.Circle((0, 0), 2.0, color='r', fill=False)
+    ax.add_patch(circle_safe)
+
+    plt.xlim(-3, 3)
+    plt.ylim(-3, 3)
+    plt.show()
 
 
-class MyLinear(nn.Linear):
+def population_partitioning():
+    x1_space = torch.linspace(-3.0, 3.0, 41)
+    x2_space = torch.linspace(-3.0, 3.0, 41)
+
+    cell_width = torch.stack([(x1_space[1] - x1_space[0]) / 2, (x2_space[1] - x2_space[0]) / 2])
+    x1_slice_centers = (x1_space[:-1] + x1_space[1:]) / 2
+    x2_slice_centers = (x2_space[:-1] + x2_space[1:]) / 2
+
+    cell_centers = torch.cartesian_prod(x1_slice_centers, x2_slice_centers)
+    lower_x, upper_x = cell_centers - cell_width, + cell_centers + cell_width
+
+    closest_point = torch.min(lower_x.abs(), upper_x.abs())
+    farthest_point = torch.max(lower_x.abs(), upper_x.abs())
+
+    initial_mask = closest_point[:, 0]**2 + closest_point[:, 1]**2 <= 1.0**2
+    safe_mask = closest_point[:, 0]**2 + closest_point[:, 1]**2 <= 2.0**2
+    unsafe_mask = farthest_point[:, 0]**2 + farthest_point[:, 1]**2 >= 2.0**2
+
+    partitioning = Partitioning(
+        (lower_x[initial_mask], upper_x[initial_mask]),
+        (lower_x[safe_mask], upper_x[safe_mask]),
+        (lower_x[unsafe_mask], upper_x[unsafe_mask]),
+        (lower_x, upper_x)
+    )
+
+    # plot_partitioning(partitioning)
+
+    return partitioning
+
+
+class TanhLinear(nn.Linear):
     def reset_parameters(self) -> None:
         nn.init.xavier_normal_(self.weight)
-        if self.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            init.uniform_(self.bias, -bound, bound)
+        nn.init.zeros_(self.bias)
+        # if self.bias is not None:
+        #     fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+        #     bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+        #     init.uniform_(self.bias, -bound, bound)
+
+
+class IdentityLinear(nn.Linear):
+    def reset_parameters(self) -> None:
+        init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        nn.init.zeros_(self.bias)
+        # if self.bias is not None:
+        #     fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
+        #     bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+        #     init.uniform_(self.bias, -bound, bound)
 
 
 class PopulationBarrier(Barrier):
-    def __init__(self, *args, num_hidden=16):
+    def __init__(self, *args, num_hidden=128):
         if args:
             # To support __get_index__ of nn.Sequential when slice indexing
-            # CROWN (and implicitly CROWN-IBP) is doing this underlying
+            # CROWN is doing this underlying
             super().__init__(*args)
         else:
             super().__init__(
-                MyLinear(2, num_hidden),
-                nn.Tanh(),
-                MyLinear(num_hidden, num_hidden),
-                nn.Tanh(),
-                nn.Linear(num_hidden, 1)
+                nn.Linear(2, num_hidden),
+                nn.ReLU(),
+                nn.Linear(num_hidden, num_hidden),
+                nn.ReLU(),
+                nn.Linear(num_hidden, num_hidden),
+                nn.ReLU(),
+                nn.Linear(num_hidden, num_hidden),
+                nn.ReLU(),
+                nn.Linear(num_hidden, 1),
             )
 
 
+def step(optimizer, sbf, kappa):
+    optimizer.zero_grad(set_to_none=True)
+    loss = sbf.loss(kappa)
+    loss.backward()
+    optimizer.step()
+
+
+@torch.no_grad()
+def status(sbf, kappa):
+    loss_barrier = sbf.loss_barrier()
+    unsafety_prob = sbf.unsafety_prob()
+    loss = sbf.loss(kappa)
+
+    loss_barrier, unsafety_prob, loss = loss_barrier.item(), unsafety_prob.item(), loss.item()
+    gamma, beta = sbf.gamma.item(), sbf.beta.item()
+    print(f"loss: [{loss_barrier:>7f}/{unsafety_prob:>7f}/{loss:>7f}], gamma: {gamma:>7f}, beta: {beta:>7f}, kappa: {kappa:>7f}")
+
+
 def train(sbf):
-    optimizer = optim.AdamW(sbf.parameters())
+    num_iterations = 20000
+    optimizer = optim.Adam(sbf.parameters(), lr=5e-4)
+    scheduler = ExponentialLR(optimizer, gamma=0.99)
+    kappa = 0.99
 
-    for iteration in trange(10000):
-        loss = sbf.loss()
-
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        optimizer.step()
+    for iteration in trange(num_iterations):
+        step(optimizer, sbf, kappa)
 
         if iteration % 100 == 0:
-            with torch.no_grad():
-                loss_barrier = sbf.loss_barrier()
-                loss_safety_prob = sbf.loss_safety_prob()
-                loss = sbf.loss()
+            status(sbf, kappa)
 
-            loss_barrier, loss_safety_prob, loss = loss_barrier.item(), loss_safety_prob.item(), loss.item()
-            gamma, beta = sbf.gamma.item(), sbf.beta.item()
-            print(f"loss: [{loss_barrier:>7f}/{loss_safety_prob:>7f}/{loss:>7f}], gamma: {gamma}, beta: {beta}")
+            scheduler.step()
+            kappa *= 0.99
 
 
 def main(args):
     barrier = PopulationBarrier().to(args.device)
-    dynamics = Population(num_samples=200).to(args.device)
-    sbf = NeuralSBF(barrier, dynamics, dynamics.partitioning, horizon=10).to(args.device)
+    dynamics = Population(num_samples=500).to(args.device)
+    partitioning = population_partitioning().to(args.device)
+    sbf = NeuralSBF(barrier, dynamics, partitioning, horizon=10).to(args.device)
 
     train(sbf)
 

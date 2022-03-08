@@ -1,8 +1,17 @@
+import warnings
+
+import torch
+from torch import nn
 
 
-class Partitions:
+class Partitions(nn.Module):
     def __init__(self, bounds):
-        self.lower, self.upper = bounds
+        super().__init__()
+
+        lower, upper = bounds
+
+        self.register_buffer('lower', lower)
+        self.register_buffer('upper', upper)
 
     @property
     def volume(self):
@@ -13,8 +22,10 @@ class Partitions:
         return self.upper - self.lower
 
 
-class Partitioning:
+class Partitioning(nn.Module):
     def __init__(self, initial, safe, unsafe, state_space=None):
+        super().__init__()
+
         self.initial = Partitions(initial)
         self.safe = Partitions(safe)
         self.unsafe = Partitions(unsafe)
