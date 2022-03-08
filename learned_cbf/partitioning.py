@@ -21,6 +21,14 @@ class Partitions(nn.Module):
     def width(self):
         return self.upper - self.lower
 
+    def sample(self, num_samples):
+        perm = torch.randperm(self.lower.size(0))
+        idx = perm[:num_samples]
+
+        return Partitions(
+            (self.lower[idx], self.upper[idx])
+        )
+
 
 class Partitioning(nn.Module):
     def __init__(self, initial, safe, unsafe, state_space=None):
