@@ -84,7 +84,7 @@ def population_partitioning():
     x2_slice_centers = (x2_space[:-1] + x2_space[1:]) / 2
 
     cell_centers = torch.cartesian_prod(x1_slice_centers, x2_slice_centers)
-    lower_x, upper_x = cell_centers - cell_width, + cell_centers + cell_width
+    lower_x, upper_x = cell_centers - cell_width, cell_centers + cell_width
 
     closest_point = torch.min(lower_x.abs(), upper_x.abs())
     farthest_point = torch.max(lower_x.abs(), upper_x.abs())
@@ -126,7 +126,7 @@ class IdentityLinear(nn.Linear):
 
 
 class PopulationBarrier(Barrier):
-    def __init__(self, *args, num_hidden=128):
+    def __init__(self, *args, num_hidden=16):
         if args:
             # To support __get_index__ of nn.Sequential when slice indexing
             # CROWN is doing this underlying
@@ -134,8 +134,6 @@ class PopulationBarrier(Barrier):
         else:
             super().__init__(
                 nn.Linear(2, num_hidden),
-                nn.ReLU(),
-                nn.Linear(num_hidden, num_hidden),
                 nn.ReLU(),
                 nn.Linear(num_hidden, num_hidden),
                 nn.ReLU(),
@@ -181,7 +179,7 @@ def train(sbf):
 
 def main(args):
     barrier = PopulationBarrier().to(args.device)
-    dynamics = Population(num_samples=500).to(args.device)
+    dynamics = Population(num_samples=200).to(args.device)
     partitioning = population_partitioning().to(args.device)
     sbf = NeuralSBF(barrier, dynamics, partitioning, horizon=10).to(args.device)
 
