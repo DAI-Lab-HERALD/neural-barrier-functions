@@ -13,8 +13,8 @@ class Barrier(nn.Sequential):
             lower, upper = partitions.lower, partitions.upper
             model = nn.Sequential(*list(prefix.children()), *list(self.children()))
 
-        model = ibp(model)
-        return model.ibp(lower, upper)  #, bound_lower=bound_lower, bound_upper=bound_upper)
+        model = crown(model)
+        return model.crown_interval(lower, upper, bound_lower=bound_lower, bound_upper=bound_upper)
 
     def reset_parameters(self):
         def _reset_parameters(module):
