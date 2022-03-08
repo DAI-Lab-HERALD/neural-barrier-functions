@@ -187,7 +187,7 @@ class NeuralSBF(nn.Module):
         But we need to account for the fact that we backprop through dynamics in beta, num_samples times.
         :return: Upper bound for (1 - safety probability) adjusted to construct loss.
         """
-        return self.gamma + self.beta * self.horizon / 500
+        return self.gamma + self.beta * self.horizon
 
     def unsafety_prob(self):
         """
