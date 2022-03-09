@@ -29,6 +29,11 @@ class Partitions(nn.Module):
 
         return self.lower[idx], self.upper[idx]
 
+    def __getitem__(self, idx):
+        return Partitions(
+            (self.lower[idx], self.upper[idx])
+        )
+
     def __len__(self):
         return self.lower.size(0)
 

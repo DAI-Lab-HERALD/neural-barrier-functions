@@ -116,30 +116,29 @@ class TanhLinear(nn.Linear):
             init.uniform_(self.bias, -bound, bound)
 
 
-class IdentityLinear(nn.Linear):
+class FinalLinear(nn.Linear):
     def reset_parameters(self) -> None:
         init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        nn.init.zeros_(self.bias)
-        # if self.bias is not None:
-        #     fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
-        #     bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-        #     init.uniform_(self.bias, -bound, bound)
+        # Initialize to 1 to avoid choking the learning with zero grad
+        nn.init.constant_(self.bias, 0.0)
 
 
 class PopulationBarrier(Barrier):
-    def __init__(self, *args, num_hidden=32):
+    def __init__(self, *args, num_hidden=128):
         if args:
             # To support __get_index__ of nn.Sequential when slice indexing
             # CROWN is doing this underlying
             super().__init__(*args)
         else:
             super().__init__(
-                TanhLinear(2, num_hidden),
-                nn.Tanh(),
-                TanhLinear(num_hidden, num_hidden),
-                nn.Tanh(),
-                TanhLinear(num_hidden, num_hidden),
-                nn.Tanh(),
+                nn.Linear(2, num_hidden),
+                nn.ReLU(),
+                nn.Linear(num_hidden, num_hidden),
+                nn.ReLU(),
+                nn.Linear(num_hidden, num_hidden),
+                nn.ReLU(),
+                nn.Linear(num_hidden, num_hidden),
+                nn.ReLU(),
                 nn.Linear(num_hidden, 1),
             )
 
@@ -154,36 +153,48 @@ def step(optimizer, sbf, kappa):
 @torch.no_grad()
 def status(sbf, kappa):
     loss_barrier = sbf.loss_barrier()
-    unsafety_prob = sbf.unsafety_prob()
+    unsafety_prob, beta, gamma = sbf.unsafety_prob(return_beta_gamma=True)
     loss = sbf.loss(kappa)
 
     loss_barrier, unsafety_prob, loss = loss_barrier.item(), unsafety_prob.item(), loss.item()
-    gamma, beta = sbf.gamma().item(), sbf.beta().item()
-    print(f"loss: [{loss_barrier:>7f}/{unsafety_prob:>7f}/{loss:>7f}], gamma: {gamma:>7f}, beta: {beta:>7f}, kappa: {kappa:>7f}")
+    beta, gamma = beta.item(), gamma.item()
+    print(f"loss: [{loss_barrier:>7f}/{unsafety_prob:>7f}/{loss:>7f}], gamma: {gamma:>7f}, beta: {beta:>7f}, kappa: {kappa:>4f}")
 
 
 def train(sbf, args):
     # Do not use base from dataset since it interferes with the workers due to CUDA
     full_partitioning = population_partitioning().to(args.device)
+    sbf.partitioning = full_partitioning
 
-    dataset = PartitioningSubsampleDataset(population_partitioning(), batch_size=100, iter_per_epoch=100)
+    dataset = PartitioningSubsampleDataset(population_partitioning(), batch_size=2000, iter_per_epoch=100)
     dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
 
-    optimizer = optim.AdamW(sbf.parameters(), lr=1e-3)
-    # scheduler = ExponentialLR(optimizer, gamma=0.99)
+    optimizer = optim.Adam(sbf.parameters(), lr=5e-4)
+    scheduler = ExponentialLR(optimizer, gamma=0.99)
     kappa = 1.0
 
     for epoch in trange(200, desc='Epoch', colour='red', position=0, leave=False):
+        # if epoch < 20:
+        #     kappa = 0.999
+        # elif epoch < 50:
+        #     kappa = 0.99
+        # elif epoch < 100:
+        #     kappa = max(kappa * 0.995, 0.9)
+        # elif epoch < 190:
+        #     kappa *= 0.99
+        # else:
+        #     kappa = 0.0
+
         for subsample in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
             sbf.partitioning = subsample.to(args.device)
             step(optimizer, sbf, kappa)
 
         sbf.partitioning = full_partitioning
         status(sbf, kappa)
-        # scheduler.step()
+        scheduler.step()
 
-        if epoch % 10 == 9:
-            kappa = max(kappa * 0.995, 0.1)
+        # if epoch % 10 == 9:
+        kappa *= 0.99
 
 
 def main(args):
