@@ -9,11 +9,12 @@ from torch import nn, optim
 from torch.distributions import Normal
 from torch.nn import init
 from torch.optim.lr_scheduler import ExponentialLR
-from tqdm import trange
+from torch.utils.data import DataLoader
+from tqdm import trange, tqdm
 
 from learned_cbf.barrier import NeuralSBF, Barrier
 from learned_cbf.dynamics import StochasticDynamics
-from learned_cbf.partitioning import Partitioning
+from learned_cbf.partitioning import Partitioning, PartitioningSubsampleDataset
 
 
 class PopulationStep(nn.Linear):
@@ -108,11 +109,11 @@ def population_partitioning():
 class TanhLinear(nn.Linear):
     def reset_parameters(self) -> None:
         nn.init.xavier_normal_(self.weight)
-        nn.init.zeros_(self.bias)
-        # if self.bias is not None:
-        #     fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
-        #     bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-        #     init.uniform_(self.bias, -bound, bound)
+        # nn.init.zeros_(self.bias)
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            init.uniform_(self.bias, -bound, bound)
 
 
 class IdentityLinear(nn.Linear):
@@ -126,19 +127,19 @@ class IdentityLinear(nn.Linear):
 
 
 class PopulationBarrier(Barrier):
-    def __init__(self, *args, num_hidden=16):
+    def __init__(self, *args, num_hidden=32):
         if args:
             # To support __get_index__ of nn.Sequential when slice indexing
             # CROWN is doing this underlying
             super().__init__(*args)
         else:
             super().__init__(
-                nn.Linear(2, num_hidden),
-                nn.ReLU(),
-                nn.Linear(num_hidden, num_hidden),
-                nn.ReLU(),
-                nn.Linear(num_hidden, num_hidden),
-                nn.ReLU(),
+                TanhLinear(2, num_hidden),
+                nn.Tanh(),
+                TanhLinear(num_hidden, num_hidden),
+                nn.Tanh(),
+                TanhLinear(num_hidden, num_hidden),
+                nn.Tanh(),
                 nn.Linear(num_hidden, 1),
             )
 
@@ -157,33 +158,40 @@ def status(sbf, kappa):
     loss = sbf.loss(kappa)
 
     loss_barrier, unsafety_prob, loss = loss_barrier.item(), unsafety_prob.item(), loss.item()
-    gamma, beta = sbf.gamma.item(), sbf.beta.item()
+    gamma, beta = sbf.gamma().item(), sbf.beta().item()
     print(f"loss: [{loss_barrier:>7f}/{unsafety_prob:>7f}/{loss:>7f}], gamma: {gamma:>7f}, beta: {beta:>7f}, kappa: {kappa:>7f}")
 
 
-def train(sbf):
-    num_iterations = 20000
-    optimizer = optim.Adam(sbf.parameters(), lr=5e-4)
-    scheduler = ExponentialLR(optimizer, gamma=0.99)
-    kappa = 0.99
+def train(sbf, args):
+    # Do not use base from dataset since it interferes with the workers due to CUDA
+    full_partitioning = population_partitioning().to(args.device)
 
-    for iteration in trange(num_iterations):
-        step(optimizer, sbf, kappa)
+    dataset = PartitioningSubsampleDataset(population_partitioning(), batch_size=100, iter_per_epoch=100)
+    dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
 
-        if iteration % 100 == 0:
-            status(sbf, kappa)
+    optimizer = optim.AdamW(sbf.parameters(), lr=1e-3)
+    # scheduler = ExponentialLR(optimizer, gamma=0.99)
+    kappa = 1.0
 
-            scheduler.step()
-            kappa *= 0.99
+    for epoch in trange(200, desc='Epoch', colour='red', position=0, leave=False):
+        for subsample in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+            sbf.partitioning = subsample.to(args.device)
+            step(optimizer, sbf, kappa)
+
+        sbf.partitioning = full_partitioning
+        status(sbf, kappa)
+        # scheduler.step()
+
+        if epoch % 10 == 9:
+            kappa = max(kappa * 0.995, 0.1)
 
 
 def main(args):
     barrier = PopulationBarrier().to(args.device)
     dynamics = Population(num_samples=200).to(args.device)
-    partitioning = population_partitioning().to(args.device)
-    sbf = NeuralSBF(barrier, dynamics, partitioning, horizon=10).to(args.device)
+    sbf = NeuralSBF(barrier, dynamics, None, horizon=10).to(args.device)
 
-    train(sbf)
+    train(sbf, args)
 
 
 def parse_arguments():
