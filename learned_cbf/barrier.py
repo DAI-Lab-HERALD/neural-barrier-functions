@@ -76,7 +76,6 @@ class NeuralSBF(nn.Module):
         """
         return 1.0  # + F.softplus(self.rho)
 
-    @property
     def beta(self):
         """
         Parameterize beta by mu to allow constraint free optimization
@@ -95,7 +94,6 @@ class NeuralSBF(nn.Module):
 
             return beta
 
-    @property
     def gamma(self):
         """
         Parameterize gamma by nu to allow constraint free optimization
@@ -140,7 +138,7 @@ class NeuralSBF(nn.Module):
         assert self.partitioning.initial is not None
 
         _, upper = self.barrier.interval(self.partitioning.initial, bound_upper=False)
-        violation = (upper - self.gamma).clamp(min=0).sum()
+        violation = (upper - self.gamma()).clamp(min=0).sum()
         return violation / self.partitioning.initial.volume
 
     def loss_unsafe(self):
@@ -177,7 +175,7 @@ class NeuralSBF(nn.Module):
 
         _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics, bound_lower=False)
         lower, _ = self.barrier.interval(self.partitioning.safe, bound_upper=False)
-        violation = (upper.mean(dim=0) - lower / self.alpha - self.beta).clamp(min=0).sum()
+        violation = (upper.mean(dim=0) - lower / self.alpha - self.beta()).clamp(min=0).sum()
 
         return violation / self.partitioning.safe.volume
 
@@ -187,7 +185,7 @@ class NeuralSBF(nn.Module):
         But we need to account for the fact that we backprop through dynamics in beta, num_samples times.
         :return: Upper bound for (1 - safety probability) adjusted to construct loss.
         """
-        return self.gamma + self.beta * self.horizon
+        return self.gamma() + self.beta() * self.horizon
 
     def unsafety_prob(self):
         """
@@ -195,13 +193,15 @@ class NeuralSBF(nn.Module):
         If alpha > 1.0, we can do better but gamma + beta * horizon remains an upper bound.
         :return: Upper bound for (1 - safety probability).
         """
+        beta = self.beta()
+        gamma = self.gamma()
         if self.alpha == 1.0:
-            bx_violation_prob = self.gamma + self.beta * self.horizon
-        elif self.alpha * self.beta / (1 - self.alpha) <= 1:
-            bx_violation_prob = 1 - (1 - self.gamma) * self.beta ** self.horizon
+            bx_violation_prob = gamma + beta * self.horizon
+        elif self.alpha * beta / (1 - self.alpha) <= 1:
+            bx_violation_prob = 1 - (1 - gamma) * beta ** self.horizon
         else:
-            bx_violation_prob = self.gamma * self.alpha ** (-self.horizon) + \
-                (1 - self.alpha ** (-self.horizon)) * self.alpha * self.beta / (self.alpha - 1)
+            bx_violation_prob = gamma * self.alpha ** (-self.horizon) + \
+                (1 - self.alpha ** (-self.horizon)) * self.alpha * beta / (self.alpha - 1)
 
         return bx_violation_prob
 
