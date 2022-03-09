@@ -1,4 +1,5 @@
 import math
+import os.path
 from argparse import ArgumentParser
 
 import matplotlib.pyplot as plt
@@ -162,54 +163,63 @@ def status(sbf, kappa):
 
 
 def train(sbf, args):
-    # Do not use base from dataset since it interferes with the workers due to CUDA
-    full_partitioning = population_partitioning().to(args.device)
-    sbf.partitioning = full_partitioning
-
-    dataset = PartitioningSubsampleDataset(population_partitioning(), batch_size=2000, iter_per_epoch=100)
-    dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
+    # dataset = PartitioningSubsampleDataset(population_partitioning(), batch_size=2000, iter_per_epoch=100)
+    # dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
 
     optimizer = optim.Adam(sbf.parameters(), lr=5e-4)
     scheduler = ExponentialLR(optimizer, gamma=0.99)
     kappa = 1.0
 
     for epoch in trange(200, desc='Epoch', colour='red', position=0, leave=False):
-        # if epoch < 20:
-        #     kappa = 0.999
-        # elif epoch < 50:
-        #     kappa = 0.99
-        # elif epoch < 100:
-        #     kappa = max(kappa * 0.995, 0.9)
-        # elif epoch < 190:
-        #     kappa *= 0.99
-        # else:
-        #     kappa = 0.0
-
-        for subsample in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
-            sbf.partitioning = subsample.to(args.device)
+        for iteration in trange(100, desc='Iteration', colour='red', position=1, leave=False):
             step(optimizer, sbf, kappa)
 
-        sbf.partitioning = full_partitioning
         status(sbf, kappa)
         scheduler.step()
-
-        # if epoch % 10 == 9:
         kappa *= 0.99
+
+
+@torch.no_grad()
+def test_method(sbf, args, method):
+    certified = sbf.certify(method=method, batch_size=20)
+    unsafety_prob, beta, gamma = sbf.unsafety_prob(method=method, batch_size=20, return_beta_gamma=True)
+    unsafety_prob, beta, gamma = unsafety_prob.item(), beta.item(), gamma.item()
+
+    print(method)
+    print(f'certified: {certified}, prob unsafety: {unsafety_prob:>7f}, gamma: {gamma:>7f}, beta: {beta:>7f}')
+
+
+@torch.no_grad()
+def test(sbf, args):
+    test_method(sbf, args, 'ibp')
+    test_method(sbf, args, 'crown_ibp')
+    test_method(sbf, args, 'crown')
+
+
+def save(sbf, args):
+    folder = os.path.dirname(args.save_path)
+    os.makedirs(folder, exist_ok=True)
+
+    torch.save(sbf.state_dict(), args.save_path)
 
 
 def main(args):
     barrier = PopulationBarrier().to(args.device)
-    dynamics = Population(num_samples=200).to(args.device)
-    sbf = NeuralSBF(barrier, dynamics, None, horizon=10).to(args.device)
+    dynamics = Population(num_samples=500).to(args.device)
+    partitioning = population_partitioning().to(args.device)
+    sbf = NeuralSBF(barrier, dynamics, partitioning, horizon=10).to(args.device)
 
     train(sbf, args)
+    test(sbf, args)
+    save(sbf, args)
 
 
 def parse_arguments():
     parser = ArgumentParser()
     parser.add_argument('--device', choices=list(map(torch.device, ['cuda', 'cpu'])), type=torch.device, default='cuda',
-                        help='Select device for tensor operations')
-    parser.add_argument('--dim', choices=[1, 2], type=int, default=1, help='Dimensionality of the noisy sine')
+                        help='Select device for tensor operations.')
+    parser.add_argument('--dim', choices=[1, 2], type=int, default=1, help='Dimensionality of the noisy sine.')
+    parser.add_argument('--save-path', type=str, default='models/sbf.pth', help='Path to save SBF to.')
 
     return parser.parse_args()
 
