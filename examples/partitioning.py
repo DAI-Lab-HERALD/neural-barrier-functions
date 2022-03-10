@@ -31,8 +31,8 @@ def plot_partitioning(partitioning):
 
 
 def population_partitioning():
-    x1_space = torch.linspace(-3.0, 3.0, 11)
-    x2_space = torch.linspace(-3.0, 3.0, 11)
+    x1_space = torch.linspace(-3.0, 3.0, 161)
+    x2_space = torch.linspace(-3.0, 3.0, 161)
 
     cell_width = torch.stack([(x1_space[1] - x1_space[0]) / 2, (x2_space[1] - x2_space[0]) / 2])
     x1_slice_centers = (x1_space[:-1] + x1_space[1:]) / 2
@@ -52,7 +52,7 @@ def population_partitioning():
         (lower_x[initial_mask], upper_x[initial_mask]),
         (lower_x[safe_mask], upper_x[safe_mask]),
         (lower_x[unsafe_mask], upper_x[unsafe_mask]),
-        # (lower_x, upper_x)
+        (lower_x, upper_x)
     )
 
     # plot_partitioning(partitioning)

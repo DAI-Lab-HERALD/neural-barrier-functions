@@ -15,6 +15,7 @@ from dynamics import Population
 from partitioning import population_partitioning
 
 from learned_cbf.barrier import NeuralSBF
+from learned_cbf.partitioning import PartitioningSubsampleDataset
 
 
 logger = logging.getLogger(__name__)
@@ -28,31 +29,42 @@ def step(optimizer, sbf, kappa):
 
 
 @torch.no_grad()
-def status(sbf, kappa):
-    loss_barrier = sbf.loss_barrier()
-    unsafety_prob, beta, gamma = sbf.unsafety_prob(return_beta_gamma=True)
-    loss = sbf.loss(kappa)
+def status_method(sbf, kappa, method):
+    loss_barrier = sbf.loss_barrier(method=method)
+    unsafety_prob, beta, gamma = sbf.unsafety_prob(return_beta_gamma=True, method=method, batch_size=200)
+    loss = sbf.loss(kappa, method=method, batch_size=200)
 
     loss_barrier, unsafety_prob, loss = loss_barrier.item(), unsafety_prob.item(), loss.item()
     beta, gamma = beta.item(), gamma.item()
-    logger.info(f'loss: [{loss_barrier:>7f}/{unsafety_prob:>7f}/{loss:>7f}], gamma: {gamma:>7f}, beta: {beta:>7f}, kappa: {kappa:>4f}')
+    logger.info(f'[{method.upper()}] loss: ({loss_barrier:>7f}/{unsafety_prob:>7f}/{loss:>7f}), gamma: {gamma:>7f}, beta: {beta:>7f}, kappa: {kappa:>4f}')
+
+
+@torch.no_grad()
+def status(sbf, kappa):
+    status_method(sbf, kappa, 'ibp')
+    # status_method(sbf, kappa, 'crown_ibp')
 
 
 def train(sbf, args):
-    # dataset = PartitioningSubsampleDataset(population_partitioning(), batch_size=2000, iter_per_epoch=100)
-    # dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
+    full_partitioning = sbf.partitioning
+
+    dataset = PartitioningSubsampleDataset(population_partitioning(), batch_size=200, iter_per_epoch=1000)
+    dataloader = DataLoader(dataset, batch_size=None, num_workers=0)
 
     optimizer = optim.Adam(sbf.parameters(), lr=5e-4)
     scheduler = ExponentialLR(optimizer, gamma=0.99)
     kappa = 1.0
 
-    for epoch in trange(200, desc='Epoch', colour='red', position=0, leave=False):
-        if epoch >= 190:
-            kappa = 0.0
+    for epoch in trange(20, desc='Epoch', colour='red', position=0, leave=False):
+        for subsample in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+            if epoch >= 19:
+                kappa = 0.0
+                subsample = full_partitioning
 
-        for iteration in trange(100, desc='Iteration', colour='red', position=1, leave=False):
+            sbf.partitioning = subsample.to(args.device)
             step(optimizer, sbf, kappa)
 
+        sbf.partitioning = full_partitioning
         status(sbf, kappa)
         scheduler.step()
         kappa *= 0.99
@@ -60,7 +72,7 @@ def train(sbf, args):
 
 @torch.no_grad()
 def test_method(sbf, args, method):
-    certified = sbf.certify(method=method, batch_size=20)
+    certified = sbf.loss_barrier(method=method, batch_size=20)
     unsafety_prob, beta, gamma = sbf.unsafety_prob(method=method, batch_size=20, return_beta_gamma=True)
     unsafety_prob, beta, gamma = unsafety_prob.item(), beta.item(), gamma.item()
 
