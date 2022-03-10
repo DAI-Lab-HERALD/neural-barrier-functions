@@ -51,7 +51,7 @@ if os.environ.get('LOG_TO_FILE', 'False') == 'True':
     LOGGING_CONFIG['handlers']['file'] = {
             'level': 'DEBUG',
             'formatter': 'standard',
-            'filename': 'log/log.log', #'/mnt/efs/logs/learned_cbf.log',
+            'filename': '/mnt/efs/logs/learned_cbf.log',
             'mode': 'a',
             'class': 'log.MakeFileHandler'
         }
