@@ -171,6 +171,9 @@ def train(sbf, args):
     kappa = 1.0
 
     for epoch in trange(200, desc='Epoch', colour='red', position=0, leave=False):
+        if epoch >= 190:
+            kappa = 0.0
+
         for iteration in trange(100, desc='Iteration', colour='red', position=1, leave=False):
             step(optimizer, sbf, kappa)
 
@@ -218,7 +221,6 @@ def parse_arguments():
     parser = ArgumentParser()
     parser.add_argument('--device', choices=list(map(torch.device, ['cuda', 'cpu'])), type=torch.device, default='cuda',
                         help='Select device for tensor operations.')
-    parser.add_argument('--dim', choices=[1, 2], type=int, default=1, help='Dimensionality of the noisy sine.')
     parser.add_argument('--save-path', type=str, default='models/sbf.pth', help='Path to save SBF to.')
 
     return parser.parse_args()
