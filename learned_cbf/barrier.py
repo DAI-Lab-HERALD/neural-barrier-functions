@@ -89,24 +89,27 @@ class NeuralSBF(nn.Module):
         else:
             assert self.partitioning.safe is not None
 
-            # with torch.no_grad():
-            if batch_size is None:
-                _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics, bound_lower=False, method=method)
-                lower, _ = self.barrier.interval(self.partitioning.safe, bound_upper=False, method=method)
-            else:
-                lower, upper = self.partitioning.safe.lower, self.partitioning.safe.upper
-                batches = [Partitions(bounds) for bounds in zip(lower.split(batch_size), upper.split(batch_size))]
-                upper = torch.cat([self.barrier.interval(partitions, self.dynamics, bound_lower=False, method=method)[1] for partitions in batches], dim=-2)
-                lower = torch.cat([self.barrier.interval(partitions, bound_upper=False, method=method)[0] for partitions in batches], dim=-2)
+            with torch.no_grad():
+                if batch_size is None:
+                    _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics, bound_lower=False, method=method)
+                    lower, _ = self.barrier.interval(self.partitioning.safe, bound_upper=False, method=method)
+                else:
+                    lower, upper = self.partitioning.safe.lower, self.partitioning.safe.upper
+                    batches = [Partitions(bounds) for bounds in zip(lower.split(batch_size), upper.split(batch_size))]
+                    upper = torch.cat([self.barrier.interval(partitions, self.dynamics, bound_lower=False, method=method)[1] for partitions in batches], dim=-2)
+                    lower = torch.cat([self.barrier.interval(partitions, bound_upper=False, method=method)[0] for partitions in batches], dim=-2)
 
-            #     expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha)
-            #     beta_max_partition = self.partitioning.safe[expectation_no_beta.argmax().unsqueeze(0)]
-            #
-            #     # if expectation_no_beta[beta_max_partition].item() <= 0.0:
-            #     #     return torch.tensor(0.0, device=upper.device)
-            #
-            # _, upper = self.barrier.interval(beta_max_partition, self.dynamics, bound_lower=False, method=method)
-            # lower, _ = self.barrier.interval(beta_max_partition, bound_upper=False, method=method)
+                expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha)
+                idx = expectation_no_beta.argmax()
+
+                if expectation_no_beta[idx].item() <= 0.0:
+                    return torch.tensor(0.0, device=upper.device)
+
+                beta_max_partition = self.partitioning.safe[idx]
+
+
+            _, upper = self.barrier.interval(beta_max_partition, self.dynamics, bound_lower=False, method=method)
+            lower, _ = self.barrier.interval(beta_max_partition, bound_upper=False, method=method)
             beta = (upper.mean(dim=0) - lower / self.alpha).max().clamp(min=0)
 
             return beta
@@ -143,20 +146,22 @@ class NeuralSBF(nn.Module):
         else:
             assert self.partitioning.initial is not None
 
-            # with torch.no_grad():
-            if batch_size is None:
-                _, upper = self.barrier.interval(self.partitioning.initial, bound_lower=False, method=method)
-            else:
-                lower, upper = self.partitioning.initial.lower, self.partitioning.initial.upper
-                batches = [Partitions(bounds) for bounds in zip(lower.split(batch_size), upper.split(batch_size))]
-                upper = torch.cat([self.barrier.interval(partitions, bound_lower=False, method=method)[1] for partitions in batches], dim=-2)
+            with torch.no_grad():
+                if batch_size is None:
+                    _, upper = self.barrier.interval(self.partitioning.initial, bound_lower=False, method=method)
+                else:
+                    lower, upper = self.partitioning.initial.lower, self.partitioning.initial.upper
+                    batches = [Partitions(bounds) for bounds in zip(lower.split(batch_size), upper.split(batch_size))]
+                    upper = torch.cat([self.barrier.interval(partitions, bound_lower=False, method=method)[1] for partitions in batches], dim=-2)
 
-            #     gamma_max_partition = self.partitioning.initial[upper.argmax().unsqueeze(0)]
-            #
-            #     # if upper[gamma_max_partition].item() <= 0.0:
-            #     #     return torch.tensor(0.0, device=upper.device)
-            #
-            # _, upper = self.barrier.interval(gamma_max_partition, bound_lower=False, method=method)
+                idx = upper.argmax()
+
+                if upper[idx].item() <= 0.0:
+                    return torch.tensor(0.0, device=upper.device)
+
+                gamma_max_partition = self.partitioning.initial[idx]
+
+            _, upper = self.barrier.interval(gamma_max_partition, bound_lower=False, method=method)
             gamma = upper.max().clamp(min=0)
 
             return gamma
