@@ -1,148 +1,23 @@
-import math
+import logging
+import log
+
 import os.path
 from argparse import ArgumentParser
 
-import matplotlib.pyplot as plt
-
 import torch
-import torch.nn.functional as F
-from torch import nn, optim
-from torch.distributions import Normal
-from torch.nn import init
+from torch import optim
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
-from learned_cbf.barrier import NeuralSBF, Barrier
-from learned_cbf.dynamics import StochasticDynamics
-from learned_cbf.partitioning import Partitioning, PartitioningSubsampleDataset
+from model import PopulationBarrier
+from dynamics import Population
+from partitioning import population_partitioning
+
+from learned_cbf.barrier import NeuralSBF
 
 
-class PopulationStep(nn.Linear):
-    # x[1] = juveniles
-    # x[2] = adults
-
-    sigma = 0.1
-    fertility_rate = 0.2
-    survival_juvenile = 0.3
-    survival_adult = 0.8
-
-    def __init__(self, num_samples):
-        super().__init__(2, 2)
-
-        del self.weight
-        del self.bias
-
-        self.register_buffer('weight', torch.as_tensor([
-            [0.0, self.fertility_rate],
-            [self.survival_juvenile, self.survival_adult]
-        ]), persistent=True)
-
-        dist = Normal(0.0, self.sigma)
-        z = dist.sample((num_samples,))
-        self.register_buffer('bias', torch.stack([torch.zeros_like(z), z], dim=-1).unsqueeze(-2), persistent=True)
-
-
-class Population(StochasticDynamics):
-    def __init__(self, num_samples):
-        super().__init__(
-            PopulationStep(num_samples),
-            num_samples=num_samples
-        )
-
-
-def plot_partitioning(partitioning):
-    fig, ax = plt.subplots()
-
-    for lower, width in zip(partitioning.initial.lower, partitioning.initial.width):
-        rect = plt.Rectangle(lower, width[0], width[1], color='g', alpha=0.1, linewidth=1)
-        ax.add_patch(rect)
-
-    for lower, width in zip(partitioning.safe.lower, partitioning.safe.width):
-        rect = plt.Rectangle(lower, width[0], width[1], color='b', alpha=0.1, linewidth=1)
-        ax.add_patch(rect)
-
-    for lower, width in zip(partitioning.unsafe.lower, partitioning.unsafe.width):
-        rect = plt.Rectangle(lower, width[0], width[1], color='r', alpha=0.1, linewidth=1)
-        ax.add_patch(rect)
-
-    circle_init = plt.Circle((0, 0), 1.0, color='g', fill=False)
-    ax.add_patch(circle_init)
-
-    circle_safe = plt.Circle((0, 0), 2.0, color='r', fill=False)
-    ax.add_patch(circle_safe)
-
-    plt.xlim(-3, 3)
-    plt.ylim(-3, 3)
-    plt.show()
-
-
-def population_partitioning():
-    x1_space = torch.linspace(-3.0, 3.0, 41)
-    x2_space = torch.linspace(-3.0, 3.0, 41)
-
-    cell_width = torch.stack([(x1_space[1] - x1_space[0]) / 2, (x2_space[1] - x2_space[0]) / 2])
-    x1_slice_centers = (x1_space[:-1] + x1_space[1:]) / 2
-    x2_slice_centers = (x2_space[:-1] + x2_space[1:]) / 2
-
-    cell_centers = torch.cartesian_prod(x1_slice_centers, x2_slice_centers)
-    lower_x, upper_x = cell_centers - cell_width, cell_centers + cell_width
-
-    closest_point = torch.min(lower_x.abs(), upper_x.abs())
-    farthest_point = torch.max(lower_x.abs(), upper_x.abs())
-
-    initial_mask = closest_point[:, 0]**2 + closest_point[:, 1]**2 <= 1.0**2
-    safe_mask = closest_point[:, 0]**2 + closest_point[:, 1]**2 <= 2.0**2
-    unsafe_mask = farthest_point[:, 0]**2 + farthest_point[:, 1]**2 >= 2.0**2
-
-    partitioning = Partitioning(
-        (lower_x[initial_mask], upper_x[initial_mask]),
-        (lower_x[safe_mask], upper_x[safe_mask]),
-        (lower_x[unsafe_mask], upper_x[unsafe_mask]),
-        # (lower_x, upper_x)
-    )
-
-    # plot_partitioning(partitioning)
-
-    return partitioning
-
-
-class TanhLinear(nn.Linear):
-    def reset_parameters(self) -> None:
-        nn.init.xavier_normal_(self.weight)
-        # nn.init.zeros_(self.bias)
-        if self.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            init.uniform_(self.bias, -bound, bound)
-
-
-class FinalLinear(nn.Linear):
-    def reset_parameters(self) -> None:
-        init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        # Initialize to uniform(0, 2) to avoid choking the learning with zero grad
-        nn.init.uniform_(self.bias, 0.0, 2.0)
-
-
-class PopulationBarrier(Barrier):
-    def __init__(self, *args, num_hidden=128):
-        if args:
-            # To support __get_index__ of nn.Sequential when slice indexing
-            # CROWN is doing this underlying
-            super().__init__(*args)
-        else:
-            super().__init__(
-                nn.Linear(2, num_hidden),
-                nn.ReLU(),
-                nn.Linear(num_hidden, num_hidden),
-                nn.ReLU(),
-                nn.Linear(num_hidden, num_hidden),
-                nn.ReLU(),
-                nn.Linear(num_hidden, num_hidden),
-                nn.ReLU(),
-                FinalLinear(num_hidden, 1),
-                nn.ReLU(),
-            )
+logger = logging.getLogger(__name__)
 
 
 def step(optimizer, sbf, kappa):
@@ -160,7 +35,7 @@ def status(sbf, kappa):
 
     loss_barrier, unsafety_prob, loss = loss_barrier.item(), unsafety_prob.item(), loss.item()
     beta, gamma = beta.item(), gamma.item()
-    print(f"loss: [{loss_barrier:>7f}/{unsafety_prob:>7f}/{loss:>7f}], gamma: {gamma:>7f}, beta: {beta:>7f}, kappa: {kappa:>4f}")
+    logger.info(f'loss: [{loss_barrier:>7f}/{unsafety_prob:>7f}/{loss:>7f}], gamma: {gamma:>7f}, beta: {beta:>7f}, kappa: {kappa:>4f}')
 
 
 def train(sbf, args):
@@ -189,8 +64,7 @@ def test_method(sbf, args, method):
     unsafety_prob, beta, gamma = sbf.unsafety_prob(method=method, batch_size=20, return_beta_gamma=True)
     unsafety_prob, beta, gamma = unsafety_prob.item(), beta.item(), gamma.item()
 
-    print(method)
-    print(f'certified: {certified}, prob unsafety: {unsafety_prob:>7f}, gamma: {gamma:>7f}, beta: {beta:>7f}')
+    logger.info(f'[{method.upper()}] certified: {certified}, prob unsafety: {unsafety_prob:>7f}, gamma: {gamma:>7f}, beta: {beta:>7f}')
 
 
 @torch.no_grad()

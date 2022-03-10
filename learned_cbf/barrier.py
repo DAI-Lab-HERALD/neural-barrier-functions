@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from bound_propagation import crown, ibp, crown_ibp
 from torch import nn
 
-from partitioning import Partitions
+from .partitioning import Partitions
 
 
 class Barrier(nn.Sequential):
