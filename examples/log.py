@@ -47,19 +47,20 @@ class MakeFileHandler(logging.FileHandler):
         logging.FileHandler.__init__(self, filename, mode, encoding, delay)
 
 
-if os.environ.get('LOG_TO_FILE', 'False') == 'True':
-    LOGGING_CONFIG['handlers']['file'] = {
-            'level': 'DEBUG',
-            'formatter': 'standard',
-            'filename': '/mnt/efs/logs/learned_cbf.log',
-            'mode': 'a',
-            'class': 'log.MakeFileHandler'
-        }
-    LOGGING_CONFIG['loggers']['']['handlers'].append('file')
+def configure_logging(log_file):
+    if log_file is not None:
+        LOGGING_CONFIG['handlers']['file'] = {
+                'level': 'DEBUG',
+                'formatter': 'standard',
+                'filename': log_file,
+                'mode': 'a',
+                'class': 'log.MakeFileHandler'
+            }
+        LOGGING_CONFIG['loggers']['']['handlers'].append('file')
 
-# Run once at startup:
-logging.config.dictConfig(LOGGING_CONFIG)
+    # Run once at startup:
+    logging.config.dictConfig(LOGGING_CONFIG)
 
-# Include in each module:
-logger = logging.getLogger(__name__)
-logger.debug('Logging is configured.')
+    # Include in each module:
+    logger = logging.getLogger(__name__)
+    logger.debug('Logging is configured.')

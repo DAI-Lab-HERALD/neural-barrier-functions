@@ -97,10 +97,12 @@ def parse_arguments():
     parser.add_argument('--device', choices=list(map(torch.device, ['cuda', 'cpu'])), type=torch.device, default='cuda',
                         help='Select device for tensor operations.')
     parser.add_argument('--save-path', type=str, default='models/sbf.pth', help='Path to save SBF to.')
+    parser.add_argument('--log-file', type=str, help='Path to log file.')
 
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = parse_arguments()
+    log.configure_logging(args.log_file)
     main(args)
