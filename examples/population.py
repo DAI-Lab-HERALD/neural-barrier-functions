@@ -40,7 +40,7 @@ class PopulationStep(nn.Linear):
 
         dist = Normal(0.0, self.sigma)
         z = dist.sample((num_samples,))
-        self.register_buffer('bias', torch.stack([torch.zeros_like(z), z], dim=-1), persistent=True)
+        self.register_buffer('bias', torch.stack([torch.zeros_like(z), z], dim=-1).unsqueeze(-2), persistent=True)
 
 
 class Population(StochasticDynamics):
