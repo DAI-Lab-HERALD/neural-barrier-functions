@@ -4,7 +4,7 @@ import os
 
 LOGGING_CONFIG = {
     'version': 1,
-    'disable_existing_loggers': True,
+    'disable_existing_loggers': False,
     'formatters': {
         'standard': {
             'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
@@ -21,7 +21,8 @@ LOGGING_CONFIG = {
     'loggers': {
         '': {  # root logger
             'handlers': ['default'],
-            'level': 'DEBUG'
+            'level': 'DEBUG',
+            'propagate': True
         }
     }
 }
