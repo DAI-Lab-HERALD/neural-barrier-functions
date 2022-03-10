@@ -99,7 +99,7 @@ def population_partitioning():
         (lower_x[initial_mask], upper_x[initial_mask]),
         (lower_x[safe_mask], upper_x[safe_mask]),
         (lower_x[unsafe_mask], upper_x[unsafe_mask]),
-        (lower_x, upper_x)
+        # (lower_x, upper_x)
     )
 
     # plot_partitioning(partitioning)
@@ -120,8 +120,8 @@ class TanhLinear(nn.Linear):
 class FinalLinear(nn.Linear):
     def reset_parameters(self) -> None:
         init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        # Initialize to 1 to avoid choking the learning with zero grad
-        nn.init.constant_(self.bias, 0.0)
+        # Initialize to uniform(0, 2) to avoid choking the learning with zero grad
+        nn.init.uniform_(self.bias, 0.0, 2.0)
 
 
 class PopulationBarrier(Barrier):
@@ -140,7 +140,8 @@ class PopulationBarrier(Barrier):
                 nn.ReLU(),
                 nn.Linear(num_hidden, num_hidden),
                 nn.ReLU(),
-                nn.Linear(num_hidden, 1),
+                FinalLinear(num_hidden, 1),
+                nn.ReLU(),
             )
 
 
