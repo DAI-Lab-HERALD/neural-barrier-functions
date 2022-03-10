@@ -23,7 +23,7 @@ class FinalLinear(nn.Linear):
 
 
 class PopulationBarrier(Barrier):
-    def __init__(self, *args, num_hidden=128):
+    def __init__(self, *args, num_hidden=256):
         if args:
             # To support __get_index__ of nn.Sequential when slice indexing
             # CROWN is doing this underlying
@@ -36,8 +36,5 @@ class PopulationBarrier(Barrier):
                 nn.ReLU(),
                 nn.Linear(num_hidden, num_hidden),
                 nn.ReLU(),
-                nn.Linear(num_hidden, num_hidden),
-                nn.ReLU(),
-                FinalLinear(num_hidden, 1),
-                nn.ReLU(),
+                nn.Linear(num_hidden, 1),
             )
