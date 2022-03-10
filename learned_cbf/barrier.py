@@ -107,30 +107,9 @@ class NeuralSBF(nn.Module):
 
                 beta_max_partition = self.partitioning.safe[idx]
 
-
             _, upper = self.barrier.interval(beta_max_partition, self.dynamics, bound_lower=False, method=method)
             lower, _ = self.barrier.interval(beta_max_partition, bound_upper=False, method=method)
             beta = (upper.mean(dim=0) - lower / self.alpha).max().clamp(min=0)
-
-            return beta
-
-    def beta_softmax(self, **kwargs):
-        """
-        Parameterize beta by mu to allow constraint free optimization
-        :return: beta in range [0, 1)
-        """
-        if self.mu is not None:
-            # Only returns beta in range (0, 1)
-            # TODO: Change parameterization to allow [0, 1)
-            return self.mu.sigmoid()
-        else:
-            assert self.partitioning.safe is not None
-
-            _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics, bound_lower=False)
-            lower, _ = self.barrier.interval(self.partitioning.safe, bound_upper=False)
-
-            expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha).clamp(min=0)
-            beta = (expectation_no_beta * expectation_no_beta.softmax(dim=0)).sum()
 
             return beta
 
@@ -166,26 +145,12 @@ class NeuralSBF(nn.Module):
 
             return gamma
 
-    def gamma_softmax(self, **kwargs):
-        """
-        Parameterize gamma by nu to allow constraint free optimization
-        :return: gamma in range [0, 1)
-        """
-        if self.nu is not None:
-            # Only returns gamma in range (0, 1)
-            # TODO: Change parameterization to allow [0, 1)
-            return self.nu.sigmoid()
-        else:
-            assert self.partitioning.initial is not None
-
-            _, upper = self.barrier.interval(self.partitioning.initial, bound_lower=False)
-            upper = upper.clamp(min=0)
-
-            gamma = (upper * upper.softmax(dim=0)).sum()
-
-            return gamma
-
     def loss(self, safety_weight=0.5, **kwargs):
+        if safety_weight == 1.0:
+            return self.loss_safety_prob(**kwargs)
+        elif safety_weight == 0.0:
+            return self.loss_barrier(**kwargs)
+
         loss_barrier = self.loss_barrier(**kwargs)
         loss_safety_prob = self.loss_safety_prob(**kwargs)
 
