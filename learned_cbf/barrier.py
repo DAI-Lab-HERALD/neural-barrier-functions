@@ -102,8 +102,8 @@ class NeuralSBF(nn.Module):
                 expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha)
                 idx = expectation_no_beta.argmax()
 
-                if expectation_no_beta[idx].item() <= 0.0:
-                    return torch.tensor(0.0, device=upper.device)
+                # if expectation_no_beta[idx].item() <= 0.0:
+                #     return torch.tensor(0.0, device=upper.device)
 
                 beta_max_partition = self.partitioning.safe[idx]
 
@@ -135,8 +135,8 @@ class NeuralSBF(nn.Module):
 
                 idx = upper.argmax()
 
-                if upper[idx].item() <= 0.0:
-                    return torch.tensor(0.0, device=upper.device)
+                # if upper[idx].item() <= 0.0:
+                #     return torch.tensor(0.0, device=upper.device)
 
                 gamma_max_partition = self.partitioning.initial[idx]
 
@@ -200,7 +200,7 @@ class NeuralSBF(nn.Module):
         """
         if self.partitioning.state_space is not None:
             lower, _ = self.barrier.interval(self.partitioning.state_space, bound_upper=False, **kwargs)
-            violation = -lower.clamp(max=0).sum()
+            violation = (0 - lower).clamp(min=0).sum()
             return violation / self.partitioning.state_space.volume
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
