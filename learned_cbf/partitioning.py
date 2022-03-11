@@ -65,10 +65,7 @@ class Partitioning(nn.Module):
                (len(self.state_space) if self.state_space else 0)
 
     def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-
-        initial_idx, safe_idx, unsafe_idx, state_space_idx = self.split_index(idx)
+        initial_idx, safe_idx, unsafe_idx, state_space_idx = idx
 
         return Partitioning(
             self.initial[initial_idx],
@@ -76,23 +73,6 @@ class Partitioning(nn.Module):
             self.unsafe[unsafe_idx],
             self.state_space[state_space_idx] if self.state_space else None,
         )
-
-    def split_index(self, idx):
-        initial_idx = [i for i in idx if i < len(self.initial)]
-        idx = [i - len(self.initial) for i in idx if i >= len(self.initial)]
-
-        safe_idx = [i for i in idx if i < len(self.safe)]
-        idx = [i - len(self.safe) for i in idx if i >= len(self.safe)]
-
-        unsafe_idx = [i for i in idx if i < len(self.unsafe)]
-        idx = [i - len(self.unsafe) for i in idx if i >= len(self.unsafe)]
-
-        if not self.state_space:
-            assert len(idx) == 0
-        else:
-            assert all([i < len(self.state_space) for i in idx])
-
-        return initial_idx, safe_idx, unsafe_idx, idx
 
 
 class PartitioningSubsampleDataset(Dataset):
@@ -184,20 +164,11 @@ class PartitioningBatchSampler(Sampler[List[int]]):
         assert state_space_batch_sizes[-1] >= 0
 
         # Generate sets of indices in shuffled
-        initial_idx = torch.randperm(len(self.dataset.base.initial), generator=generator)\
-            .split(initial_batch_sizes.tolist())
-        first = len(self.dataset.base.initial)
-
-        safe_idx = (torch.randperm(len(self.dataset.base.safe), generator=generator) + first)\
-            .split(safe_batch_sizes.tolist())
-        second = first + len(self.dataset.base.safe)
-
-        unsafe_idx = (torch.randperm(len(self.dataset.base.unsafe), generator=generator) + second)\
-            .split(unsafe_batch_sizes.tolist())
-        third = second + len(self.dataset.base.unsafe)
-
+        initial_idx = torch.randperm(len(self.dataset.base.initial), generator=generator).split(initial_batch_sizes.tolist())
+        safe_idx = torch.randperm(len(self.dataset.base.safe), generator=generator).split(safe_batch_sizes.tolist())
+        unsafe_idx = torch.randperm(len(self.dataset.base.unsafe), generator=generator).split(unsafe_batch_sizes.tolist())
         if self.dataset.base.state_space:
-            state_space_idx = (torch.randperm(len(self.dataset.base.state_space), generator=generator) + third) \
+            state_space_idx = torch.randperm(len(self.dataset.base.state_space), generator=generator) \
                 .split(state_space_batch_sizes.tolist())
         else:
             state_space_idx = None
@@ -208,11 +179,10 @@ class PartitioningBatchSampler(Sampler[List[int]]):
         assert state_space_idx is None or len(unsafe_idx) == len(state_space_idx)
 
         for i in range(len(self)):
-            batch = torch.cat([initial_idx[i], safe_idx[i], state_space_idx[i]])
             if self.dataset.base.state_space:
-                batch = torch.cat([batch, state_space_idx[i]])
-
-            yield batch
+                yield initial_idx[i], safe_idx[i], unsafe_idx[i], state_space_idx[i]
+            else:
+                yield initial_idx[i], safe_idx[i], unsafe_idx[i], None
 
     def __len__(self):
         # Can only be called if self.sampler has __len__ implemented
