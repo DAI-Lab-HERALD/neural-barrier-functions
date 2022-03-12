@@ -1,11 +1,9 @@
 import random
-from typing import Optional, Sized, List
+from typing import Optional, List
 
 import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader, Sampler
-from torch.utils.data.dataset import T_co
-from torch._six import int_classes as _int_classes
 
 
 class Partitions(nn.Module):
@@ -79,7 +77,7 @@ class PartitioningSubsampleDataset(Dataset):
     def __init__(self, base: Partitioning):
         self.base = base
 
-    def __getitem__(self, idx) -> T_co:
+    def __getitem__(self, idx):
         return self.base[idx]
 
     def __len__(self):
@@ -93,7 +91,7 @@ class PartitioningBatchSampler(Sampler[List[int]]):
         # check here.
         super().__init__(dataset)
         min_size = 4 if dataset.base.state_space else 3
-        if not isinstance(batch_size, _int_classes) or isinstance(batch_size, bool) or batch_size <= min_size:
+        if not isinstance(batch_size, int) or batch_size <= min_size:
             raise ValueError('batch_size should be a positive integer value greater than or equal to {}, '
                              'but got batch_size={}'.format(min_size, batch_size))
 
