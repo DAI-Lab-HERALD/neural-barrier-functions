@@ -94,7 +94,7 @@ def linear_batching(method, lower, upper, batch_size, bound_lower=True, bound_up
 
 
 class BarrierNetwork(nn.Sequential):
-    def interval(self, partitions, prefix=None, bound_lower=True, bound_upper=True, method='crown_ibp_linear', batch_size=None, **kwargs):
+    def bounds(self, partitions, prefix=None, bound_lower=True, bound_upper=True, method='crown_ibp_linear', batch_size=None, **kwargs):
         if prefix is None:
             lower, upper = partitions.lower, partitions.upper
             model = self
