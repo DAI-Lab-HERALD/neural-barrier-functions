@@ -1,44 +1,7 @@
-from functools import partial
-
 import torch
-import torch.nn.functional as F
-from bound_propagation import crown, ibp, crown_ibp
 from torch import nn
 
 from .partitioning import Partitions
-
-
-class Barrier(nn.Sequential):
-    def interval(self, partitions, prefix=None, bound_lower=True, bound_upper=True, method='ibp', batch_size=None, **kwargs):
-        if prefix is None:
-            lower, upper = partitions.lower, partitions.upper
-            model = self
-        else:
-            lower, upper = partitions.lower, partitions.upper
-            model = nn.Sequential(*list(prefix.children()), *list(self.children()))
-
-        if method == 'crown':
-            model = crown(model)
-            method = partial(model.crown_interval, bound_lower=bound_lower, bound_upper=bound_upper)
-        elif method == 'crown_ibp':
-            model = crown_ibp(model)
-            method = partial(model.crown_ibp_interval, bound_lower=bound_lower, bound_upper=bound_upper)
-        elif method == 'ibp':
-            model = ibp(model)
-            method = model.ibp
-        else:
-            raise NotImplementedError()
-
-        if batch_size is None:
-            return method(lower, upper)
-        else:
-            batches = list(zip(lower.split(batch_size), upper.split(batch_size)))
-            batches = [method(lower, upper) for (lower, upper) in batches]
-
-            lower = torch.cat([batch[0] for batch in batches], dim=-2) if bound_lower else None
-            upper = torch.cat([batch[1] for batch in batches], dim=-2) if bound_upper else None
-
-            return lower, upper
 
 
 class NeuralSBF(nn.Module):
@@ -106,7 +69,7 @@ class NeuralSBF(nn.Module):
                 _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics, bound_lower=False, **kwargs)
                 lower, _ = self.barrier.interval(self.partitioning.safe, bound_upper=False, **kwargs)
 
-                expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha)
+                expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha).partition_max()
                 idx = expectation_no_beta.argmax()
 
                 # if expectation_no_beta[idx].item() <= 0.0:
@@ -120,7 +83,7 @@ class NeuralSBF(nn.Module):
 
             _, upper = self.barrier.interval(beta_max_partition, self.dynamics, bound_lower=False, **kwargs)
             lower, _ = self.barrier.interval(beta_max_partition, bound_upper=False, **kwargs)
-            beta = (upper.mean(dim=0) - lower / self.alpha).max().clamp(min=0)
+            beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
 
             return beta
 
@@ -138,7 +101,7 @@ class NeuralSBF(nn.Module):
 
             with torch.no_grad():
                 _, upper = self.barrier.interval(self.partitioning.initial, bound_lower=False, **kwargs)
-                idx = upper.argmax()
+                idx = upper.partition_max().argmax()
 
                 # if upper[idx].item() <= 0.0:
                 #     return torch.tensor(0.0, device=upper.device)
@@ -150,7 +113,7 @@ class NeuralSBF(nn.Module):
                 ))
 
             _, upper = self.barrier.interval(gamma_max_partition, bound_lower=False, **kwargs)
-            gamma = upper.max().clamp(min=0)
+            gamma = upper.partition_max().clamp(min=0)
 
             return gamma
 
@@ -187,7 +150,7 @@ class NeuralSBF(nn.Module):
         assert self.partitioning.initial is not None
 
         _, upper = self.barrier.interval(self.partitioning.initial, bound_upper=False, **kwargs)
-        violation = (upper - self.gamma()).clamp(min=0).sum()
+        violation = (upper - self.gamma()).partition_max().clamp(min=0).sum()
         return violation / self.partitioning.initial.volume
 
     def loss_unsafe(self, **kwargs):
@@ -198,7 +161,7 @@ class NeuralSBF(nn.Module):
         assert self.partitioning.unsafe is not None
 
         lower, _ = self.barrier.interval(self.partitioning.unsafe, bound_upper=False, **kwargs)
-        violation = (1 - lower).clamp(min=0).sum()
+        violation = (1 - lower).partition_min().clamp(min=0).sum()
         return violation / self.partitioning.unsafe.volume
 
     def loss_state_space(self, **kwargs):
@@ -209,7 +172,7 @@ class NeuralSBF(nn.Module):
         """
         if self.partitioning.state_space is not None:
             lower, _ = self.barrier.interval(self.partitioning.state_space, bound_upper=False, **kwargs)
-            violation = (0 - lower).clamp(min=0).sum()
+            violation = (0 - lower).partition_min().clamp(min=0).sum()
             return violation / self.partitioning.state_space.volume
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
@@ -224,7 +187,7 @@ class NeuralSBF(nn.Module):
 
         _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics, bound_lower=False, **kwargs)
         lower, _ = self.barrier.interval(self.partitioning.safe, bound_upper=False, **kwargs)
-        violation = (upper.mean(dim=0) - lower / self.alpha - self.beta()).clamp(min=0).sum()
+        violation = (upper.mean(dim=0) - lower / self.alpha - self.beta()).partition_max().clamp(min=0).sum()
 
         return violation / self.partitioning.safe.volume
 

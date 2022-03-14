@@ -2,7 +2,7 @@ import math
 
 from torch import nn
 
-from learned_cbf.barrier import Barrier
+from learned_cbf.bounds import Barrier
 
 
 class TanhLinear(nn.Linear):
