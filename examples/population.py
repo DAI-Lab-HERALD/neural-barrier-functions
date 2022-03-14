@@ -43,7 +43,7 @@ def status_method(sbf, kappa, method, batch_size: Optional[int] = 200):
 @torch.no_grad()
 def status(sbf, kappa):
     status_method(sbf, kappa, 'ibp', batch_size=1000)
-    # status_method(sbf, kappa, 'crown_ibp')
+    status_method(sbf, kappa, 'crown_ibp_linear', batch_size=200)
 
 
 def train(sbf, args):
