@@ -1,3 +1,5 @@
+from functools import partial
+
 import torch
 import torch.nn.functional as F
 from bound_propagation import crown, ibp, crown_ibp
@@ -7,7 +9,7 @@ from .partitioning import Partitions
 
 
 class Barrier(nn.Sequential):
-    def interval(self, partitions, prefix=None, bound_lower=True, bound_upper=True, method='ibp', **kwargs):
+    def interval(self, partitions, prefix=None, bound_lower=True, bound_upper=True, method='ibp', batch_size=None, **kwargs):
         if prefix is None:
             lower, upper = partitions.lower, partitions.upper
             model = self
@@ -17,15 +19,26 @@ class Barrier(nn.Sequential):
 
         if method == 'crown':
             model = crown(model)
-            return model.crown_interval(lower, upper, bound_lower=bound_lower, bound_upper=bound_upper)
+            method = partial(model.crown_interval, bound_lower=bound_lower, bound_upper=bound_upper)
         elif method == 'crown_ibp':
             model = crown_ibp(model)
-            return model.crown_ibp_interval(lower, upper, bound_lower=bound_lower, bound_upper=bound_upper)
+            method = partial(model.crown_ibp_interval, bound_lower=bound_lower, bound_upper=bound_upper)
         elif method == 'ibp':
             model = ibp(model)
-            return model.ibp(lower, upper)
+            method = model.ibp
         else:
             raise NotImplementedError()
+
+        if batch_size is None:
+            return method(lower, upper)
+        else:
+            batches = list(zip(lower.split(batch_size), upper.split(batch_size)))
+            batches = [method(lower, upper) for (lower, upper) in batches]
+
+            lower = torch.cat([batch[0] for batch in batches], dim=-2) if bound_lower else None
+            upper = torch.cat([batch[1] for batch in batches], dim=-2) if bound_upper else None
+
+            return lower, upper
 
 
 class NeuralSBF(nn.Module):
@@ -77,7 +90,7 @@ class NeuralSBF(nn.Module):
         """
         return 1.0  # + F.softplus(self.rho)
 
-    def beta(self, method='ibp', batch_size=None):
+    def beta(self, **kwargs):
         """
         Parameterize beta by mu to allow constraint free optimization
         :return: beta in range [0, 1)
@@ -90,14 +103,8 @@ class NeuralSBF(nn.Module):
             assert self.partitioning.safe is not None
 
             with torch.no_grad():
-                if batch_size is None:
-                    _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics, bound_lower=False, method=method)
-                    lower, _ = self.barrier.interval(self.partitioning.safe, bound_upper=False, method=method)
-                else:
-                    lower, upper = self.partitioning.safe.lower, self.partitioning.safe.upper
-                    batches = [Partitions(bounds) for bounds in zip(lower.split(batch_size), upper.split(batch_size))]
-                    upper = torch.cat([self.barrier.interval(partitions, self.dynamics, bound_lower=False, method=method)[1] for partitions in batches], dim=-2)
-                    lower = torch.cat([self.barrier.interval(partitions, bound_upper=False, method=method)[0] for partitions in batches], dim=-2)
+                _, upper = self.barrier.interval(self.partitioning.safe, self.dynamics, bound_lower=False, **kwargs)
+                lower, _ = self.barrier.interval(self.partitioning.safe, bound_upper=False, **kwargs)
 
                 expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha)
                 idx = expectation_no_beta.argmax()
@@ -106,14 +113,18 @@ class NeuralSBF(nn.Module):
                 #     return torch.tensor(0.0, device=upper.device)
 
                 beta_max_partition = self.partitioning.safe[idx]
+                beta_max_partition = Partitions((
+                    beta_max_partition.lower.unsqueeze(0),
+                    beta_max_partition.upper.unsqueeze(0)
+                ))
 
-            _, upper = self.barrier.interval(beta_max_partition, self.dynamics, bound_lower=False, method=method)
-            lower, _ = self.barrier.interval(beta_max_partition, bound_upper=False, method=method)
+            _, upper = self.barrier.interval(beta_max_partition, self.dynamics, bound_lower=False, **kwargs)
+            lower, _ = self.barrier.interval(beta_max_partition, bound_upper=False, **kwargs)
             beta = (upper.mean(dim=0) - lower / self.alpha).max().clamp(min=0)
 
             return beta
 
-    def gamma(self, method='ibp', batch_size=None):
+    def gamma(self, **kwargs):
         """
         Parameterize gamma by nu to allow constraint free optimization
         :return: gamma in range [0, 1)
@@ -126,21 +137,19 @@ class NeuralSBF(nn.Module):
             assert self.partitioning.initial is not None
 
             with torch.no_grad():
-                if batch_size is None:
-                    _, upper = self.barrier.interval(self.partitioning.initial, bound_lower=False, method=method)
-                else:
-                    lower, upper = self.partitioning.initial.lower, self.partitioning.initial.upper
-                    batches = [Partitions(bounds) for bounds in zip(lower.split(batch_size), upper.split(batch_size))]
-                    upper = torch.cat([self.barrier.interval(partitions, bound_lower=False, method=method)[1] for partitions in batches], dim=-2)
-
+                _, upper = self.barrier.interval(self.partitioning.initial, bound_lower=False, **kwargs)
                 idx = upper.argmax()
 
                 # if upper[idx].item() <= 0.0:
                 #     return torch.tensor(0.0, device=upper.device)
 
                 gamma_max_partition = self.partitioning.initial[idx]
+                gamma_max_partition = Partitions((
+                    gamma_max_partition.lower.unsqueeze(0),
+                    gamma_max_partition.upper.unsqueeze(0)
+                ))
 
-            _, upper = self.barrier.interval(gamma_max_partition, bound_lower=False, method=method)
+            _, upper = self.barrier.interval(gamma_max_partition, bound_lower=False, **kwargs)
             gamma = upper.max().clamp(min=0)
 
             return gamma
