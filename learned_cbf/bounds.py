@@ -71,7 +71,7 @@ def interval_batching(method, lower, upper, batch_size, bound_lower=True, bound_
         return Affine(0.0, out_lower, lower, upper) if bound_lower else None, Affine(0.0, out_upper, lower, upper) if bound_upper else None
     else:
         batches = list(zip(lower.split(batch_size), upper.split(batch_size)))
-        batches = [method(lower, upper) for (lower, upper) in batches]
+        batches = [method(*batch) for i, batch in enumerate(batches)]
 
         out_lower = Affine(0.0, torch.cat([batch[0] for batch in batches], dim=-2), lower, upper) if bound_lower else None
         out_upper = Affine(0.0, torch.cat([batch[1] for batch in batches], dim=-2), lower, upper) if bound_upper else None
@@ -81,11 +81,11 @@ def interval_batching(method, lower, upper, batch_size, bound_lower=True, bound_
 
 def linear_batching(method, lower, upper, batch_size, bound_lower=True, bound_upper=True):
     if batch_size is None:
-        out_lower, out_upper = method(lower, upper, bound_lower=bound_lower, bound_upper=bound_upper)
+        out_lower, out_upper = method(lower, upper)
         return Affine(*out_lower, lower, upper) if bound_lower else None, Affine(*out_upper, lower, upper) if bound_upper else None
     else:
         batches = list(zip(lower.split(batch_size), upper.split(batch_size)))
-        batches = [method(lower, upper, bound_lower=bound_lower, bound_upper=bound_upper) for (lower, upper) in batches]
+        batches = [method(*batch) for i, batch in enumerate(batches)]
 
         out_lower = Affine(torch.cat([batch[0][0] for batch in batches], dim=-3), torch.cat([batch[0][1] for batch in batches], dim=-2), lower, upper) if bound_lower else None
         out_upper = Affine(torch.cat([batch[1][0] for batch in batches], dim=-3), torch.cat([batch[1][1] for batch in batches], dim=-2), lower, upper) if bound_upper else None
@@ -104,16 +104,16 @@ class BarrierNetwork(nn.Sequential):
 
         if method == 'crown_interval':
             model = crown(model)
-            method = partial(interval_batching, model.crown_interval)
+            method = partial(interval_batching, model.crown_interval, bound_lower=bound_lower, bound_upper=bound_upper)
         elif method == 'crown_linear':
             model = crown(model)
-            method = partial(linear_batching, model.crown_linear)
+            method = partial(linear_batching, model.crown_linear, bound_lower=bound_lower, bound_upper=bound_upper)
         elif method == 'crown_ibp_interval':
             model = crown_ibp(model)
-            method = partial(interval_batching, model.crown_ibp_interval)
+            method = partial(interval_batching, model.crown_ibp_interval, bound_lower=bound_lower, bound_upper=bound_upper)
         elif method == 'crown_ibp_linear':
             model = crown_ibp(model)
-            method = partial(linear_batching, model.crown_ibp_linear)
+            method = partial(linear_batching, model.crown_ibp_linear, bound_lower=bound_lower, bound_upper=bound_upper)
         elif method == 'ibp':
             model = ibp(model)
             method = partial(interval_batching, model.ibp)
