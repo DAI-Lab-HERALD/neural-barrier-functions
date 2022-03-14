@@ -2,7 +2,7 @@ import math
 
 from torch import nn
 
-from learned_cbf.bounds import Barrier
+from learned_cbf.bounds import BarrierNetwork
 
 
 class TanhLinear(nn.Linear):
@@ -26,7 +26,7 @@ class FinalLinear(nn.Linear):
             # nn.init.uniform_(self.bias, 0.0, 2.0)
 
 
-class PopulationBarrier(Barrier):
+class PopulationBarrier(BarrierNetwork):
     def __init__(self, *args, num_hidden=128):
         if args:
             # To support __get_index__ of nn.Sequential when slice indexing

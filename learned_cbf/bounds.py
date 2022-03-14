@@ -73,10 +73,10 @@ def interval_batching(method, lower, upper, batch_size, bound_lower=True, bound_
         batches = list(zip(lower.split(batch_size), upper.split(batch_size)))
         batches = [method(lower, upper) for (lower, upper) in batches]
 
-        lower = Affine(0.0, torch.cat([batch[0] for batch in batches], dim=-2), lower, upper) if bound_lower else None
-        upper = Affine(0.0, torch.cat([batch[1] for batch in batches], dim=-2), lower, upper) if bound_upper else None
+        out_lower = Affine(0.0, torch.cat([batch[0] for batch in batches], dim=-2), lower, upper) if bound_lower else None
+        out_upper = Affine(0.0, torch.cat([batch[1] for batch in batches], dim=-2), lower, upper) if bound_upper else None
 
-        return lower, upper
+        return out_lower, out_upper
 
 
 def linear_batching(method, lower, upper, batch_size, bound_lower=True, bound_upper=True):
@@ -87,13 +87,13 @@ def linear_batching(method, lower, upper, batch_size, bound_lower=True, bound_up
         batches = list(zip(lower.split(batch_size), upper.split(batch_size)))
         batches = [method(lower, upper, bound_lower=bound_lower, bound_upper=bound_upper) for (lower, upper) in batches]
 
-        lower = Affine(torch.cat([batch[0][0] for batch in batches], dim=-2), torch.cat([batch[0][1] for batch in batches], dim=-2), lower, upper) if bound_lower else None
-        upper = Affine(torch.cat([batch[1][0] for batch in batches], dim=-2), torch.cat([batch[1][1] for batch in batches], dim=-2), lower, upper) if bound_upper else None
+        out_lower = Affine(torch.cat([batch[0][0] for batch in batches], dim=-3), torch.cat([batch[0][1] for batch in batches], dim=-2), lower, upper) if bound_lower else None
+        out_upper = Affine(torch.cat([batch[1][0] for batch in batches], dim=-3), torch.cat([batch[1][1] for batch in batches], dim=-2), lower, upper) if bound_upper else None
 
-        return lower, upper
+        return out_lower, out_upper
 
 
-class Barrier(nn.Sequential):
+class BarrierNetwork(nn.Sequential):
     def interval(self, partitions, prefix=None, bound_lower=True, bound_upper=True, method='crown_ibp_linear', batch_size=None, **kwargs):
         if prefix is None:
             lower, upper = partitions.lower, partitions.upper
