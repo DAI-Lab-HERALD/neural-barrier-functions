@@ -93,31 +93,25 @@ def linear_batching(method, lower, upper, batch_size, bound_lower=True, bound_up
         return out_lower, out_upper
 
 
-class BarrierNetwork(nn.Sequential):
-    def bounds(self, partitions, prefix=None, bound_lower=True, bound_upper=True, method='crown_ibp_linear', batch_size=None, **kwargs):
-        if prefix is None:
-            lower, upper = partitions.lower, partitions.upper
-            model = self
-        else:
-            lower, upper = partitions.lower, partitions.upper
-            model = nn.Sequential(*list(prefix.children()), *list(self.children()))
+def bounds(model, partitions, bound_lower=True, bound_upper=True, method='ibp', batch_size=None, **kwargs):
+    lower, upper = partitions.lower, partitions.upper
 
-        if method == 'crown_interval':
-            model = crown(model)
-            method = partial(interval_batching, model.crown_interval, bound_lower=bound_lower, bound_upper=bound_upper)
-        elif method == 'crown_linear':
-            model = crown(model)
-            method = partial(linear_batching, model.crown_linear, bound_lower=bound_lower, bound_upper=bound_upper)
-        elif method == 'crown_ibp_interval':
-            model = crown_ibp(model)
-            method = partial(interval_batching, model.crown_ibp_interval, bound_lower=bound_lower, bound_upper=bound_upper)
-        elif method == 'crown_ibp_linear':
-            model = crown_ibp(model)
-            method = partial(linear_batching, model.crown_ibp_linear, bound_lower=bound_lower, bound_upper=bound_upper)
-        elif method == 'ibp':
-            model = ibp(model)
-            method = partial(interval_batching, model.ibp)
-        else:
-            raise NotImplementedError()
+    if method == 'crown_interval':
+        model = crown(model)
+        method = partial(interval_batching, model.crown_interval, bound_lower=bound_lower, bound_upper=bound_upper)
+    elif method == 'crown_linear':
+        model = crown(model)
+        method = partial(linear_batching, model.crown_linear, bound_lower=bound_lower, bound_upper=bound_upper)
+    elif method == 'crown_ibp_interval':
+        model = crown_ibp(model)
+        method = partial(interval_batching, model.crown_ibp_interval, bound_lower=bound_lower, bound_upper=bound_upper)
+    elif method == 'crown_ibp_linear':
+        model = crown_ibp(model)
+        method = partial(linear_batching, model.crown_ibp_linear, bound_lower=bound_lower, bound_upper=bound_upper)
+    elif method == 'ibp':
+        model = ibp(model)
+        method = partial(interval_batching, model.ibp)
+    else:
+        raise NotImplementedError()
 
-        return method(lower, upper, batch_size, bound_lower=bound_lower, bound_upper=bound_upper)
+    return method(lower, upper, batch_size, bound_lower=bound_lower, bound_upper=bound_upper)

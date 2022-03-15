@@ -1,0 +1,28 @@
+{
+  "dynamics": {
+    "sigma": 0.1,
+    "fertility_rate": 0.2,
+    "survival_juvenile": 0.3,
+    "survival_adult": 0.8,
+    "num_samples": 500
+  },
+  "partitioning": {
+    "method": "grid",
+    "num_slices": [640, 640]
+  },
+  "model": {
+    "type": "fcnn",
+    "input_dim": 2,
+    "hidden_nodes": 128,
+    "hidden_layers": 5,
+    "activation": "relu"
+  },
+  "training": {
+    "batch_size": 5000,
+    "epochs": 300,
+    "status": {
+      "ibp_batch_size": 1000,
+      "crown_ibp_batch_size": 200
+    }
+  }
+}

@@ -176,7 +176,7 @@ class PartitioningBatchSampler(Sampler[List[int]]):
         assert len(safe_idx) == len(unsafe_idx)
         assert state_space_idx is None or len(unsafe_idx) == len(state_space_idx)
 
-        for i in range(len(self)):
+        for i in range(len(self) - self.drop_last):
             if self.dataset.base.state_space:
                 yield initial_idx[i], safe_idx[i], unsafe_idx[i], state_space_idx[i]
             else:
@@ -194,6 +194,6 @@ class PartitioningBatchSampler(Sampler[List[int]]):
 
 
 class PartitioningDataLoader(DataLoader):
-    def __init__(self, dataset: PartitioningSubsampleDataset, *args, batch_size: Optional[int] = 1, **kwargs):
-        sampler = PartitioningBatchSampler(dataset, batch_size=batch_size)
+    def __init__(self, dataset: PartitioningSubsampleDataset, *args, batch_size=1, drop_last=False, **kwargs):
+        sampler = PartitioningBatchSampler(dataset, batch_size=batch_size, drop_last=drop_last)
         super().__init__(dataset, *args, sampler=sampler, batch_size=None, **kwargs)
