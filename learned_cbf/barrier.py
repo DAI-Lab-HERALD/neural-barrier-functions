@@ -111,7 +111,7 @@ class NeuralSBF(nn.Module):
         assert self.partitioning.unsafe is not None
 
         lower, _ = self.barrier.bounds(self.partitioning.unsafe, bound_upper=False, **kwargs)
-        violation = (1 - lower).partition_min().clamp(min=0).sum()
+        violation = (1 - lower).partition_max().clamp(min=0).sum()
         return violation / self.partitioning.unsafe.volume
 
     def loss_state_space(self, **kwargs):
@@ -122,7 +122,7 @@ class NeuralSBF(nn.Module):
         """
         if self.partitioning.state_space is not None:
             lower, _ = self.barrier.bounds(self.partitioning.state_space, bound_upper=False, **kwargs)
-            violation = (0 - lower).partition_min().clamp(min=0).sum()
+            violation = (0 - lower).partition_max().clamp(min=0).sum()
             return violation / self.partitioning.state_space.volume
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
