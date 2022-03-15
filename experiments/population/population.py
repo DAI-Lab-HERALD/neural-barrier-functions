@@ -1,9 +1,6 @@
 import logging
 
-import log
-
 import os.path
-from argparse import ArgumentParser
 
 import torch
 from torch import optim
@@ -11,12 +8,11 @@ from torch.optim.lr_scheduler import ExponentialLR
 from tqdm import trange, tqdm
 
 from dynamics import Population
-from networks import FCNNBarrierNetwork
 from partitioning import population_partitioning
 
 from learned_cbf.barrier import NeuralSBF
 from learned_cbf.partitioning import PartitioningSubsampleDataset, PartitioningDataLoader
-from utils import load_config
+from learned_cbf.networks import FCNNBarrierNetwork
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +38,7 @@ def status_method(sbf, kappa, method, batch_size):
 @torch.no_grad()
 def status(sbf, kappa, status_config):
     status_method(sbf, kappa, method='ibp', batch_size=status_config['ibp_batch_size'])
-    status_method(sbf, kappa, method='crown_ibp_linear', batch_size=status_config['crown_ibp_batch_size'])
+    # status_method(sbf, kappa, method='crown_ibp_linear', batch_size=status_config['crown_ibp_batch_size'])
 
 
 def train(sbf, args, config):
@@ -52,7 +48,7 @@ def train(sbf, args, config):
     dataset = PartitioningSubsampleDataset(population_partitioning(config['partitioning']))
     dataloader = PartitioningDataLoader(dataset, batch_size=config['training']['batch_size'], drop_last=True)
 
-    optimizer = optim.AdamW(sbf.parameters(), lr=1e-3)
+    optimizer = optim.Adam(sbf.parameters(), lr=5e-4)
     scheduler = ExponentialLR(optimizer, gamma=0.98)
     kappa = 0.99
 
@@ -100,9 +96,7 @@ def save(sbf, args):
     torch.save(sbf.state_dict(), args.save_path)
 
 
-def main(args):
-    config = load_config(args.config_path)
-
+def population_main(args, config):
     barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
     dynamics = Population(config['dynamics']).to(args.device)
     partitioning = population_partitioning(config['partitioning']).to(args.device)
@@ -111,20 +105,3 @@ def main(args):
     train(sbf, args, config)
     save(sbf, args)
     test(sbf, args, config)
-
-
-def parse_arguments():
-    parser = ArgumentParser()
-    parser.add_argument('--device', choices=list(map(torch.device, ['cuda', 'cpu'])), type=torch.device, default='cuda',
-                        help='Select device for tensor operations.')
-    parser.add_argument('--config-path', type=str, help='Path to configuration of experiment.')
-    parser.add_argument('--save-path', type=str, default='models/sbf.pth', help='Path to save SBF to.')
-    parser.add_argument('--log-file', type=str, help='Path to log file.')
-
-    return parser.parse_args()
-
-
-if __name__ == '__main__':
-    args = parse_arguments()
-    log.configure_logging(args.log_file)
-    main(args)

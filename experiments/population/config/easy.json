@@ -1,4 +1,5 @@
 {
+  "system": "population",
   "dynamics": {
     "sigma": 0.1,
     "fertility_rate": 0.2,
@@ -8,21 +9,21 @@
   },
   "partitioning": {
     "method": "grid",
-    "num_slices": [640, 640]
+    "num_slices": [160, 160]
   },
   "model": {
     "type": "fcnn",
     "input_dim": 2,
-    "hidden_nodes": 128,
-    "hidden_layers": 5,
+    "hidden_nodes": 256,
+    "hidden_layers": 3,
     "activation": "relu"
   },
   "training": {
-    "batch_size": 5000,
+    "batch_size": 400,
     "epochs": 300,
     "status": {
-      "ibp_batch_size": 1000,
-      "crown_ibp_batch_size": 200
+      "ibp_batch_size": 500,
+      "crown_ibp_batch_size": 100
     }
   }
 }
