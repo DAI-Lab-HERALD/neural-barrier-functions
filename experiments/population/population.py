@@ -7,8 +7,8 @@ from torch import optim
 from torch.optim.lr_scheduler import ExponentialLR
 from tqdm import trange, tqdm
 
-from dynamics import Population
-from partitioning import population_partitioning
+from .dynamics import Population
+from .partitioning import population_partitioning
 
 from learned_cbf.barrier import NeuralSBF
 from learned_cbf.partitioning import PartitioningSubsampleDataset, PartitioningDataLoader
