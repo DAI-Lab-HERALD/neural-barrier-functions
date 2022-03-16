@@ -100,7 +100,7 @@ def population_main(args, config):
     barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
     dynamics = Population(config['dynamics']).to(args.device)
     partitioning = population_partitioning(config['partitioning']).to(args.device)
-    sbf = NeuralSBF(barrier, dynamics, partitioning, horizon=2).to(args.device)
+    sbf = NeuralSBF(barrier, dynamics, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
     train(sbf, args, config)
     save(sbf, args)

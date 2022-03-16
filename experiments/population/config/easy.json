@@ -5,7 +5,8 @@
     "fertility_rate": 0.2,
     "survival_juvenile": 0.3,
     "survival_adult": 0.8,
-    "num_samples": 500
+    "num_samples": 500,
+    "horizon": 10
   },
   "partitioning": {
     "method": "grid",
