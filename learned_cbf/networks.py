@@ -1,3 +1,4 @@
+from bound_propagation import crown_ibp, crown, ibp
 from torch import nn
 
 from bounds import bounds
@@ -13,6 +14,9 @@ class BarrierNetwork(nn.Sequential):
         return bounds(model, partitions, bound_lower=bound_lower, bound_upper=bound_upper, method=method, batch_size=batch_size, **kwargs)
 
 
+@ibp
+@crown
+@crown_ibp
 class FCNNBarrierNetwork(BarrierNetwork):
     activation_class_mapping = {
         'relu': nn.ReLU,
