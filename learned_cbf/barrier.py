@@ -39,24 +39,45 @@ class NeuralSBF(nn.Module):
         """
         assert self.partitioning.safe is not None
 
-        with torch.no_grad():
-            _, upper = self.barrier.bounds(self.partitioning.safe, self.dynamics, bound_lower=False, **kwargs)
-            lower, _ = self.barrier.bounds(self.partitioning.safe, bound_upper=False, **kwargs)
+        if kwargs.get('method') == 'optimal':
+            kwargs.pop('method')
+            with torch.no_grad():
+                _, upper = self.barrier.bounds(self.partitioning.safe, self.dynamics, bound_lower=False, method='crown_ibp_linear', **kwargs)
+                lower, _ = self.barrier.bounds(self.partitioning.safe, bound_upper=False, method='ibp', **kwargs)
 
-            expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha).partition_max()
-            idx = expectation_no_beta.argmax()
+                expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
+                idx = expectation_no_beta.argmax()
 
-            del lower, upper, expectation_no_beta
+                # del lower, upper, expectation_no_beta
 
-            beta_max_partition = self.partitioning.safe[idx]
-            beta_max_partition = Partitions((
-                beta_max_partition.lower.unsqueeze(0),
-                beta_max_partition.upper.unsqueeze(0)
-            ))
+                beta_max_partition = self.partitioning.safe[idx]
+                beta_max_partition = Partitions((
+                    beta_max_partition.lower.unsqueeze(0),
+                    beta_max_partition.upper.unsqueeze(0)
+                ))
 
-        _, upper = self.barrier.bounds(beta_max_partition, self.dynamics, bound_lower=False, **kwargs)
-        lower, _ = self.barrier.bounds(beta_max_partition, bound_upper=False, **kwargs)
-        beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
+            _, upper = self.barrier.bounds(beta_max_partition, self.dynamics, bound_lower=False, method='crown_ibp_linear', **kwargs)
+            lower, _ = self.barrier.bounds(beta_max_partition, bound_upper=False, method='ibp', **kwargs)
+            beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
+        else:
+            with torch.no_grad():
+                _, upper = self.barrier.bounds(self.partitioning.safe, self.dynamics, bound_lower=False, **kwargs)
+                lower, _ = self.barrier.bounds(self.partitioning.safe, bound_upper=False, **kwargs)
+
+                expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
+                idx = expectation_no_beta.argmax()
+
+                # del lower, upper, expectation_no_beta
+
+                beta_max_partition = self.partitioning.safe[idx]
+                beta_max_partition = Partitions((
+                    beta_max_partition.lower.unsqueeze(0),
+                    beta_max_partition.upper.unsqueeze(0)
+                ))
+
+            _, upper = self.barrier.bounds(beta_max_partition, self.dynamics, bound_lower=False, **kwargs)
+            lower, _ = self.barrier.bounds(beta_max_partition, bound_upper=False, **kwargs)
+            beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
 
         return beta
 
@@ -66,20 +87,37 @@ class NeuralSBF(nn.Module):
         """
         assert self.partitioning.initial is not None
 
-        with torch.no_grad():
-            _, upper = self.barrier.bounds(self.partitioning.initial, bound_lower=False, **kwargs)
-            idx = upper.partition_max().argmax()
+        if kwargs.get('method') == 'optimal':
+            kwargs.pop('method')
+            with torch.no_grad():
+                _, upper = self.barrier.bounds(self.partitioning.initial, bound_lower=False, method='crown_ibp_linear', **kwargs)
+                idx = upper.partition_max().argmax()
 
-            del upper
+                del upper
 
-            gamma_max_partition = self.partitioning.initial[idx]
-            gamma_max_partition = Partitions((
-                gamma_max_partition.lower.unsqueeze(0),
-                gamma_max_partition.upper.unsqueeze(0)
-            ))
+                gamma_max_partition = self.partitioning.initial[idx]
+                gamma_max_partition = Partitions((
+                    gamma_max_partition.lower.unsqueeze(0),
+                    gamma_max_partition.upper.unsqueeze(0)
+                ))
 
-        _, upper = self.barrier.bounds(gamma_max_partition, bound_lower=False, **kwargs)
-        gamma = upper.partition_max().clamp(min=0)
+            _, upper = self.barrier.bounds(gamma_max_partition, bound_lower=False, method='crown_ibp_linear', **kwargs)
+            gamma = upper.partition_max().clamp(min=0)
+        else:
+            with torch.no_grad():
+                _, upper = self.barrier.bounds(self.partitioning.initial, bound_lower=False, **kwargs)
+                idx = upper.partition_max().argmax()
+
+                del upper
+
+                gamma_max_partition = self.partitioning.initial[idx]
+                gamma_max_partition = Partitions((
+                    gamma_max_partition.lower.unsqueeze(0),
+                    gamma_max_partition.upper.unsqueeze(0)
+                ))
+
+            _, upper = self.barrier.bounds(gamma_max_partition, bound_lower=False, **kwargs)
+            gamma = upper.partition_max().clamp(min=0)
 
         return gamma
 
@@ -110,8 +148,19 @@ class NeuralSBF(nn.Module):
         """
         assert self.partitioning.unsafe is not None
 
-        lower, _ = self.barrier.bounds(self.partitioning.unsafe, bound_upper=False, **kwargs)
-        violation = (1 - lower).partition_max().clamp(min=0).sum()
+        if kwargs.get('method') == 'optimal':
+            kwargs.pop('method')
+            lower, _ = self.barrier.bounds(self.partitioning.unsafe, bound_upper=False, method='ibp', **kwargs)
+            violation_ibp = (1 - lower).partition_max().clamp(min=0)
+
+            lower, _ = self.barrier.bounds(self.partitioning.unsafe, bound_upper=False, method='crown_ibp_interval', **kwargs)
+            violation_crown = (1 - lower).partition_max().clamp(min=0)
+
+            violation = torch.min(violation_ibp, violation_crown).sum()
+        else:
+            lower, _ = self.barrier.bounds(self.partitioning.unsafe, bound_upper=False, **kwargs)
+            violation = (1 - lower).partition_max().clamp(min=0).sum()
+
         return violation / self.partitioning.unsafe.volume
 
     def loss_state_space(self, **kwargs):
@@ -121,8 +170,19 @@ class NeuralSBF(nn.Module):
         :return: Loss for state space (zero if not partitioned)
         """
         if self.partitioning.state_space is not None:
-            lower, _ = self.barrier.bounds(self.partitioning.state_space, bound_upper=False, **kwargs)
-            violation = (0 - lower).partition_max().clamp(min=0).sum()
+            if kwargs.get('method') == 'optimal':
+                kwargs.pop('method')
+                lower, _ = self.barrier.bounds(self.partitioning.state_space, bound_upper=False, method='ibp', **kwargs)
+                violation_ibp = (0 - lower).partition_max().clamp(min=0)
+
+                lower, _ = self.barrier.bounds(self.partitioning.state_space, bound_upper=False, method='crown_ibp_interval', **kwargs)
+                violation_crown = (0 - lower).partition_max().clamp(min=0)
+
+                violation = torch.min(violation_ibp, violation_crown).sum()
+            else:
+                lower, _ = self.barrier.bounds(self.partitioning.state_space, bound_upper=False, **kwargs)
+                violation = (0 - lower).partition_max().clamp(min=0).sum()
+
             return violation / self.partitioning.state_space.volume
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
