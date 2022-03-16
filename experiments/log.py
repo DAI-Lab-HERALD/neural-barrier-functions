@@ -4,7 +4,7 @@ import os
 
 LOGGING_CONFIG = {
     'version': 1,
-    'disable_existing_loggers': False,
+    'disable_existing_loggers': True,
     'formatters': {
         'standard': {
             'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
@@ -22,7 +22,17 @@ LOGGING_CONFIG = {
         '': {  # root logger
             'handlers': ['default'],
             'level': 'DEBUG',
-            'propagate': True
+            'propagate': False
+        },
+        '__main__': {  # main logger
+            'handlers': ['default'],
+            'level': 'DEBUG',
+            'propagate': False
+        },
+        'population': {  # population experiment logger
+            'handlers': ['default'],
+            'level': 'DEBUG',
+            'propagate': False
         }
     }
 }
@@ -58,6 +68,8 @@ def configure_logging(log_file):
                 'class': 'log.MakeFileHandler'
             }
         LOGGING_CONFIG['loggers']['']['handlers'].append('file')
+        LOGGING_CONFIG['loggers']['__main__']['handlers'].append('file')
+        LOGGING_CONFIG['loggers']['population']['handlers'].append('file')
 
     # Run once at startup:
     logging.config.dictConfig(LOGGING_CONFIG)
