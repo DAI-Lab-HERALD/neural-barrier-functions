@@ -27,24 +27,27 @@ def step(learner, optimizer, partitioning, kappa, epoch):
 
 
 @torch.no_grad()
-def status_method(certifier, kappa, method, batch_size):
+def test_method(certifier, method, batch_size, kappa=None):
     loss_barrier = certifier.barrier_violation(method=method, batch_size=batch_size)
     unsafety_prob, beta, gamma = certifier.unsafety_prob(return_beta_gamma=True, method=method, batch_size=batch_size)
 
     loss_barrier, unsafety_prob = loss_barrier.item(), unsafety_prob.item()
     beta, gamma = beta.item(), gamma.item()
-    logger.info(f'[{method.upper()}] loss: ({loss_barrier:>7f}/{unsafety_prob:>7f}), gamma: {gamma:>7f}, beta: {beta:>7f}, kappa: {kappa:>4f}')
+    msg = f'[{method.upper()}] certification: ({loss_barrier:>7f}/{unsafety_prob:>7f}), gamma: {gamma:>7f}, beta: {beta:>7f}'
+    if kappa is not None:
+        msg += f', kappa: {kappa:>4f}'
+    logger.info(msg)
 
 
 @torch.no_grad()
-def status(certifier, kappa, status_config):
-    status_method(certifier, kappa, method='ibp', batch_size=status_config['ibp_batch_size'])
-    status_method(certifier, kappa, method='crown_ibp_linear', batch_size=status_config['crown_ibp_batch_size'])
-    status_method(certifier, kappa, method='optimal', batch_size=status_config['crown_ibp_batch_size'])
+def test(certifier, status_config, kappa=None):
+    test_method(certifier, method='ibp', batch_size=status_config['ibp_batch_size'], kappa=kappa)
+    test_method(certifier, kappa, method='crown_ibp_linear', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
+    test_method(certifier, kappa, method='optimal', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
 
 
 def train(learner, certifier, args, config):
-    status(certifier, 1.0, config['training']['status'])
+    test(certifier, config['training']['status'])
 
     dataset = PartitioningSubsampleDataset(polynomial_partitioning(config))
     dataloader = PartitioningDataLoader(dataset, batch_size=config['training']['batch_size'], drop_last=True)
@@ -59,7 +62,7 @@ def train(learner, certifier, args, config):
             step(learner, optimizer, partitioning, kappa, epoch)
 
         if epoch % 10 == 9:
-            status(certifier, kappa, config['training']['status'])
+            test(certifier, config['training']['status'], kappa)
 
         scheduler.step()
         if epoch >= 10:
@@ -67,25 +70,6 @@ def train(learner, certifier, args, config):
 
     while not certifier.certify(method='ibp', batch_size=200):
         step(learner, optimizer, certifier.partitioning, 0.0, epoch)
-
-
-@torch.no_grad()
-def test_method(certifier, method, batch_size):
-    certified = certifier.barrier_violation(method=method, batch_size=batch_size)
-    unsafety_prob, beta, gamma = certifier.unsafety_prob(method=method, batch_size=batch_size, return_beta_gamma=True)
-    unsafety_prob, beta, gamma = unsafety_prob.item(), beta.item(), gamma.item()
-
-    logger.info(f'[{method.upper()}] certified: {certified}, prob unsafety: {unsafety_prob:>7f}, gamma: {gamma:>7f}, beta: {beta:>7f}')
-
-
-@torch.no_grad()
-def test(certifier, args, config):
-    status_config = config['training']['status']
-
-    test_method(certifier, method='ibp', batch_size=status_config['ibp_batch_size'])
-    test_method(certifier, method='crown_ibp_linear', batch_size=status_config['crown_ibp_batch_size'])
-    test_method(certifier, method='optimal', batch_size=status_config['crown_ibp_batch_size'])
-    # test_method(sbf, method='crown_linear', batch_size=status_config['crown_ibp_batch_size'])
 
 
 def save(learner, args):
@@ -106,6 +90,6 @@ def polynomial_main(args, config):
 
     train(learner, certifier, args, config)
     save(learner, args)
-    test(certifier, args, config)
+    test(certifier, config['training']['status'])
 
     plot_bounds_2d(barrier, args)
