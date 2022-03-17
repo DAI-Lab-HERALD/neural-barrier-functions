@@ -1,10 +1,10 @@
 import torch
 from torch import nn
 
-from .partitioning import Partitions
+from learned_cbf.partitioning import Partitions
 
 
-class NeuralSBF(nn.Module):
+class NeuralSBFCertifier(nn.Module):
     def __init__(self, barrier, dynamics, partitioning, horizon):
         super().__init__()
 
@@ -88,60 +88,30 @@ class NeuralSBF(nn.Module):
         assert self.partitioning.initial is not None
 
         if kwargs.get('method') == 'optimal':
-            kwargs.pop('method')
-            with torch.no_grad():
-                _, upper = self.barrier.bounds(self.partitioning.initial, bound_lower=False, method='crown_ibp_linear', **kwargs)
-                idx = upper.partition_max().argmax()
+            kwargs['method'] = 'crown_ibp_linear'
 
-                del upper
+        with torch.no_grad():
+            _, upper = self.barrier.bounds(self.partitioning.initial, bound_lower=False, **kwargs)
+            idx = upper.partition_max().argmax()
 
-                gamma_max_partition = self.partitioning.initial[idx]
-                gamma_max_partition = Partitions((
-                    gamma_max_partition.lower.unsqueeze(0),
-                    gamma_max_partition.upper.unsqueeze(0)
-                ))
+            del upper
 
-            _, upper = self.barrier.bounds(gamma_max_partition, bound_lower=False, method='crown_ibp_linear', **kwargs)
-            gamma = upper.partition_max().clamp(min=0)
-        else:
-            with torch.no_grad():
-                _, upper = self.barrier.bounds(self.partitioning.initial, bound_lower=False, **kwargs)
-                idx = upper.partition_max().argmax()
+            gamma_max_partition = self.partitioning.initial[idx]
+            gamma_max_partition = Partitions((
+                gamma_max_partition.lower.unsqueeze(0),
+                gamma_max_partition.upper.unsqueeze(0)
+            ))
 
-                del upper
-
-                gamma_max_partition = self.partitioning.initial[idx]
-                gamma_max_partition = Partitions((
-                    gamma_max_partition.lower.unsqueeze(0),
-                    gamma_max_partition.upper.unsqueeze(0)
-                ))
-
-            _, upper = self.barrier.bounds(gamma_max_partition, bound_lower=False, **kwargs)
-            gamma = upper.partition_max().clamp(min=0)
+        _, upper = self.barrier.bounds(gamma_max_partition, bound_lower=False, **kwargs)
+        gamma = upper.partition_max().clamp(min=0)
 
         return gamma
 
-    def loss(self, safety_weight=0.5, **kwargs):
-        if safety_weight == 1.0:
-            return self.loss_safety_prob(**kwargs)
-        elif safety_weight == 0.0:
-            return self.loss_barrier(**kwargs)
-
-        loss_barrier = self.loss_barrier(**kwargs)
-        loss_safety_prob = self.loss_safety_prob(**kwargs)
-
-        # if loss_barrier.item() >= 1.0e-10:
-        #     return loss_barrier
-        # else:
-        #     return loss_safety_prob
-
-        return (1.0 - safety_weight) * loss_barrier + safety_weight * loss_safety_prob
-
-    def loss_barrier(self, **kwargs):
-        loss = self.loss_state_space(**kwargs) + self.loss_unsafe(**kwargs)
+    def barrier_violation(self, **kwargs):
+        loss = self.state_space_violation(**kwargs) + self.unsafe_violation(**kwargs)
         return loss
 
-    def loss_unsafe(self, **kwargs):
+    def unsafe_violation(self, **kwargs):
         """
         Ensure that B(x) >= 1 for all x in X_u.
         :return: Loss for unsafe set
@@ -163,7 +133,7 @@ class NeuralSBF(nn.Module):
 
         return violation / self.partitioning.unsafe.volume
 
-    def loss_state_space(self, **kwargs):
+    def state_space_violation(self, **kwargs):
         """
         Ensure that B(x) >= 0 for all x in X. If no partitioning is available,
         assume that barrier network ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
@@ -187,14 +157,6 @@ class NeuralSBF(nn.Module):
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
             return 0.0
-
-    def loss_safety_prob(self, **kwargs):
-        """
-        gamma + beta * horizon is an upper bound for probability of B(x) >= 1 in horizon steps.
-        But we need to account for the fact that we backprop through dynamics in beta, num_samples times.
-        :return: Upper bound for (1 - safety probability) adjusted to construct loss.
-        """
-        return self.gamma(**kwargs) + self.beta(**kwargs) * self.horizon
 
     @torch.no_grad()
     def unsafety_prob(self, return_beta_gamma=False, **kwargs):
@@ -225,4 +187,4 @@ class NeuralSBF(nn.Module):
         Allow a small violation to account for potential numerical (FP) errors.
         :return: true if the barrier network is a valid barrier
         """
-        return self.loss_barrier(**kwargs).item() <= 1.0e-10
+        return self.unsafe_violation(**kwargs).item() <= 1.0e-10

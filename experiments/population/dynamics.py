@@ -31,3 +31,25 @@ class Population(StochasticDynamics):
             PopulationStep(dynamics_config),
             num_samples=dynamics_config['num_samples']
         )
+
+        self.safe_set_type = dynamics_config['safe_set']
+
+    def safe(self, x):
+        if self.safe_set_type == 'circle':
+            return x.norm(dim=-1) <= 2.0
+        elif self.safe_set_type == 'donut':
+            return (x.norm(dim=-1) <= 2.0) & (x.norm(dim=-1) >= 0.5)
+        else:
+            raise ValueError('Invalid safe set for population')
+
+    def initial(self, x):
+        if self.safe_set_type == 'circle':
+            return x.norm(dim=-1) <= 1.0
+        elif self.safe_set_type == 'donut':
+            return (x.norm(dim=-1) >= 1.0) & (x.norm(dim=-1) <= 1.5)
+        else:
+            raise ValueError('Invalid safe set for population')
+
+    def state_space(self, x):
+        return (x[..., 0].abs() <= 3.0) & (x[..., 1].abs() <= 3.0)
+
