@@ -1,5 +1,6 @@
 import torch
 from matplotlib import pyplot as plt
+from matplotlib.collections import PatchCollection
 
 from learned_cbf.partitioning import Partitioning
 
@@ -7,17 +8,23 @@ from learned_cbf.partitioning import Partitioning
 def plot_partitioning(partitioning, safe_set_type):
     fig, ax = plt.subplots()
 
+    patch_collection = []
     for lower, width in zip(partitioning.initial.lower, partitioning.initial.width):
-        rect = plt.Rectangle(lower, width[0], width[1], color='g', alpha=0.1, linewidth=1)
-        ax.add_patch(rect)
+        rect = plt.Rectangle(lower, width[0], width[1])
+        patch_collection.append(rect)
+    ax.add_collection(PatchCollection(patch_collection, color='g', alpha=0.1, linewidth=1))
 
+    patch_collection = []
     for lower, width in zip(partitioning.safe.lower, partitioning.safe.width):
         rect = plt.Rectangle(lower, width[0], width[1], color='b', alpha=0.1, linewidth=1)
-        ax.add_patch(rect)
+        patch_collection.append(rect)
+    ax.add_collection(PatchCollection(patch_collection, color='b', alpha=0.1, linewidth=1))
 
+    patch_collection = []
     for lower, width in zip(partitioning.unsafe.lower, partitioning.unsafe.width):
         rect = plt.Rectangle(lower, width[0], width[1], color='r', alpha=0.1, linewidth=1)
-        ax.add_patch(rect)
+        patch_collection.append(rect)
+    ax.add_collection(PatchCollection(patch_collection, color='r', alpha=0.1, linewidth=1))
 
     if safe_set_type == 'circle':
         circle_init = plt.Circle((0, 0), 1.0, color='g', fill=False)
