@@ -185,7 +185,7 @@ def plot_bounds_2d(model, args, config):
     if config['dynamics']['safe_set'] == 'circle':
         x_space = torch.linspace(-3.0, 3.0, num_slices + 1, device=args.device)
     elif config['dynamics']['safe_set'] == 'annulus':
-        x_space = torch.linspace(-6.0, 6.0, num_slices + 1, device=args.device)
+        x_space = torch.linspace(-4.5, 4.5, num_slices + 1, device=args.device)
     else:
         raise ValueError('Invalid safe set for population')
 
@@ -205,7 +205,7 @@ def plot_bounds_2d(model, args, config):
         x_space = torch.linspace(-3.0, 3.0, 500, device=args.device)
         x1, x2 = torch.meshgrid(x_space, x_space)
     elif config['dynamics']['safe_set'] == 'annulus':
-        x_space = torch.linspace(-6.0, 6.0, 500, device=args.device)
+        x_space = torch.linspace(-4.5, 4.5, 500, device=args.device)
         x1, x2 = torch.meshgrid(x_space, x_space)
     else:
         raise ValueError('Invalid safe set for population')

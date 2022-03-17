@@ -38,7 +38,7 @@ class Population(StochasticDynamics):
         if self.safe_set_type == 'circle':
             return x.norm(dim=-1) <= 2.0
         elif self.safe_set_type == 'annulus':
-            return (x.norm(dim=-1) <= 2.0) & (x.norm(dim=-1) >= 0.5)
+            return (x.norm(dim=-1) <= 4.0) & (x.norm(dim=-1) >= 0.5)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -54,7 +54,7 @@ class Population(StochasticDynamics):
         if self.safe_set_type == 'circle':
             return (x[..., 0].abs() <= 3.0) & (x[..., 1].abs() <= 3.0)
         elif self.safe_set_type == 'annulus':
-            return (x[..., 0].abs() <= 6.0) & (x[..., 1].abs() <= 6.0)
+            return (x[..., 0].abs() <= 4.5) & (x[..., 1].abs() <= 4.5)
         else:
             raise ValueError('Invalid safe set for population')
 

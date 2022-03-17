@@ -46,8 +46,8 @@ def plot_partitioning(partitioning, safe_set_type):
         ax.add_patch(circle_safe1)
         ax.add_patch(circle_safe2)
 
-        plt.xlim(-6, 6)
-        plt.ylim(-6, 6)
+        plt.xlim(-4.5, 4.5)
+        plt.ylim(-4.5, 4.5)
     else:
         raise ValueError('Invalid safe set for population')
 
@@ -63,7 +63,7 @@ def population_partitioning(config):
     if safe_set_type == 'circle':
         x_lim = 3.0
     elif safe_set_type == 'annulus':
-        x_lim = 6.0
+        x_lim = 4.5
     else:
         raise ValueError('Invalid safe set for population')
 
