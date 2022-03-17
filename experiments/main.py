@@ -12,6 +12,8 @@ def main(args):
 
     if config['system'] == 'population':
         population_main(args, config)
+    elif config['system'] == 'polynomial':
+        polynomial_main(args, config)
     else:
         raise ValueError(f'System {config["system"]} not defined')
 
