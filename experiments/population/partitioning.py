@@ -53,8 +53,15 @@ def population_partitioning(config):
 
     assert partitioning_config['method'] == 'grid'
 
-    x1_space = torch.linspace(-3.0, 3.0, partitioning_config['num_slices'][0] + 1)
-    x2_space = torch.linspace(-3.0, 3.0, partitioning_config['num_slices'][1] + 1)
+    if safe_set_type == 'circle':
+        x_lim = 3.0
+    elif safe_set_type == 'annulus':
+        x_lim = 6.0
+    else:
+        raise ValueError('Invalid safe set for population')
+
+    x1_space = torch.linspace(-x_lim, x_lim, partitioning_config['num_slices'][0] + 1)
+    x2_space = torch.linspace(-x_lim, x_lim, partitioning_config['num_slices'][1] + 1)
 
     cell_width = torch.stack([(x1_space[1] - x1_space[0]) / 2, (x2_space[1] - x2_space[0]) / 2])
     x1_slice_centers = (x1_space[:-1] + x1_space[1:]) / 2
