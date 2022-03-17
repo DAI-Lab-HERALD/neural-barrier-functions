@@ -1,17 +1,17 @@
 {
   "system": "population",
   "dynamics": {
-    "sigma": 0.1,
+    "sigma": 0.01,
     "fertility_rate": 1.0,
     "survival_juvenile": 0.5,
     "survival_adult": 0.5,
     "num_samples": 500,
     "horizon": 10,
-    "safe_set": "donut"
+    "safe_set": "annulus"
   },
   "partitioning": {
     "method": "grid",
-    "num_slices": [160, 160]
+    "num_slices": [640, 640]
   },
   "model": {
     "type": "fcnn",

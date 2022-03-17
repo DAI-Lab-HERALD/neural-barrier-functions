@@ -25,7 +25,10 @@ def plot_partitioning(partitioning, safe_set_type):
 
         circle_safe = plt.Circle((0, 0), 2.0, color='r', fill=False)
         ax.add_patch(circle_safe)
-    elif safe_set_type == 'donut':
+
+        plt.xlim(-3, 3)
+        plt.ylim(-3, 3)
+    elif safe_set_type == 'annulus':
         circle_init1 = plt.Circle((0, 0), 1.0, color='g', fill=False)
         circle_init2 = plt.Circle((0, 0), 1.5, color='g', fill=False)
         ax.add_patch(circle_init1)
@@ -35,11 +38,12 @@ def plot_partitioning(partitioning, safe_set_type):
         circle_safe2 = plt.Circle((0, 0), 2.0, color='r', fill=False)
         ax.add_patch(circle_safe1)
         ax.add_patch(circle_safe2)
+
+        plt.xlim(-6, 6)
+        plt.ylim(-6, 6)
     else:
         raise ValueError('Invalid safe set for population')
 
-    plt.xlim(-3, 3)
-    plt.ylim(-3, 3)
     plt.show()
 
 
@@ -66,10 +70,10 @@ def population_partitioning(config):
         initial_mask = closest_point.norm(dim=-1) <= 1.0
         safe_mask = closest_point.norm(dim=-1) <= 2.0
         unsafe_mask = farthest_point.norm(dim=-1) >= 2.0
-    elif safe_set_type == 'donut':
-        initial_mask = (farthest_point.norm(dim=-1) >= 1.0) & (closest_point.norm(dim=-1) <= 1.5)
-        safe_mask = (farthest_point.norm(dim=-1) >= 0.5) & (closest_point.norm(dim=-1) <= 2.0)
-        unsafe_mask = (farthest_point.norm(dim=-1) >= 2.0) | (closest_point.norm(dim=-1) <= 0.5)
+    elif safe_set_type == 'annulus':
+        initial_mask = (farthest_point.norm(dim=-1) >= 2.0) & (closest_point.norm(dim=-1) <= 2.5)
+        safe_mask = (farthest_point.norm(dim=-1) >= 0.5) & (closest_point.norm(dim=-1) <= 4.0)
+        unsafe_mask = (farthest_point.norm(dim=-1) >= 4.0) | (closest_point.norm(dim=-1) <= 0.5)
     else:
         raise ValueError('Invalid safe set for population')
 

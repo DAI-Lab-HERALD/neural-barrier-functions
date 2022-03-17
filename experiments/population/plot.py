@@ -179,10 +179,16 @@ def plot_partition(model, args, rect, initial, safe, unsafe):
 
 
 @torch.no_grad()
-def plot_bounds_2d(model, args):
+def plot_bounds_2d(model, args, config):
     num_slices = 80
 
-    x_space = torch.linspace(-3.0, 3.0, num_slices + 1, device=args.device)
+    if config['dynamics']['safe_set'] == 'circle':
+        x_space = torch.linspace(-3.0, 3.0, num_slices + 1, device=args.device)
+    elif config['dynamics']['safe_set'] == 'annulus':
+        x_space = torch.linspace(-6.0, 6.0, num_slices + 1, device=args.device)
+    else:
+        raise ValueError('Invalid safe set for population')
+
     cell_width = (x_space[1] - x_space[0]) / 2
     slice_centers = (x_space[:-1] + x_space[1:]) / 2
 
@@ -195,7 +201,15 @@ def plot_bounds_2d(model, args):
     plt.clf()
     ax = plt.axes(projection='3d')
 
-    x1, x2 = torch.meshgrid(torch.linspace(-3.0, 4.0, 500), torch.linspace(-2.0, 2.0, 500))
+    if config['dynamics']['safe_set'] == 'circle':
+        x_space = torch.linspace(-3.0, 3.0, 500, device=args.device)
+        x1, x2 = torch.meshgrid(x_space, x_space)
+    elif config['dynamics']['safe_set'] == 'annulus':
+        x_space = torch.linspace(-6.0, 6.0, 500, device=args.device)
+        x1, x2 = torch.meshgrid(x_space, x_space)
+    else:
+        raise ValueError('Invalid safe set for population')
+
     X = torch.cat(tuple(torch.dstack([x1, x2]))).to(args.device)
     y = model(X).view(500, 500)
     y = y.cpu()
@@ -207,9 +221,16 @@ def plot_bounds_2d(model, args):
     closest_point = torch.min(lower_x.abs(), upper_x.abs())
     farthest_point = torch.max(lower_x.abs(), upper_x.abs())
 
-    initial_mask = closest_point[:, 0]**2 + closest_point[:, 1]**2 <= 1.0**2
-    safe_mask = closest_point[:, 0]**2 + closest_point[:, 1]**2 <= 2.0**2
-    unsafe_mask = farthest_point[:, 0]**2 + farthest_point[:, 1]**2 >= 2.0**2
+    if config['dynamics']['safe_set'] == 'circle':
+        initial_mask = closest_point.norm(dim=-1) <= 1.0
+        safe_mask = closest_point.norm(dim=-1) <= 2.0
+        unsafe_mask = farthest_point.norm(dim=-1) >= 2.0
+    elif config['dynamics']['safe_set'] == 'annulus':
+        initial_mask = (farthest_point.norm(dim=-1) >= 2.0) & (closest_point.norm(dim=-1) <= 2.5)
+        safe_mask = (farthest_point.norm(dim=-1) >= 0.5) & (closest_point.norm(dim=-1) <= 4.0)
+        unsafe_mask = (farthest_point.norm(dim=-1) >= 4.0) | (closest_point.norm(dim=-1) <= 0.5)
+    else:
+        raise ValueError('Invalid safe set for population')
 
     y_grid = -0.5
     initial_partitions = []
