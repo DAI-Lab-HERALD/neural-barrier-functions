@@ -56,7 +56,7 @@ def train(learner, certifier, args, config):
     scheduler = ExponentialLR(optimizer, gamma=0.97)
     kappa = 0.99
 
-    for epoch in trange(200, desc='Epoch', colour='red', position=0, leave=False):
+    for epoch in trange(config['training']['epochs'], desc='Epoch', colour='red', position=0, leave=False):
         for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
             partitioning = partitioning.to(args.device)
             step(learner, optimizer, partitioning, kappa, epoch)
@@ -68,8 +68,8 @@ def train(learner, certifier, args, config):
         if epoch >= 10:
             kappa *= 0.99
 
-    while not certifier.certify(method='ibp', batch_size=200):
-        step(learner, optimizer, certifier.partitioning, 0.0, epoch)
+    while not certifier.certify(method='ibp', batch_size=config['training']['status']['ibp_batch_size']):
+        step(learner, optimizer, certifier.partitioning, 0.0, config['training']['epochs'])
 
 
 def save(learner, args):
