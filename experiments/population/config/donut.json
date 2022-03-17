@@ -2,12 +2,12 @@
   "system": "population",
   "dynamics": {
     "sigma": 0.1,
-    "fertility_rate": 0.2,
-    "survival_juvenile": 0.3,
-    "survival_adult": 0.8,
+    "fertility_rate": 1.0,
+    "survival_juvenile": 0.5,
+    "survival_adult": 0.5,
     "num_samples": 500,
     "horizon": 10,
-    "safe_set": "circle"
+    "safe_set": "donut"
   },
   "partitioning": {
     "method": "grid",

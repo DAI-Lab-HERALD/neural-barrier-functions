@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 from learned_cbf.partitioning import Partitioning
 
 
-def plot_partitioning(partitioning):
+def plot_partitioning(partitioning, safe_set_type):
     fig, ax = plt.subplots()
 
     for lower, width in zip(partitioning.initial.lower, partitioning.initial.width):
@@ -19,18 +19,34 @@ def plot_partitioning(partitioning):
         rect = plt.Rectangle(lower, width[0], width[1], color='r', alpha=0.1, linewidth=1)
         ax.add_patch(rect)
 
-    circle_init = plt.Circle((0, 0), 1.0, color='g', fill=False)
-    ax.add_patch(circle_init)
+    if safe_set_type == 'circle':
+        circle_init = plt.Circle((0, 0), 1.0, color='g', fill=False)
+        ax.add_patch(circle_init)
 
-    circle_safe = plt.Circle((0, 0), 2.0, color='r', fill=False)
-    ax.add_patch(circle_safe)
+        circle_safe = plt.Circle((0, 0), 2.0, color='r', fill=False)
+        ax.add_patch(circle_safe)
+    elif safe_set_type == 'donut':
+        circle_init1 = plt.Circle((0, 0), 1.0, color='g', fill=False)
+        circle_init2 = plt.Circle((0, 0), 1.5, color='g', fill=False)
+        ax.add_patch(circle_init1)
+        ax.add_patch(circle_init2)
+
+        circle_safe1 = plt.Circle((0, 0), 0.5, color='r', fill=False)
+        circle_safe2 = plt.Circle((0, 0), 2.0, color='r', fill=False)
+        ax.add_patch(circle_safe1)
+        ax.add_patch(circle_safe2)
+    else:
+        raise ValueError('Invalid safe set for population')
 
     plt.xlim(-3, 3)
     plt.ylim(-3, 3)
     plt.show()
 
 
-def population_partitioning(partitioning_config):
+def population_partitioning(config):
+    partitioning_config = config['partitioning']
+    safe_set_type = config['dynamics']['safe_set']
+
     assert partitioning_config['method'] == 'grid'
 
     x1_space = torch.linspace(-3.0, 3.0, partitioning_config['num_slices'][0] + 1)
@@ -46,9 +62,16 @@ def population_partitioning(partitioning_config):
     closest_point = torch.min(lower_x.abs(), upper_x.abs())
     farthest_point = torch.max(lower_x.abs(), upper_x.abs())
 
-    initial_mask = closest_point[:, 0]**2 + closest_point[:, 1]**2 <= 1.0**2
-    safe_mask = closest_point[:, 0]**2 + closest_point[:, 1]**2 <= 2.0**2
-    unsafe_mask = farthest_point[:, 0]**2 + farthest_point[:, 1]**2 >= 2.0**2
+    if safe_set_type == 'circle':
+        initial_mask = closest_point.norm(dim=-1) <= 1.0
+        safe_mask = closest_point.norm(dim=-1) <= 2.0
+        unsafe_mask = farthest_point.norm(dim=-1) >= 2.0
+    elif safe_set_type == 'donut':
+        initial_mask = (farthest_point.norm(dim=-1) >= 1.0) & (closest_point.norm(dim=-1) <= 1.5)
+        safe_mask = (farthest_point.norm(dim=-1) >= 0.5) & (closest_point.norm(dim=-1) <= 2.0)
+        unsafe_mask = (farthest_point.norm(dim=-1) >= 2.0) | (closest_point.norm(dim=-1) <= 0.5)
+    else:
+        raise ValueError('Invalid safe set for population')
 
     partitioning = Partitioning(
         (lower_x[initial_mask], upper_x[initial_mask]),
@@ -57,6 +80,6 @@ def population_partitioning(partitioning_config):
         (lower_x, upper_x)
     )
 
-    # plot_partitioning(partitioning)
+    # plot_partitioning(partitioning, safe_set_type)
 
     return partitioning

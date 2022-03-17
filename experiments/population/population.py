@@ -46,7 +46,7 @@ def status(certifier, kappa, status_config):
 def train(learner, certifier, args, config):
     status(certifier, 1.0, config['training']['status'])
 
-    dataset = PartitioningSubsampleDataset(population_partitioning(config['partitioning']))
+    dataset = PartitioningSubsampleDataset(population_partitioning(config))
     dataloader = PartitioningDataLoader(dataset, batch_size=config['training']['batch_size'], drop_last=True)
 
     optimizer = optim.Adam(learner.parameters(), lr=1e-3)
@@ -98,7 +98,7 @@ def save(learner, args):
 def population_main(args, config):
     dynamics = Population(config['dynamics']).to(args.device)
     barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
-    partitioning = population_partitioning(config['partitioning']).to(args.device)
+    partitioning = population_partitioning(config).to(args.device)
     learner = AdversarialNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
     certifier = NeuralSBFCertifier(barrier, dynamics, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 

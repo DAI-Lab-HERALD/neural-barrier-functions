@@ -6,7 +6,8 @@
     "survival_juvenile": 0.6,
     "survival_adult": 0.9,
     "num_samples": 500,
-    "horizon": 2
+    "horizon": 2,
+    "safe_set": "circle"
   },
   "partitioning": {
     "method": "grid",
