@@ -1,9 +1,13 @@
+import math
 from typing import Tuple
 
 import torch
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
+
+from .partitioning import overlap_circle, overlap_rectangle, overlap_outside_circle, \
+    overlap_outside_rectangle
 
 LinearBound = Tuple[torch.Tensor, torch.Tensor]
 
@@ -213,12 +217,17 @@ def plot_bounds_2d(model, args, config):
     surf._facecolors2d = surf._facecolor3d
     surf._edgecolors2d = surf._edgecolor3d
 
-    closest_point = torch.min(lower_x.abs(), upper_x.abs())
-    farthest_point = torch.max(lower_x.abs(), upper_x.abs())
+    initial_mask = overlap_circle(lower_x, upper_x, torch.tensor([1.5, 0]), math.sqrt(0.25)) | \
+                   overlap_rectangle(lower_x, upper_x, torch.tensor([-1.8, -0.1]), torch.tensor([-1.2, 0.1])) | \
+                   overlap_rectangle(lower_x, upper_x, torch.tensor([-1.4, -0.5]), torch.tensor([-1.2, 0.1]))
 
-    initial_mask = (farthest_point.norm(dim=-1) >= 2.0) & (closest_point.norm(dim=-1) <= 2.5)
-    safe_mask = (farthest_point.norm(dim=-1) >= 0.5) & (closest_point.norm(dim=-1) <= 4.0)
-    unsafe_mask = (farthest_point.norm(dim=-1) >= 4.0) | (closest_point.norm(dim=-1) <= 0.5)
+    safe_mask = overlap_outside_circle(lower_x, upper_x, torch.tensor([-1.0, -1.0]), math.sqrt(0.16)) & \
+                   overlap_outside_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.6, 0.5])) & \
+                   overlap_outside_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.8, 0.3]))
+
+    unsafe_mask = overlap_circle(lower_x, upper_x, torch.tensor([-1.0, -1.0]), math.sqrt(0.16)) | \
+                   overlap_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.6, 0.5])) | \
+                   overlap_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.8, 0.3]))
 
     y_grid = -0.5
     initial_partitions = []

@@ -36,7 +36,7 @@ class Polynomial(StochasticDynamics):
 
     def safe(self, x):
         x1, x2 = x[..., 0], x[..., 1]
-        cond1 = (x1 + 1.0) ** 2 + (x2 + 1) ** 2 <= 0.16
+        cond1 = (x1 + 1.0) ** 2 + (x2 + 1.0) ** 2 <= 0.16
         cond2 = (x1 >= 0.4) & (x1 <= 0.6) & (x2 >= 0.1) & (x2 <= 0.5)
         cond3 = (x1 >= 0.4) & (x1 <= 0.8) & (x2 >= 0.1) & (x2 <= 0.3)
 
