@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def step(learner, optimizer, partitioning, kappa, epoch):
     optimizer.zero_grad(set_to_none=True)
-    loss = learner.loss(partitioning, kappa, method='crown_ibp_linear')
+    loss = learner.loss(partitioning, kappa, method='combined')
     loss.backward()
     optimizer.step()
 
@@ -49,7 +49,7 @@ def test(certifier, status_config, kappa=None):
 def train(learner, certifier, args, config):
     test(certifier, config['training']['status'])
 
-    dataset = PartitioningSubsampleDataset(population_partitioning(config))
+    dataset = PartitioningSubsampleDataset(population_partitioning(config, learner.dynamics))
     dataloader = PartitioningDataLoader(dataset, batch_size=config['training']['batch_size'], drop_last=True)
 
     optimizer = optim.Adam(learner.parameters(), lr=1e-3)

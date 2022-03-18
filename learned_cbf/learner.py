@@ -32,7 +32,7 @@ class AdversarialNeuralSBF(nn.Module):
         """
         assert partitioning.safe is not None
 
-        if kwargs.get('method') == 'optimal':
+        if kwargs.get('method') == 'combined':
             kwargs.pop('method')
             with torch.no_grad():
                 _, upper = self.barrier.bounds(partitioning.safe, self.dynamics, bound_lower=False, method='crown_ibp_linear', **kwargs)
@@ -41,7 +41,7 @@ class AdversarialNeuralSBF(nn.Module):
                 expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
                 idx = expectation_no_beta.argmax()
 
-                # del lower, upper, expectation_no_beta
+                del lower, upper, expectation_no_beta
 
                 beta_max_partition = partitioning.safe[idx]
                 beta_max_partition = Partitions((
@@ -60,7 +60,7 @@ class AdversarialNeuralSBF(nn.Module):
                 expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
                 idx = expectation_no_beta.argmax()
 
-                # del lower, upper, expectation_no_beta
+                del lower, upper, expectation_no_beta
 
                 beta_max_partition = partitioning.safe[idx]
                 beta_max_partition = Partitions((
@@ -80,7 +80,7 @@ class AdversarialNeuralSBF(nn.Module):
         """
         assert partitioning.initial is not None
 
-        if kwargs.get('method') == 'optimal':
+        if kwargs.get('method') == 'combined':
             kwargs['method'] = 'crown_ibp_linear'
 
         with torch.no_grad():
@@ -109,11 +109,6 @@ class AdversarialNeuralSBF(nn.Module):
         loss_barrier = self.loss_barrier(partitioning, **kwargs)
         loss_safety_prob = self.loss_safety_prob(partitioning, **kwargs)
 
-        # if loss_barrier.item() >= 1.0e-10:
-        #     return loss_barrier
-        # else:
-        #     return loss_safety_prob
-
         return (1.0 - safety_weight) * loss_barrier + safety_weight * loss_safety_prob
 
     def loss_barrier(self, partitioning, **kwargs):
@@ -127,21 +122,11 @@ class AdversarialNeuralSBF(nn.Module):
         """
         assert partitioning.unsafe is not None
 
-        if kwargs.get('method') == 'optimal':
+        if kwargs.get('method') == 'combined':
             kwargs['method'] = 'ibp'
 
-        if kwargs.get('method') == 'optimal':
-            kwargs.pop('method')
-            lower, _ = self.barrier.bounds(partitioning.unsafe, bound_upper=False, method='ibp', **kwargs)
-            violation_ibp = (1 - lower).partition_max().clamp(min=0)
-
-            lower, _ = self.barrier.bounds(partitioning.unsafe, bound_upper=False, method='crown_ibp_interval', **kwargs)
-            violation_crown = (1 - lower).partition_max().clamp(min=0)
-
-            violation = torch.min(violation_ibp, violation_crown).sum()
-        else:
-            lower, _ = self.barrier.bounds(partitioning.unsafe, bound_upper=False, **kwargs)
-            violation = (1 - lower).partition_max().clamp(min=0).sum()
+        lower, _ = self.barrier.bounds(partitioning.unsafe, bound_upper=False, **kwargs)
+        violation = (1 - lower).partition_max().clamp(min=0).sum()
 
         return violation / partitioning.unsafe.volume
 
@@ -151,22 +136,12 @@ class AdversarialNeuralSBF(nn.Module):
         assume that barrier network ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
         :return: Loss for state space (zero if not partitioned)
         """
-        if kwargs.get('method') == 'optimal':
+        if kwargs.get('method') == 'combined':
             kwargs['method'] = 'ibp'
 
         if partitioning.state_space is not None:
-            if kwargs.get('method') == 'optimal':
-                kwargs.pop('method')
-                lower, _ = self.barrier.bounds(partitioning.state_space, bound_upper=False, method='ibp', **kwargs)
-                violation_ibp = (0 - lower).partition_max().clamp(min=0)
-
-                lower, _ = self.barrier.bounds(partitioning.state_space, bound_upper=False, method='crown_ibp_interval', **kwargs)
-                violation_crown = (0 - lower).partition_max().clamp(min=0)
-
-                violation = torch.min(violation_ibp, violation_crown).sum()
-            else:
-                lower, _ = self.barrier.bounds(partitioning.state_space, bound_upper=False, **kwargs)
-                violation = (0 - lower).partition_max().clamp(min=0).sum()
+            lower, _ = self.barrier.bounds(partitioning.state_space, bound_upper=False, **kwargs)
+            violation = (0 - lower).partition_max().clamp(min=0).sum()
 
             return violation / partitioning.state_space.volume
         else:
