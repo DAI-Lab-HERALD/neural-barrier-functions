@@ -119,6 +119,9 @@ class NeuralSBFCertifier(nn.Module):
         assert self.partitioning.unsafe is not None
 
         if kwargs.get('method') == 'optimal':
+            kwargs['method'] = 'ibp'
+
+        if kwargs.get('method') == 'optimal':
             kwargs.pop('method')
             lower, _ = self.barrier.bounds(self.partitioning.unsafe, bound_upper=False, method='ibp', **kwargs)
             violation_ibp = (1 - lower).partition_max().clamp(min=0)
@@ -139,6 +142,9 @@ class NeuralSBFCertifier(nn.Module):
         assume that barrier network ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
         :return: Loss for state space (zero if not partitioned)
         """
+        if kwargs.get('method') == 'optimal':
+            kwargs['method'] = 'ibp'
+
         if self.partitioning.state_space is not None:
             if kwargs.get('method') == 'optimal':
                 kwargs.pop('method')
