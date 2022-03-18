@@ -3,7 +3,7 @@
   "dynamics": {
     "sigma": 0.01,
     "num_samples": 500,
-    "dt": 0.1,
+    "dt": 0.5,
     "horizon": 10
   },
   "partitioning": {
