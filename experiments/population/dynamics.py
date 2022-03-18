@@ -61,7 +61,7 @@ class Population(StochasticDynamics):
         if self.safe_set_type == 'circle':
             return closest_point.norm(dim=-1) <= 2.0
         elif self.safe_set_type == 'annulus':
-            return (farthest_point.norm(dim=-1) >= 0.5) & (closest_point.norm(dim=-1) <= 4.0)
+            return (farthest_point.norm(dim=-1) >= 1.0) & (closest_point.norm(dim=-1) <= 3.5)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -71,7 +71,7 @@ class Population(StochasticDynamics):
         if self.safe_set_type == 'circle':
             return farthest_point.norm(dim=-1) >= 2.0
         elif self.safe_set_type == 'annulus':
-            return (closest_point.norm(dim=-1) <= 0.5) | (farthest_point.norm(dim=-1) >= 4.0)
+            return (closest_point.norm(dim=-1) <= 1.0) | (farthest_point.norm(dim=-1) >= 3.5)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -84,7 +84,7 @@ class Population(StochasticDynamics):
         if self.safe_set_type == 'circle':
             return (upper_x[..., 0] >= -3.0) & (lower_x[..., 0] <= 3.0) & (upper_x[..., 1] >= -3.0) & (lower_x[..., 1] <= 3.0)
         elif self.safe_set_type == 'annulus':
-            return (upper_x[..., 0] >= -4.5) & (lower_x[..., 0] <= 4.5) & (upper_x[..., 1] >= -4.5) & (lower_x[..., 1] <= 4.5)
+            return (upper_x[..., 0] >= 0) & (lower_x[..., 0] <= 4.5) & (upper_x[..., 1] >= 0) & (lower_x[..., 1] <= 4.5)
         else:
             raise ValueError('Invalid safe set for population')
 

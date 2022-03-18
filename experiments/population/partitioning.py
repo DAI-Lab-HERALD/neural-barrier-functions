@@ -41,13 +41,13 @@ def plot_partitioning(partitioning, safe_set_type):
         ax.add_patch(circle_init1)
         ax.add_patch(circle_init2)
 
-        circle_safe1 = plt.Circle((0, 0), 0.5, color='r', fill=False)
-        circle_safe2 = plt.Circle((0, 0), 4.0, color='r', fill=False)
+        circle_safe1 = plt.Circle((0, 0), 1.0, color='r', fill=False)
+        circle_safe2 = plt.Circle((0, 0), 3.5, color='r', fill=False)
         ax.add_patch(circle_safe1)
         ax.add_patch(circle_safe2)
 
-        plt.xlim(-4.5, 4.5)
-        plt.ylim(-4.5, 4.5)
+        plt.xlim(0.0, 4.5)
+        plt.ylim(0.0, 4.5)
     else:
         raise ValueError('Invalid safe set for population')
 
@@ -68,7 +68,7 @@ def population_partitioning(config, dynamics):
         raise ValueError('Invalid safe set for population')
 
     x1_space = torch.linspace(-x_lim, x_lim, partitioning_config['num_slices'][0] + 1)
-    x2_space = torch.linspace(-x_lim, x_lim, partitioning_config['num_slices'][1] + 1)
+    x2_space = torch.linspace(0.0, x_lim, partitioning_config['num_slices'][1] + 1)
 
     cell_width = torch.stack([(x1_space[1] - x1_space[0]) / 2, (x2_space[1] - x2_space[0]) / 2])
     x1_slice_centers = (x1_space[:-1] + x1_space[1:]) / 2
