@@ -1,13 +1,9 @@
-import math
 from typing import Tuple
 
 import torch
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
-
-from .partitioning import overlap_circle, overlap_rectangle, overlap_outside_circle, \
-    overlap_outside_rectangle
 
 LinearBound = Tuple[torch.Tensor, torch.Tensor]
 
