@@ -183,7 +183,7 @@ def plot_partition(model, args, rect, initial, safe, unsafe):
 
 
 @torch.no_grad()
-def plot_bounds_2d(model, args, config):
+def plot_bounds_2d(model, dynamics, args, config):
     num_slices = 80
 
     x1_space = torch.linspace(-3.5, 2.0, num_slices + 1, device=args.device)
@@ -217,17 +217,9 @@ def plot_bounds_2d(model, args, config):
     surf._facecolors2d = surf._facecolor3d
     surf._edgecolors2d = surf._edgecolor3d
 
-    initial_mask = overlap_circle(lower_x, upper_x, torch.tensor([1.5, 0]), math.sqrt(0.25)) | \
-                   overlap_rectangle(lower_x, upper_x, torch.tensor([-1.8, -0.1]), torch.tensor([-1.2, 0.1])) | \
-                   overlap_rectangle(lower_x, upper_x, torch.tensor([-1.4, -0.5]), torch.tensor([-1.2, 0.1]))
-
-    safe_mask = overlap_outside_circle(lower_x, upper_x, torch.tensor([-1.0, -1.0]), math.sqrt(0.16)) & \
-                   overlap_outside_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.6, 0.5])) & \
-                   overlap_outside_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.8, 0.3]))
-
-    unsafe_mask = overlap_circle(lower_x, upper_x, torch.tensor([-1.0, -1.0]), math.sqrt(0.16)) | \
-                   overlap_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.6, 0.5])) | \
-                   overlap_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.8, 0.3]))
+    initial_mask = dynamics.initial(cell_centers, cell_width)
+    safe_mask = dynamics.safe(cell_centers, cell_width)
+    unsafe_mask = dynamics.unsafe(cell_centers, cell_width)
 
     y_grid = -0.5
     initial_partitions = []

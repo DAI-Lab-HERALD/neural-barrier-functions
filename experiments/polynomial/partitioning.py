@@ -40,30 +40,7 @@ def plot_partitioning(partitioning):
     plt.show()
 
 
-def overlap_rectangle(partition_lower, partition_upper, rect_lower, rect_upper):
-    # Separating axis theorem
-    return partition_upper[..., 0] >= rect_lower[0] and partition_lower[..., 0] <= rect_upper[0] and \
-           partition_upper[..., 1] >= rect_lower[1] and partition_lower[..., 1] <= rect_upper[1]
-
-
-def overlap_circle(partition_lower, partition_upper, center, radius):
-    closest_point = torch.max(partition_lower, torch.min(partition_upper, center))
-    distance = (closest_point - center).norm(dim=-1)
-    return distance <= radius
-
-
-def overlap_outside_rectangle(partition_lower, partition_upper, rect_lower, rect_upper):
-    return partition_upper[..., 0] >= rect_upper[0] or partition_lower[..., 0] <= rect_lower[0] or \
-           partition_upper[..., 1] >= rect_upper[1] or partition_lower[..., 1] <= rect_lower[1]
-
-
-def overlap_outside_circle(partition_lower, partition_upper, center, radius):
-    farthest_point = torch.where((partition_lower - center).abs() > (partition_upper - center).abs(), partition_lower, partition_upper)
-    distance = (farthest_point - center).norm(dim=-1)
-    return distance >= radius
-
-
-def polynomial_partitioning(config):
+def polynomial_partitioning(config, dynamics):
     partitioning_config = config['partitioning']
 
     assert partitioning_config['method'] == 'grid'
@@ -81,17 +58,9 @@ def polynomial_partitioning(config):
     cell_centers = torch.cartesian_prod(x1_slice_centers, x2_slice_centers)
     lower_x, upper_x = cell_centers - cell_width, cell_centers + cell_width
 
-    initial_mask = overlap_circle(lower_x, upper_x, torch.tensor([1.5, 0]), math.sqrt(0.25)) | \
-                   overlap_rectangle(lower_x, upper_x, torch.tensor([-1.8, -0.1]), torch.tensor([-1.2, 0.1])) | \
-                   overlap_rectangle(lower_x, upper_x, torch.tensor([-1.4, -0.5]), torch.tensor([-1.2, 0.1]))
-
-    safe_mask = overlap_outside_circle(lower_x, upper_x, torch.tensor([-1.0, -1.0]), math.sqrt(0.16)) & \
-                   overlap_outside_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.6, 0.5])) & \
-                   overlap_outside_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.8, 0.3]))
-
-    unsafe_mask = overlap_circle(lower_x, upper_x, torch.tensor([-1.0, -1.0]), math.sqrt(0.16)) | \
-                   overlap_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.6, 0.5])) | \
-                   overlap_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.8, 0.3]))
+    initial_mask = dynamics.initial(cell_centers, cell_width)
+    safe_mask = dynamics.safe(cell_centers, cell_width)
+    unsafe_mask = dynamics.unsafe(cell_centers, cell_width)
 
     partitioning = Partitioning(
         (lower_x[initial_mask], upper_x[initial_mask]),

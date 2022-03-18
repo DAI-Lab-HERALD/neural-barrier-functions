@@ -7,12 +7,13 @@ from torch import optim
 from torch.optim.lr_scheduler import ExponentialLR
 from tqdm import trange, tqdm
 
-from certifier import NeuralSBFCertifier
-from learner import AdversarialNeuralSBF
+
 from .dynamics import Polynomial
 from .partitioning import polynomial_partitioning
 from .plot import plot_bounds_2d
 
+from learned_cbf.certifier import NeuralSBFCertifier
+from learned_cbf.learner import AdversarialNeuralSBF
 from learned_cbf.partitioning import PartitioningSubsampleDataset, PartitioningDataLoader
 from learned_cbf.networks import FCNNBarrierNetwork
 
@@ -49,14 +50,14 @@ def test(certifier, status_config, kappa=None):
 def train(learner, certifier, args, config):
     test(certifier, config['training']['status'])
 
-    dataset = PartitioningSubsampleDataset(polynomial_partitioning(config))
+    dataset = PartitioningSubsampleDataset(polynomial_partitioning(config, learner.dynamics))
     dataloader = PartitioningDataLoader(dataset, batch_size=config['training']['batch_size'], drop_last=True)
 
     optimizer = optim.Adam(learner.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
     kappa = 0.99
 
-    for epoch in trange(200, desc='Epoch', colour='red', position=0, leave=False):
+    for epoch in trange(config['training']['epochs'], desc='Epoch', colour='red', position=0, leave=False):
         for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
             partitioning = partitioning.to(args.device)
             step(learner, optimizer, partitioning, kappa, epoch)
@@ -68,8 +69,8 @@ def train(learner, certifier, args, config):
         if epoch >= 10:
             kappa *= 0.99
 
-    while not certifier.certify(method='ibp', batch_size=200):
-        step(learner, optimizer, certifier.partitioning, 0.0, epoch)
+    while not certifier.certify(method='ibp', batch_size=config['training']['status']['ibp_batch_size']):
+        step(learner, optimizer, certifier.partitioning, 0.0, config['training']['epochs'])
 
 
 def save(learner, args):
@@ -82,7 +83,7 @@ def save(learner, args):
 def polynomial_main(args, config):
     dynamics = Polynomial(config['dynamics']).to(args.device)
     barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
-    partitioning = polynomial_partitioning(config).to(args.device)
+    partitioning = polynomial_partitioning(config, dynamics).to(args.device)
     learner = AdversarialNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
     certifier = NeuralSBFCertifier(barrier, dynamics, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
@@ -92,4 +93,4 @@ def polynomial_main(args, config):
     save(learner, args)
     test(certifier, config['training']['status'])
 
-    plot_bounds_2d(barrier, args)
+    plot_bounds_2d(barrier, dynamics, args)

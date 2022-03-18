@@ -7,12 +7,12 @@ from torch import optim
 from torch.optim.lr_scheduler import ExponentialLR
 from tqdm import trange, tqdm
 
-from certifier import NeuralSBFCertifier
-from learner import AdversarialNeuralSBF
 from .dynamics import Population
 from .partitioning import population_partitioning
 from .plot import plot_bounds_2d
 
+from learned_cbf.certifier import NeuralSBFCertifier
+from learned_cbf.learner import AdversarialNeuralSBF
 from learned_cbf.partitioning import PartitioningSubsampleDataset, PartitioningDataLoader
 from learned_cbf.networks import FCNNBarrierNetwork
 
