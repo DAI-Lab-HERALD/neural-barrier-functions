@@ -28,11 +28,19 @@ def plot_partitioning(partitioning):
         patch_collection.append(rect)
     ax.add_collection(PatchCollection(patch_collection, color='r', alpha=0.1, linewidth=1))
 
-    circle_init = plt.Circle((0, 0), 1.0, color='g', fill=False)
+    circle_init = plt.Circle((1.5, 0), math.sqrt(0.25), color='g', fill=False)
+    rect1_init = plt.Rectangle((-1.8, -0.1), 0.6, 0.2, color='g', fill=False)
+    rect2_init = plt.Rectangle((-1.4, -0.5), 0.2, 0.6, color='g', fill=False)
     ax.add_patch(circle_init)
+    ax.add_patch(rect1_init)
+    ax.add_patch(rect2_init)
 
-    circle_safe = plt.Circle((0, 0), 2.0, color='r', fill=False)
-    ax.add_patch(circle_safe)
+    circle_unsafe = plt.Circle((-1.0, -1.0), math.sqrt(0.16), color='r', fill=False)
+    rect1_unsafe = plt.Rectangle((0.4, 0.1), 0.2, 0.4, color='r', fill=False)
+    rect2_unsafe = plt.Rectangle((0.4, 0.1), 0.4, 0.2, color='r', fill=False)
+    ax.add_patch(circle_unsafe)
+    ax.add_patch(rect1_unsafe)
+    ax.add_patch(rect2_unsafe)
 
     plt.xlim(-3.5, 2.0)
     plt.ylim(-2.0, 1.0)
