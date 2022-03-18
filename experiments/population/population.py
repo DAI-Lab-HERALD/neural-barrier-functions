@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def step(learner, optimizer, partitioning, kappa, epoch):
     optimizer.zero_grad(set_to_none=True)
-    loss = learner.loss(partitioning, kappa, method='optimal' if epoch >= 20 else 'ibp')
+    loss = learner.loss(partitioning, kappa, method='crown_ibp_linear')
     loss.backward()
     optimizer.step()
 
