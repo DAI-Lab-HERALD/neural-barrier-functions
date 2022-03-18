@@ -5,8 +5,10 @@ import os.path
 import torch
 from torch import optim
 from torch.optim.lr_scheduler import ExponentialLR
+from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
+from .dataset import PopulationDataset
 from .dynamics import Population
 from .partitioning import population_partitioning
 from .plot import plot_bounds_2d
@@ -49,8 +51,11 @@ def test(certifier, status_config, kappa=None):
 def train(learner, certifier, args, config):
     test(certifier, config['training']['status'])
 
-    dataset = PartitioningSubsampleDataset(population_partitioning(config, learner.dynamics))
-    dataloader = PartitioningDataLoader(dataset, batch_size=config['training']['batch_size'], drop_last=True)
+    dataset = PopulationDataset(config['training'], learner.dynamics)
+    dataloader = DataLoader(dataset, batch_size=None)
+
+    # dataset = PartitioningSubsampleDataset(population_partitioning(config, learner.dynamics))
+    # dataloader = PartitioningDataLoader(dataset, batch_size=config['training']['batch_size'], drop_last=True)
 
     optimizer = optim.Adam(learner.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
@@ -92,4 +97,4 @@ def population_main(args, config):
     save(learner, args)
     test(certifier, config['training']['status'])
 
-    plot_bounds_2d(barrier, dynamics, args)
+    plot_bounds_2d(barrier, dynamics, args, config)

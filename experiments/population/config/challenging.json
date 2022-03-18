@@ -22,6 +22,8 @@
   },
   "training": {
     "batch_size": 5000,
+    "iter_per_epoch": 100,
+    "eps": 0.005,
     "epochs": 300,
     "status": {
       "ibp_batch_size": 500,
