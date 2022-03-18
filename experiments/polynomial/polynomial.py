@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 def step(learner, optimizer, partitioning, kappa, epoch):
     optimizer.zero_grad(set_to_none=True)
-    loss = learner.loss(partitioning, kappa, method='optimal' if epoch >= 20 else 'ibp')
+    loss = learner.loss(partitioning, kappa, method='ibp')
     loss.backward()
     optimizer.step()
 
@@ -43,8 +43,8 @@ def test_method(certifier, method, batch_size, kappa=None):
 @torch.no_grad()
 def test(certifier, status_config, kappa=None):
     test_method(certifier, method='ibp', batch_size=status_config['ibp_batch_size'], kappa=kappa)
-    test_method(certifier, method='crown_ibp_linear', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
-    test_method(certifier, method='optimal', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
+    # test_method(certifier, method='crown_ibp_linear', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
+    # test_method(certifier, method='optimal', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
 
 
 def train(learner, certifier, args, config):

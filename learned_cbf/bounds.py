@@ -2,7 +2,6 @@ from functools import partial
 
 import torch
 from bound_propagation import crown, crown_ibp, ibp
-from torch import nn
 
 
 class Affine:

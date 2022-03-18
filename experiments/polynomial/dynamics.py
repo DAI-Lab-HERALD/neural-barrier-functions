@@ -1,6 +1,7 @@
 import math
 
 import torch
+from bound_propagation.ibp import ibp_nothing, ibp_mapping
 from torch import nn
 from torch.distributions import Normal
 
@@ -8,6 +9,7 @@ from learned_cbf.dynamics import StochasticDynamics
 
 
 class PolynomialStep(nn.Module):
+    # TODO: Define CROWN for this step
     def __init__(self, dynamics_config):
         super().__init__()
 
@@ -26,7 +28,22 @@ class PolynomialStep(nn.Module):
         x = torch.stack([x1, x2], dim=-1)
         return x
 
-    # TODO: Define IBP and CROWN for this step
+    def ibp(self, lower, upper):
+        x1_lower = self.dt * lower[..., 0] + self.z
+        x1_upper = self.dt * upper[..., 0] + self.z
+
+        # x[..., 0] ** 3 is non-decreasing (and multiplying by a positive constant preserves this)
+        x1_cubed_lower, x1_cubed_upper = (lower[..., 0] ** 3) / 3.0, (upper[..., 0] ** 3) / 3.0
+
+        x2_lower = self.dt * (x1_cubed_lower - upper[..., 0] - upper[..., 1]).unsqueeze(0).expand_like(x1_lower)
+        x2_upper = self.dt * (x1_cubed_upper - lower[..., 0] - lower[..., 1]).unsqueeze(0).expand_like(x1_lower)
+
+        lower = torch.stack([x1_lower, x2_lower], dim=-1)
+        upper = torch.stack([x1_upper, x2_upper], dim=-1)
+        return lower, upper
+
+
+ibp_mapping[PolynomialStep] = ibp_nothing
 
 
 def overlap_rectangle(partition_lower, partition_upper, rect_lower, rect_upper):
