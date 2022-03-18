@@ -179,7 +179,7 @@ def plot_partition(model, args, rect, initial, safe, unsafe):
 
 
 @torch.no_grad()
-def plot_bounds_2d(model, args, config):
+def plot_bounds_2d(model, dynamics, args, config):
     num_slices = 80
 
     if config['dynamics']['safe_set'] == 'circle':
@@ -218,19 +218,9 @@ def plot_bounds_2d(model, args, config):
     surf._facecolors2d = surf._facecolor3d
     surf._edgecolors2d = surf._edgecolor3d
 
-    closest_point = torch.min(lower_x.abs(), upper_x.abs())
-    farthest_point = torch.max(lower_x.abs(), upper_x.abs())
-
-    if config['dynamics']['safe_set'] == 'circle':
-        initial_mask = closest_point.norm(dim=-1) <= 1.0
-        safe_mask = closest_point.norm(dim=-1) <= 2.0
-        unsafe_mask = farthest_point.norm(dim=-1) >= 2.0
-    elif config['dynamics']['safe_set'] == 'annulus':
-        initial_mask = (farthest_point.norm(dim=-1) >= 2.0) & (closest_point.norm(dim=-1) <= 2.5)
-        safe_mask = (farthest_point.norm(dim=-1) >= 0.5) & (closest_point.norm(dim=-1) <= 4.0)
-        unsafe_mask = (farthest_point.norm(dim=-1) >= 4.0) | (closest_point.norm(dim=-1) <= 0.5)
-    else:
-        raise ValueError('Invalid safe set for population')
+    initial_mask = dynamics.initial(cell_centers, cell_width)
+    safe_mask = dynamics.safe(cell_centers, cell_width)
+    unsafe_mask = dynamics.unsafe(cell_centers, cell_width)
 
     y_grid = -0.5
     initial_partitions = []

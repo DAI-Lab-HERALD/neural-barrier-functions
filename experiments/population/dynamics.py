@@ -34,27 +34,57 @@ class Population(StochasticDynamics):
 
         self.safe_set_type = dynamics_config['safe_set']
 
-    def safe(self, x):
+    def close_far(self, x, eps):
+        if eps is not None:
+            lower_x, upper_x = x - eps, x + eps
+
+            closest_point = torch.min(lower_x.abs(), upper_x.abs())
+            farthest_point = torch.max(lower_x.abs(), upper_x.abs())
+        else:
+            closest_point, farthest_point = x, x
+
+        return closest_point, farthest_point
+
+    def initial(self, x, eps=None):
+        closest_point, farthest_point = self.close_far(x, eps)
+
         if self.safe_set_type == 'circle':
-            return x.norm(dim=-1) <= 2.0
+            return closest_point.norm(dim=-1) <= 1.0
         elif self.safe_set_type == 'annulus':
-            return (x.norm(dim=-1) <= 4.0) & (x.norm(dim=-1) >= 0.5)
+            return (farthest_point.norm(dim=-1) >= 2.0) & (closest_point.norm(dim=-1) <= 2.5)
         else:
             raise ValueError('Invalid safe set for population')
 
-    def initial(self, x):
+    def safe(self, x, eps=None):
+        closest_point, farthest_point = self.close_far(x, eps)
+
         if self.safe_set_type == 'circle':
-            return x.norm(dim=-1) <= 1.0
+            return closest_point.norm(dim=-1) <= 2.0
         elif self.safe_set_type == 'annulus':
-            return (x.norm(dim=-1) >= 2.0) & (x.norm(dim=-1) <= 2.5)
+            return (farthest_point.norm(dim=-1) >= 0.5) & (closest_point.norm(dim=-1) <= 4.0)
         else:
             raise ValueError('Invalid safe set for population')
 
-    def state_space(self, x):
+    def unsafe(self, x, eps=None):
+        closest_point, farthest_point = self.close_far(x, eps)
+
         if self.safe_set_type == 'circle':
-            return (x[..., 0].abs() <= 3.0) & (x[..., 1].abs() <= 3.0)
+            return farthest_point.norm(dim=-1) >= 2.0
         elif self.safe_set_type == 'annulus':
-            return (x[..., 0].abs() <= 4.5) & (x[..., 1].abs() <= 4.5)
+            return (closest_point.norm(dim=-1) <= 0.5) | (farthest_point.norm(dim=-1) >= 4.0)
+        else:
+            raise ValueError('Invalid safe set for population')
+
+    def state_space(self, x, eps=None):
+        if eps is not None:
+            lower_x, upper_x = x - eps, x + eps
+        else:
+            lower_x, upper_x = x, x
+
+        if self.safe_set_type == 'circle':
+            return (upper_x[..., 0] >= -3.0) & (lower_x[..., 0] <= 3.0) & (upper_x[..., 1] >= -3.0) & (lower_x[..., 1] <= 3.0)
+        elif self.safe_set_type == 'annulus':
+            return (upper_x[..., 0] >= -4.5) & (lower_x[..., 0] <= 4.5) & (upper_x[..., 1] >= -4.5) & (lower_x[..., 1] <= 4.5)
         else:
             raise ValueError('Invalid safe set for population')
 

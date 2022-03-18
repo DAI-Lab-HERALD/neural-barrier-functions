@@ -82,7 +82,7 @@ def save(learner, args):
 def population_main(args, config):
     dynamics = Population(config['dynamics']).to(args.device)
     barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
-    partitioning = population_partitioning(config).to(args.device)
+    partitioning = population_partitioning(config, dynamics).to(args.device)
     learner = AdversarialNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
     certifier = NeuralSBFCertifier(barrier, dynamics, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
@@ -92,4 +92,4 @@ def population_main(args, config):
     save(learner, args)
     test(certifier, config['training']['status'])
 
-    plot_bounds_2d(barrier, args)
+    plot_bounds_2d(barrier, dynamics, args)

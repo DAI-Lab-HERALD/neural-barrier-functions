@@ -12,16 +12,17 @@ class StochasticDynamics(nn.Sequential, abc.ABC):
         self.num_samples = num_samples
 
     @abstractmethod
-    def safe(self, x):
+    def safe(self, x, eps=None):
         raise NotImplementedError()
 
     @abstractmethod
-    def initial(self, x):
+    def initial(self, x, eps=None):
         raise NotImplementedError()
 
     @abstractmethod
-    def state_space(self, x):
+    def state_space(self, x, eps=None):
         raise NotImplementedError()
 
-    def unsafe(self, x):
-        return ~self.safe(x)
+    @abstractmethod
+    def unsafe(self, x, eps=None):
+        return NotImplementedError()
