@@ -43,13 +43,23 @@ class NeuralSBFCertifier(nn.Module):
         if kwargs.get('method') == 'optimal':
             kwargs.pop('method')
 
-            _, upper = self.barrier.bounds(self.partitioning.safe, self.dynamics, bound_lower=False, method='crown_ibp_linear', **kwargs)
-            lower, _ = self.barrier.bounds(self.partitioning.safe, bound_upper=False, method='ibp', **kwargs)
+            _, upper_ibp = self.barrier.bounds(self.partitioning.safe, self.dynamics, bound_lower=False, method='ibp', **kwargs)
+            _, upper_crown = self.barrier.bounds(self.partitioning.safe, self.dynamics, bound_lower=False, method='crown_ibp_linear', **kwargs)
+
+            lower_ibp, _ = self.barrier.bounds(self.partitioning.safe, bound_upper=False, method='ibp', **kwargs)
+            lower_crown, _ = self.barrier.bounds(self.partitioning.safe, bound_upper=False, method='crown_ibp_linear', **kwargs)
+
+            beta_ibp_ibp = (upper_ibp.mean(dim=0) - lower_ibp / self.alpha).partition_max().max().clamp(min=0)
+            beta_ibp_crown = (upper_ibp.mean(dim=0) - lower_crown / self.alpha).partition_max().max().clamp(min=0)
+            beta_crown_ibp = (upper_crown.mean(dim=0) - lower_ibp / self.alpha).partition_max().max().clamp(min=0)
+            beta_crown_crown = (upper_crown.mean(dim=0) - lower_crown / self.alpha).partition_max().max().clamp(min=0)
+
+            beta = torch.min(torch.stack([beta_ibp_ibp, beta_ibp_crown, beta_crown_ibp, beta_crown_crown]))
         else:
             _, upper = self.barrier.bounds(self.partitioning.safe, self.dynamics, bound_lower=False, **kwargs)
             lower, _ = self.barrier.bounds(self.partitioning.safe, bound_upper=False, **kwargs)
 
-        beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().max().clamp(min=0)
+            beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().max().clamp(min=0)
 
         return beta
 
@@ -61,10 +71,17 @@ class NeuralSBFCertifier(nn.Module):
         assert self.partitioning.initial is not None
 
         if kwargs.get('method') == 'optimal':
-            kwargs['method'] = 'crown_ibp_linear'
+            kwargs.pop('method')
 
-        _, upper = self.barrier.bounds(self.partitioning.initial, bound_lower=False, **kwargs)
-        gamma = upper.partition_max().max()
+            _, upper_ibp = self.barrier.bounds(self.partitioning.initial, bound_lower=False, method='ibp', **kwargs)
+            gamma_ibp = upper_ibp.partition_max().max().clamp(min=0)
+            _, upper_crown = self.barrier.bounds(self.partitioning.initial, bound_lower=False, method='crown_ibp_interval', **kwargs)
+            gamma_crown = upper_crown.partition_max().max().clamp(min=0)
+
+            gamma = torch.min(gamma_ibp, gamma_crown)
+        else:
+            _, upper = self.barrier.bounds(self.partitioning.initial, bound_lower=False, **kwargs)
+            gamma = upper.partition_max().max().clamp(min=0)
 
         return gamma
 
@@ -80,9 +97,6 @@ class NeuralSBFCertifier(nn.Module):
         :return: Loss for unsafe set
         """
         assert self.partitioning.unsafe is not None
-
-        if kwargs.get('method') == 'optimal':
-            kwargs['method'] = 'ibp'
 
         if kwargs.get('method') == 'optimal':
             kwargs.pop('method')
@@ -106,9 +120,6 @@ class NeuralSBFCertifier(nn.Module):
         assume that barrier network ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
         :return: Loss for state space (zero if not partitioned)
         """
-        if kwargs.get('method') == 'optimal':
-            kwargs['method'] = 'ibp'
-
         if self.partitioning.state_space is not None:
             if kwargs.get('method') == 'optimal':
                 kwargs.pop('method')
