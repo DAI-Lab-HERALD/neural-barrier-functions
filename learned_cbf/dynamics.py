@@ -26,3 +26,8 @@ class StochasticDynamics(nn.Sequential, abc.ABC):
     @abstractmethod
     def state_space(self, x, eps=None):
         raise NotImplementedError()
+
+    @property
+    @abstractmethod
+    def volume(self):
+        raise NotImplementedError()

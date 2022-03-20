@@ -16,18 +16,6 @@ class BarrierNetwork(nn.Sequential):
         return bounds(model, partitions, bound_lower=bound_lower, bound_upper=bound_upper, method=method, batch_size=batch_size, **kwargs)
 
 
-class BarrierLinear(nn.Linear):
-    def reset_parameters(self) -> None:
-        # Setting a=sqrt(5) in kaiming_uniform is the same as initializing with
-        # uniform(-1/sqrt(in_features), 1/sqrt(in_features)). For details, see
-        # https://github.com/pytorch/pytorch/issues/57109
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        if self.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            nn.init.uniform_(self.bias, 0, 2 * bound)
-
-
 @ibp
 @crown
 @crown_ibp
@@ -53,10 +41,10 @@ class FCNNBarrierNetwork(BarrierNetwork):
 
             # Other hidden layers
             for _ in range(network_config['hidden_layers'] - 1):
-                layers.append(BarrierLinear(network_config['hidden_nodes'], network_config['hidden_nodes']))
+                layers.append(nn.Linear(network_config['hidden_nodes'], network_config['hidden_nodes']))
                 layers.append(activation_class())
 
             # Output layer (no activation)
-            layers.append(BarrierLinear(network_config['hidden_nodes'], 1))
+            layers.append(nn.Linear(network_config['hidden_nodes'], 1))
 
             super().__init__(*layers)

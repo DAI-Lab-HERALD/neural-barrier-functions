@@ -202,10 +202,10 @@ def plot_bounds_2d(model, dynamics, args, config):
     ax = plt.axes(projection='3d')
 
     if config['dynamics']['safe_set'] == 'circle':
-        x_space = torch.linspace(-3.0, 3.0, 500, device=args.device)
+        x_space = torch.linspace(-3.0, 3.0, 500)
         x1, x2 = torch.meshgrid(x_space, x_space)
     elif config['dynamics']['safe_set'] == 'annulus':
-        x_space = torch.linspace(0, 4.5, 500, device=args.device)
+        x_space = torch.linspace(0, 4.5, 500)
         x1, x2 = torch.meshgrid(x_space, x_space)
     else:
         raise ValueError('Invalid safe set for population')

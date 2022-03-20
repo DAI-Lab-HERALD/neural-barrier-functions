@@ -106,12 +106,12 @@ class NeuralSBFCertifier(nn.Module):
             lower, _ = self.barrier.bounds(self.partitioning.unsafe, bound_upper=False, method='crown_ibp_interval', **kwargs)
             violation_crown = (1 - lower).partition_max().clamp(min=0)
 
-            violation = torch.min(violation_ibp, violation_crown).sum()
+            violation = torch.min(violation_ibp, violation_crown)
         else:
             lower, _ = self.barrier.bounds(self.partitioning.unsafe, bound_upper=False, **kwargs)
-            violation = (1 - lower).partition_max().clamp(min=0).sum()
+            violation = (1 - lower).partition_max().clamp(min=0)
 
-        return violation / self.partitioning.unsafe.volume
+        return torch.dot(violation.view(-1), self.partitioning.unsafe.volumes) / self.partitioning.unsafe.volume
 
     @torch.no_grad()
     def state_space_violation(self, **kwargs):
@@ -129,12 +129,12 @@ class NeuralSBFCertifier(nn.Module):
                 lower, _ = self.barrier.bounds(self.partitioning.state_space, bound_upper=False, method='crown_ibp_interval', **kwargs)
                 violation_crown = (0 - lower).partition_max().clamp(min=0)
 
-                violation = torch.min(violation_ibp, violation_crown).sum()
+                violation = torch.min(violation_ibp, violation_crown)
             else:
                 lower, _ = self.barrier.bounds(self.partitioning.state_space, bound_upper=False, **kwargs)
-                violation = (0 - lower).partition_max().clamp(min=0).sum()
+                violation = (0 - lower).partition_max().clamp(min=0)
 
-            return violation / self.partitioning.state_space.volume
+            return torch.dot(violation.view(-1), self.partitioning.state_space.volumes) / self.partitioning.state_space.volume
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
             return 0.0
@@ -168,4 +168,4 @@ class NeuralSBFCertifier(nn.Module):
         Allow a small violation to account for potential numerical (FP) errors.
         :return: true if the barrier network is a valid barrier
         """
-        return self.unsafe_violation(**kwargs).item() <= 1.0e-10
+        return self.barrier_violation(**kwargs).item() <= 1.0e-10

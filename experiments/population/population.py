@@ -10,7 +10,7 @@ from tqdm import trange, tqdm
 
 from .dataset import PopulationDataset
 from .dynamics import Population
-from .partitioning import population_partitioning
+from .partitioning import population_partitioning, plot_partitioning
 from .plot import plot_bounds_2d
 
 from learned_cbf.certifier import NeuralSBFCertifier
@@ -49,32 +49,48 @@ def test(certifier, status_config, kappa=None):
 
 
 def train(learner, certifier, args, config):
-    test(certifier, config['training']['status'])
+    test(certifier, config['test'])
 
     dataset = PopulationDataset(config['training'], learner.dynamics)
     dataloader = DataLoader(dataset, batch_size=None)
 
-    # dataset = PartitioningSubsampleDataset(population_partitioning(config, learner.dynamics))
-    # dataloader = PartitioningDataLoader(dataset, batch_size=config['training']['batch_size'], drop_last=True)
-
     optimizer = optim.Adam(learner.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
-    kappa = 0.99
+    kappa = 1.0
 
     for epoch in trange(config['training']['epochs'], desc='Epoch', colour='red', position=0, leave=False):
         for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+
             partitioning = partitioning.to(args.device)
             step(learner, optimizer, partitioning, kappa, epoch)
 
-        if epoch % 10 == 9:
-            test(certifier, config['training']['status'], kappa)
+        if epoch % config['training']['test_every'] == config['training']['test_every'] - 1:
+            test(certifier, config['test'], kappa)
 
         scheduler.step()
-        if epoch >= 10:
-            kappa *= 0.99
+        kappa *= 0.97
 
-    while not certifier.certify(method='ibp', batch_size=config['training']['status']['ibp_batch_size']):
-        step(learner, optimizer, certifier.partitioning, 0.0, config['training']['epochs'])
+    while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
+        logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
+        for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+
+            partitioning = partitioning.to(args.device)
+            step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
+
+    logger.info('Training complete')
+
+
+def subsample_partitioning(partitioning, config):
+    quarter_batch = config['training']['iter_per_epoch'] // 4
+    initial_idx = torch.randperm(len(partitioning.initial))[:quarter_batch]
+    safe_idx = torch.randperm(len(partitioning.safe))[:quarter_batch]
+    unsafe_idx = torch.randperm(len(partitioning.unsafe))[:quarter_batch]
+    state_space_idx = torch.randperm(len(partitioning.state_space))[:quarter_batch]
+    idx = initial_idx, safe_idx, unsafe_idx, state_space_idx
+
+    return partitioning[idx]
 
 
 def save(learner, args):
@@ -91,10 +107,10 @@ def population_main(args, config):
     learner = AdversarialNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
     certifier = NeuralSBFCertifier(barrier, dynamics, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
-    # sbf.load_state_dict(torch.load(args.save_path))
+    # learner.load_state_dict(torch.load(args.save_path))
 
     train(learner, certifier, args, config)
     save(learner, args)
-    test(certifier, config['training']['status'])
+    test(certifier, config['test'])
 
     plot_bounds_2d(barrier, dynamics, args, config)

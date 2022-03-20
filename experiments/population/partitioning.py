@@ -12,17 +12,17 @@ def plot_partitioning(partitioning, safe_set_type):
     for lower, width in zip(partitioning.initial.lower, partitioning.initial.width):
         rect = plt.Rectangle(lower, width[0], width[1])
         patch_collection.append(rect)
-    ax.add_collection(PatchCollection(patch_collection, color='g', alpha=0.1, linewidth=1))
+    ax.add_collection(PatchCollection(patch_collection, color='g', alpha=0.2, linewidth=1))
 
     patch_collection = []
     for lower, width in zip(partitioning.safe.lower, partitioning.safe.width):
-        rect = plt.Rectangle(lower, width[0], width[1], color='b', alpha=0.1, linewidth=1)
+        rect = plt.Rectangle(lower, width[0], width[1])
         patch_collection.append(rect)
     ax.add_collection(PatchCollection(patch_collection, color='b', alpha=0.1, linewidth=1))
 
     patch_collection = []
     for lower, width in zip(partitioning.unsafe.lower, partitioning.unsafe.width):
-        rect = plt.Rectangle(lower, width[0], width[1], color='r', alpha=0.1, linewidth=1)
+        rect = plt.Rectangle(lower, width[0], width[1])
         patch_collection.append(rect)
     ax.add_collection(PatchCollection(patch_collection, color='r', alpha=0.1, linewidth=1))
 
@@ -51,6 +51,7 @@ def plot_partitioning(partitioning, safe_set_type):
     else:
         raise ValueError('Invalid safe set for population')
 
+    ax.set_aspect('equal')
     plt.show()
 
 
@@ -61,14 +62,14 @@ def population_partitioning(config, dynamics):
     assert partitioning_config['method'] == 'grid'
 
     if safe_set_type == 'circle':
-        x_lim = 3.0
+        x_lower, x_upper = -3.0, 3.0
     elif safe_set_type == 'annulus':
-        x_lim = 4.5
+        x_lower, x_upper = 0.0, 4.5
     else:
         raise ValueError('Invalid safe set for population')
 
-    x1_space = torch.linspace(-x_lim, x_lim, partitioning_config['num_slices'][0] + 1)
-    x2_space = torch.linspace(0.0, x_lim, partitioning_config['num_slices'][1] + 1)
+    x1_space = torch.linspace(x_lower, x_upper, partitioning_config['num_slices'][0] + 1)
+    x2_space = torch.linspace(x_lower, x_upper, partitioning_config['num_slices'][1] + 1)
 
     cell_width = torch.stack([(x1_space[1] - x1_space[0]) / 2, (x2_space[1] - x2_space[0]) / 2])
     x1_slice_centers = (x1_space[:-1] + x1_space[1:]) / 2

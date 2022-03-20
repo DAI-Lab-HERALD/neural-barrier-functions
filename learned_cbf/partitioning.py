@@ -17,7 +17,11 @@ class Partitions(nn.Module):
 
     @property
     def volume(self):
-        return self.width.prod(dim=-1).sum()
+        return self.volumes.sum()
+
+    @property
+    def volumes(self):
+        return self.width.prod(dim=-1)
 
     @property
     def width(self):

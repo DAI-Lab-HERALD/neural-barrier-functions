@@ -88,3 +88,11 @@ class Population(StochasticDynamics):
         else:
             raise ValueError('Invalid safe set for population')
 
+    @property
+    def volume(self):
+        if self.safe_set_type == 'circle':
+            return 6.0 ** 2
+        elif self.safe_set_type == 'annulus':
+            return 4.5 ** 2
+        else:
+            raise ValueError('Invalid safe set for population')
