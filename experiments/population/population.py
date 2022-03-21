@@ -104,7 +104,7 @@ def save(learner, args):
 def population_main(args, config):
     factory = BoundModelFactory()
     dynamics = Population(config['dynamics']).to(args.device)
-    barrier = ResidualBarrierNetwork(network_config=config['model']).to(args.device)
+    barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
     partitioning = population_partitioning(config, dynamics).to(args.device)
     learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
     certifier = NeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
