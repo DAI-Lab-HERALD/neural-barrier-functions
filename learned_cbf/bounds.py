@@ -96,13 +96,13 @@ def bounds(model, partitions, bound_lower=True, bound_upper=True, method='ibp', 
     lower, upper = partitions.lower, partitions.upper
 
     if method == 'crown_interval':
-        method = partial(linear2interval_batching, model.crown)
+        method = partial(linear2interval_batching, model.crown, bound_lower=bound_lower, bound_upper=bound_upper)
     elif method == 'crown_linear':
-        method = partial(linear_batching, model.crown)
+        method = partial(linear_batching, model.crown, bound_lower=bound_lower, bound_upper=bound_upper)
     elif method == 'crown_ibp_interval':
-        method = partial(linear2interval_batching, model.crown_ibp)
+        method = partial(linear2interval_batching, model.crown_ibp, bound_lower=bound_lower, bound_upper=bound_upper)
     elif method == 'crown_ibp_linear':
-        method = partial(linear_batching, model.crown_ibp)
+        method = partial(linear_batching, model.crown_ibp, bound_lower=bound_lower, bound_upper=bound_upper)
     elif method == 'ibp':
         method = partial(interval_batching, model.ibp)
     else:
