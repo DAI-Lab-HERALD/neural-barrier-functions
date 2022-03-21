@@ -1,14 +1,16 @@
 import torch
 from torch import nn
 
+from bounds import bounds
 from learned_cbf.partitioning import Partitions
 
 
 class NeuralSBFCertifier(nn.Module):
-    def __init__(self, barrier, dynamics, partitioning, horizon):
+    def __init__(self, barrier, dynamics, factory, partitioning, horizon):
         super().__init__()
 
-        self.barrier = barrier
+        self.barrier = factory.build(barrier)
+        self.barrier_dynamics = factory.build(nn.Sequential(dynamics, barrier))
         self.dynamics = dynamics
 
         # Assumptions:
@@ -43,11 +45,11 @@ class NeuralSBFCertifier(nn.Module):
         if kwargs.get('method') == 'optimal':
             kwargs.pop('method')
 
-            _, upper_ibp = self.barrier.bounds(self.partitioning.safe, self.dynamics, bound_lower=False, method='ibp', **kwargs)
-            _, upper_crown = self.barrier.bounds(self.partitioning.safe, self.dynamics, bound_lower=False, method='crown_ibp_linear', **kwargs)
+            _, upper_ibp = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, method='ibp', **kwargs)
+            _, upper_crown = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, method='crown_ibp_linear', **kwargs)
 
-            lower_ibp, _ = self.barrier.bounds(self.partitioning.safe, bound_upper=False, method='ibp', **kwargs)
-            lower_crown, _ = self.barrier.bounds(self.partitioning.safe, bound_upper=False, method='crown_ibp_linear', **kwargs)
+            lower_ibp, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, method='ibp', **kwargs)
+            lower_crown, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, method='crown_ibp_linear', **kwargs)
 
             beta_ibp_ibp = (upper_ibp.mean(dim=0) - lower_ibp / self.alpha).partition_max().max().clamp(min=0)
             beta_ibp_crown = (upper_ibp.mean(dim=0) - lower_crown / self.alpha).partition_max().max().clamp(min=0)
@@ -56,8 +58,8 @@ class NeuralSBFCertifier(nn.Module):
 
             beta = torch.min(torch.stack([beta_ibp_ibp, beta_ibp_crown, beta_crown_ibp, beta_crown_crown]))
         else:
-            _, upper = self.barrier.bounds(self.partitioning.safe, self.dynamics, bound_lower=False, **kwargs)
-            lower, _ = self.barrier.bounds(self.partitioning.safe, bound_upper=False, **kwargs)
+            _, upper = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, **kwargs)
+            lower, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, **kwargs)
 
             beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().max().clamp(min=0)
 
@@ -73,14 +75,14 @@ class NeuralSBFCertifier(nn.Module):
         if kwargs.get('method') == 'optimal':
             kwargs.pop('method')
 
-            _, upper_ibp = self.barrier.bounds(self.partitioning.initial, bound_lower=False, method='ibp', **kwargs)
+            _, upper_ibp = bounds(self.barrier, self.partitioning.initial, bound_lower=False, method='ibp', **kwargs)
             gamma_ibp = upper_ibp.partition_max().max().clamp(min=0)
-            _, upper_crown = self.barrier.bounds(self.partitioning.initial, bound_lower=False, method='crown_ibp_interval', **kwargs)
+            _, upper_crown = bounds(self.barrier, self.partitioning.initial, bound_lower=False, method='crown_ibp_interval', **kwargs)
             gamma_crown = upper_crown.partition_max().max().clamp(min=0)
 
             gamma = torch.min(gamma_ibp, gamma_crown)
         else:
-            _, upper = self.barrier.bounds(self.partitioning.initial, bound_lower=False, **kwargs)
+            _, upper = bounds(self.barrier, self.partitioning.initial, bound_lower=False, **kwargs)
             gamma = upper.partition_max().max().clamp(min=0)
 
         return gamma
@@ -100,15 +102,15 @@ class NeuralSBFCertifier(nn.Module):
 
         if kwargs.get('method') == 'optimal':
             kwargs.pop('method')
-            lower, _ = self.barrier.bounds(self.partitioning.unsafe, bound_upper=False, method='ibp', **kwargs)
+            lower, _ = bounds(self.barrier, self.partitioning.unsafe, bound_upper=False, method='ibp', **kwargs)
             violation_ibp = (1 - lower).partition_max().clamp(min=0)
 
-            lower, _ = self.barrier.bounds(self.partitioning.unsafe, bound_upper=False, method='crown_ibp_interval', **kwargs)
+            lower, _ = bounds(self.barrier, self.partitioning.unsafe, bound_upper=False, method='crown_ibp_interval', **kwargs)
             violation_crown = (1 - lower).partition_max().clamp(min=0)
 
             violation = torch.min(violation_ibp, violation_crown)
         else:
-            lower, _ = self.barrier.bounds(self.partitioning.unsafe, bound_upper=False, **kwargs)
+            lower, _ = bounds(self.barrier, self.partitioning.unsafe, bound_upper=False, **kwargs)
             violation = (1 - lower).partition_max().clamp(min=0)
 
         return torch.dot(violation.view(-1), self.partitioning.unsafe.volumes) / self.partitioning.unsafe.volume
@@ -123,15 +125,15 @@ class NeuralSBFCertifier(nn.Module):
         if self.partitioning.state_space is not None:
             if kwargs.get('method') == 'optimal':
                 kwargs.pop('method')
-                lower, _ = self.barrier.bounds(self.partitioning.state_space, bound_upper=False, method='ibp', **kwargs)
+                lower, _ = bounds(self.barrier, self.partitioning.state_space, bound_upper=False, method='ibp', **kwargs)
                 violation_ibp = (0 - lower).partition_max().clamp(min=0)
 
-                lower, _ = self.barrier.bounds(self.partitioning.state_space, bound_upper=False, method='crown_ibp_interval', **kwargs)
+                lower, _ = bounds(self.barrier, self.partitioning.state_space, bound_upper=False, method='crown_ibp_interval', **kwargs)
                 violation_crown = (0 - lower).partition_max().clamp(min=0)
 
                 violation = torch.min(violation_ibp, violation_crown)
             else:
-                lower, _ = self.barrier.bounds(self.partitioning.state_space, bound_upper=False, **kwargs)
+                lower, _ = bounds(self.barrier, self.partitioning.state_space, bound_upper=False, **kwargs)
                 violation = (0 - lower).partition_max().clamp(min=0)
 
             return torch.dot(violation.view(-1), self.partitioning.state_space.volumes) / self.partitioning.state_space.volume

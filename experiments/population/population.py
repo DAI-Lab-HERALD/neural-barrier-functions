@@ -3,6 +3,7 @@ import logging
 import os.path
 
 import torch
+from bound_propagation import BoundModelFactory
 from torch import optim
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
@@ -16,7 +17,7 @@ from .plot import plot_bounds_2d
 from learned_cbf.certifier import NeuralSBFCertifier
 from learned_cbf.learner import AdversarialNeuralSBF
 from learned_cbf.partitioning import PartitioningSubsampleDataset, PartitioningDataLoader
-from learned_cbf.networks import FCNNBarrierNetwork
+from learned_cbf.networks import FCNNBarrierNetwork, ResidualBarrierNetwork
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ def train(learner, certifier, args, config):
     test(certifier, config['test'])
 
     dataset = PopulationDataset(config['training'], learner.dynamics)
-    dataloader = DataLoader(dataset, batch_size=None)
+    dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
 
     optimizer = optim.Adam(learner.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
@@ -101,11 +102,12 @@ def save(learner, args):
 
 
 def population_main(args, config):
+    factory = BoundModelFactory()
     dynamics = Population(config['dynamics']).to(args.device)
-    barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
+    barrier = ResidualBarrierNetwork(network_config=config['model']).to(args.device)
     partitioning = population_partitioning(config, dynamics).to(args.device)
-    learner = AdversarialNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
-    certifier = NeuralSBFCertifier(barrier, dynamics, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
+    learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
+    certifier = NeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
     # learner.load_state_dict(torch.load(args.save_path))
 

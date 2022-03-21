@@ -1,7 +1,7 @@
 from functools import partial
 
 import torch
-from bound_propagation import crown, crown_ibp, ibp
+from bound_propagation import HyperRectangle
 
 
 class Affine:
@@ -52,28 +52,42 @@ class Affine:
 
 def interval_batching(method, lower, upper, batch_size, bound_lower=True, bound_upper=True):
     if batch_size is None:
-        out_lower, out_upper = method(lower, upper)
-        return Affine(0.0, out_lower, lower, upper) if bound_lower else None, Affine(0.0, out_upper, lower, upper) if bound_upper else None
+        interval_bounds = method(HyperRectangle(lower, upper))
+        return Affine(0.0, interval_bounds.lower, lower, upper) if bound_lower else None, Affine(0.0, interval_bounds.upper, lower, upper) if bound_upper else None
     else:
         batches = list(zip(lower.split(batch_size), upper.split(batch_size)))
-        batches = [method(*batch) for i, batch in enumerate(batches)]
+        batches = [method(HyperRectangle(*batch)) for i, batch in enumerate(batches)]
 
-        out_lower = Affine(0.0, torch.cat([batch[0] for batch in batches], dim=-2), lower, upper) if bound_lower else None
-        out_upper = Affine(0.0, torch.cat([batch[1] for batch in batches], dim=-2), lower, upper) if bound_upper else None
+        out_lower = Affine(0.0, torch.cat([batch.lower for batch in batches], dim=-2), lower, upper) if bound_lower else None
+        out_upper = Affine(0.0, torch.cat([batch.upper for batch in batches], dim=-2), lower, upper) if bound_upper else None
+
+        return out_lower, out_upper
+
+
+def linear2interval_batching(method, lower, upper, batch_size, bound_lower=True, bound_upper=True):
+    if batch_size is None:
+        interval_bounds = method(HyperRectangle(lower, upper)).concretize()
+        return Affine(0.0, interval_bounds.lower, lower, upper) if bound_lower else None, Affine(0.0, interval_bounds.upper, lower, upper) if bound_upper else None
+    else:
+        batches = list(zip(lower.split(batch_size), upper.split(batch_size)))
+        batches = [method(HyperRectangle(*batch)).concretize() for i, batch in enumerate(batches)]
+
+        out_lower = Affine(0.0, torch.cat([batch.lower for batch in batches], dim=-2), lower, upper) if bound_lower else None
+        out_upper = Affine(0.0, torch.cat([batch.upper for batch in batches], dim=-2), lower, upper) if bound_upper else None
 
         return out_lower, out_upper
 
 
 def linear_batching(method, lower, upper, batch_size, bound_lower=True, bound_upper=True):
     if batch_size is None:
-        out_lower, out_upper = method(lower, upper)
-        return Affine(*out_lower, lower, upper) if bound_lower else None, Affine(*out_upper, lower, upper) if bound_upper else None
+        linear_bounds = method(HyperRectangle(lower, upper))
+        return Affine(*linear_bounds.lower, lower, upper) if bound_lower else None, Affine(*linear_bounds.upper, lower, upper) if bound_upper else None
     else:
         batches = list(zip(lower.split(batch_size), upper.split(batch_size)))
-        batches = [method(*batch) for i, batch in enumerate(batches)]
+        batches = [method(HyperRectangle(*batch)) for i, batch in enumerate(batches)]
 
-        out_lower = Affine(torch.cat([batch[0][0] for batch in batches], dim=-3), torch.cat([batch[0][1] for batch in batches], dim=-2), lower, upper) if bound_lower else None
-        out_upper = Affine(torch.cat([batch[1][0] for batch in batches], dim=-3), torch.cat([batch[1][1] for batch in batches], dim=-2), lower, upper) if bound_upper else None
+        out_lower = Affine(torch.cat([batch.lower[0] for batch in batches], dim=-3), torch.cat([batch.lower[1] for batch in batches], dim=-2), lower, upper) if bound_lower else None
+        out_upper = Affine(torch.cat([batch.upper[0] for batch in batches], dim=-3), torch.cat([batch.upper[1] for batch in batches], dim=-2), lower, upper) if bound_upper else None
 
         return out_lower, out_upper
 
@@ -82,19 +96,14 @@ def bounds(model, partitions, bound_lower=True, bound_upper=True, method='ibp', 
     lower, upper = partitions.lower, partitions.upper
 
     if method == 'crown_interval':
-        model = crown(model)
-        method = partial(interval_batching, model.crown_interval, bound_lower=bound_lower, bound_upper=bound_upper)
+        method = partial(linear2interval_batching, model.crown)
     elif method == 'crown_linear':
-        model = crown(model)
-        method = partial(linear_batching, model.crown_linear, bound_lower=bound_lower, bound_upper=bound_upper)
+        method = partial(linear_batching, model.crown)
     elif method == 'crown_ibp_interval':
-        model = crown_ibp(model)
-        method = partial(interval_batching, model.crown_ibp_interval, bound_lower=bound_lower, bound_upper=bound_upper)
+        method = partial(linear2interval_batching, model.crown_ibp)
     elif method == 'crown_ibp_linear':
-        model = crown_ibp(model)
-        method = partial(linear_batching, model.crown_ibp_linear, bound_lower=bound_lower, bound_upper=bound_upper)
+        method = partial(linear_batching, model.crown_ibp)
     elif method == 'ibp':
-        model = ibp(model)
         method = partial(interval_batching, model.ibp)
     else:
         raise NotImplementedError()

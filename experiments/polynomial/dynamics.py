@@ -1,7 +1,6 @@
 import math
 
 import torch
-from bound_propagation.ibp import ibp_nothing, ibp_mapping
 from torch import nn
 from torch.distributions import Normal
 
@@ -41,9 +40,6 @@ class PolynomialStep(nn.Module):
         lower = torch.stack([x1_lower, x2_lower], dim=-1)
         upper = torch.stack([x1_upper, x2_upper], dim=-1)
         return lower, upper
-
-
-ibp_mapping[PolynomialStep] = ibp_nothing
 
 
 def overlap_rectangle(partition_lower, partition_upper, rect_lower, rect_upper):
