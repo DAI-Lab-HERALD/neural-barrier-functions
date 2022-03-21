@@ -27,7 +27,7 @@ class Polynomial(StochasticDynamics):
         x1_lower = self.dt * lower[..., 0] + self.z
         x1_upper = self.dt * upper[..., 0] + self.z
 
-        # x[..., 0] ** 3 is non-decreasing (and multiplying by a positive constant preserves this)
+        # x[..., 0] ** 3 is non-decreasing (and multiplying/dividing by a positive constant preserves this)
         x1_cubed_lower, x1_cubed_upper = (lower[..., 0] ** 3) / 3.0, (upper[..., 0] ** 3) / 3.0
 
         x2_lower = self.dt * (x1_cubed_lower - upper[..., 0] - upper[..., 1]).unsqueeze(0).expand_like(x1_lower)
