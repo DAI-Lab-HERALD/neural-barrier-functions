@@ -27,6 +27,10 @@ class Partitions(nn.Module):
     def width(self):
         return self.upper - self.lower
 
+    @property
+    def center(self):
+        return (self.upper + self.lower) / 2
+
     def sample(self, num_samples):
         perm = torch.randperm(len(self))
         idx = perm[:num_samples]

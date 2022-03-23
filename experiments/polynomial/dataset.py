@@ -26,9 +26,9 @@ class PolynomialDataset(Dataset):
         x = self.dist.sample((self.batch_size,))
         assert torch.all(self.dynamics.state_space(x))
 
-        initial_mask = self.dynamics.initial(x, self.eps)
-        safe_mask = self.dynamics.safe(x, self.eps)
-        unsafe_mask = self.dynamics.unsafe(x, self.eps)
+        initial_mask = self.dynamics.initial(x)
+        safe_mask = self.dynamics.safe(x)
+        unsafe_mask = self.dynamics.unsafe(x)
 
         if torch.any(initial_mask) and torch.any(safe_mask) and torch.any(unsafe_mask):
             lower_x, upper_x = x - self.eps, x + self.eps

@@ -44,8 +44,8 @@ class Polynomial(StochasticDynamics, nn.Module):
         self.register_buffer('z', dist.sample((self.num_samples,)).view(-1, 1))
 
     def forward(self, x):
-        x1 = self.dt * x[..., 0] + self.z
-        x2 = self.dt * ((x[..., 0] ** 3) / 3.0 - x[..., 0] - x[..., 1]).unsqueeze(0).expand_like(x1)
+        x1 = self.dt * x[..., 1] + self.z
+        x2 = self.dt * ((x[..., 0] ** 3) / 3.0 - x[..., 0] - x[..., 1]).unsqueeze(0).expand_as(x1)
 
         x = torch.stack([x1, x2], dim=-1)
         return x
@@ -258,14 +258,14 @@ class BoundPolynomial(BoundModule):
             self.alpha_beta(preactivation=bounds)
             self.bounded = True
 
-        x1_lower = self.module.dt * bounds.lower[..., 0] + self.module.z
-        x1_upper = self.module.dt * bounds.upper[..., 0] + self.module.z
+        x1_lower = self.module.dt * bounds.lower[..., 1] + self.module.z
+        x1_upper = self.module.dt * bounds.upper[..., 1] + self.module.z
 
         # x[..., 0] ** 3 is non-decreasing (and multiplying/dividing by a positive constant preserves this)
         x1_cubed_lower, x1_cubed_upper = (bounds.lower[..., 0] ** 3) / 3.0, (bounds.upper[..., 0] ** 3) / 3.0
 
         x2_lower = self.module.dt * (x1_cubed_lower - bounds.upper.sum(dim=-1)).unsqueeze(0).expand_as(x1_lower)
-        x2_upper = self.module.dt * (x1_cubed_upper - bounds.upper.sum(dim=-1)).unsqueeze(0).expand_as(x1_lower)
+        x2_upper = self.module.dt * (x1_cubed_upper - bounds.lower.sum(dim=-1)).unsqueeze(0).expand_as(x1_lower)
 
         lower = torch.stack([x1_lower, x2_lower], dim=-1)
         upper = torch.stack([x1_upper, x2_upper], dim=-1)
