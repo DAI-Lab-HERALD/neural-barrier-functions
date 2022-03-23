@@ -6,7 +6,7 @@ from learned_cbf.partitioning import Partitions
 
 
 class NeuralSBFCertifier(nn.Module):
-    def __init__(self, barrier, dynamics, factory, partitioning, horizon):
+    def __init__(self, barrier, dynamics, factory, partitioning, horizon, certification_threshold=1.0e-10):
         super().__init__()
 
         self.barrier = factory.build(barrier)
@@ -21,6 +21,7 @@ class NeuralSBFCertifier(nn.Module):
         self.partitioning = partitioning
 
         self.horizon = horizon
+        self.certification_threshold = certification_threshold
 
         # self.rho = nn.Parameter(torch.empty((1,)))
 
@@ -170,4 +171,4 @@ class NeuralSBFCertifier(nn.Module):
         Allow a small violation to account for potential numerical (FP) errors.
         :return: true if the barrier network is a valid barrier
         """
-        return self.barrier_violation(**kwargs).item() <= 1.0e-10
+        return self.barrier_violation(**kwargs).item() <= certification_threshold
