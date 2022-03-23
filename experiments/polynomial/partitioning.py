@@ -77,6 +77,6 @@ def polynomial_partitioning(config, dynamics):
         (lower_x, upper_x)
     )
 
-    plot_partitioning(partitioning)
+    # plot_partitioning(partitioning)
 
     return partitioning

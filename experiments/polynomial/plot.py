@@ -1,120 +1,23 @@
-from typing import Tuple
-
 import torch
+from bound_propagation import HyperRectangle
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
 
-LinearBound = Tuple[torch.Tensor, torch.Tensor]
-
-
-class LinearBounds:
-    lower: LinearBound
-    upper: LinearBound
-
-    def __init__(self, affine):
-        self.lower = affine[0]
-        self.upper = affine[1]
-
-    def __getitem__(self, item):
-        affine = (
-            (self.lower[0][item], self.lower[1][item]),
-            (self.upper[0][item], self.upper[1][item])
-        )
-
-        return LinearBounds(affine)
-
-
-class IntervalBounds:
-    lower: torch.Tensor
-    upper: torch.Tensor
-
-    def __init__(self, bounds):
-        self.lower = bounds[0]
-        self.upper = bounds[1]
-
-    def __getitem__(self, item):
-        return IntervalBounds((self.lower[item], self.upper[item]))
-
-
-class HyperRectangles:
-    lower: torch.Tensor
-    upper: torch.Tensor
-    affine: LinearBounds
-    interval: IntervalBounds
-
-    def __init__(self, lower, upper, affine, interval):
-        self.lower, self.upper = lower, upper
-
-        if isinstance(affine, LinearBounds):
-            self.affine = affine
-        else:
-            self.affine = LinearBounds(affine)
-
-        if isinstance(interval, IntervalBounds):
-            self.interval = interval
-        else:
-            self.interval = IntervalBounds(interval)
-
-    @property
-    def width(self):
-        return self.upper - self.lower
-
-    @property
-    def center(self):
-        return (self.upper + self.lower) / 2
-
-    @property
-    def max_dist(self):
-        A, b = self.distance
-
-        center, diff = self.center, self.width / 2
-        center, diff = center.unsqueeze(-2), diff.unsqueeze(-2)
-
-        A = A.transpose(-1, -2)
-
-        max_dist = center.matmul(A) + diff.matmul(A.abs()) + b.unsqueeze(-2)
-        max_dist = max_dist.view(max_dist.size()[:-2])
-
-        return max_dist
-
-    @property
-    def distance(self):
-        # Distance between bounds for each sample
-        return self.affine.upper[0] - self.affine.lower[0], self.affine.upper[1] - self.affine.lower[1]
-
-    @property
-    def global_bounds(self):
-        diff = self.width / 2
-
-        A, b = self.affine.lower
-        lower = A.matmul(self.center) - A.abs().matmul(diff) + b
-
-        A, b = self.affine.upper
-        upper = A.matmul(self.center) + A.abs().matmul(diff) + b
-
-        return lower, upper
-
-    def __getitem__(self, item):
-        return HyperRectangles(self.lower[item], self.upper[item], self.affine[item], self.interval[item])
-
-    def __len__(self):
-        return 0 if self.lower is None else self.lower.size(0)
-
 
 def bound_propagation(model, lower_x, upper_x):
-    lower_ibp, upper_ibp = model.ibp(lower_x, upper_x)
-    lower_lbp, upper_lbp = model.crown_ibp_linear(lower_x, upper_x)
+    input_bounds = HyperRectangle(lower_x, upper_x)
 
-    input_bounds = lower_x.cpu(), upper_x.cpu()
-    ibp_bounds = lower_ibp.cpu(), upper_ibp.cpu()
-    lbp_bounds = (lower_lbp[0].cpu(), lower_lbp[1].cpu()), (upper_lbp[0].cpu(), upper_lbp[1].cpu())
+    ibp_bounds = model.ibp(input_bounds).cpu()
+    crown_bounds = model.crown_ibp(input_bounds).cpu()
 
-    return HyperRectangles(*input_bounds, lbp_bounds, ibp_bounds)
+    input_bounds = input_bounds.cpu()
+
+    return input_bounds, ibp_bounds, crown_bounds
 
 
-def plot_partition(model, args, rect, initial, safe, unsafe):
-    x1, x2 = rect.lower, rect.upper
+def plot_partition(model, args, input_bounds, ibp_bounds, crown_bounds, initial, safe, unsafe):
+    x1, x2 = input_bounds.lower, input_bounds.upper
 
     plt.clf()
     ax = plt.axes(projection='3d')
@@ -122,7 +25,7 @@ def plot_partition(model, args, rect, initial, safe, unsafe):
     x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 10), torch.linspace(x1[1], x2[1], 10))
 
     # Plot IBP
-    y1, y2 = rect.interval.lower.item(), rect.interval.upper.item()
+    y1, y2 = ibp_bounds.lower.item(), ibp_bounds.upper.item()
     y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
 
     surf = ax.plot_surface(x1, x2, y1, color='yellow', label='IBP', alpha=0.4)
@@ -134,7 +37,8 @@ def plot_partition(model, args, rect, initial, safe, unsafe):
     surf._edgecolors2d = surf._edgecolor3d
 
     # Plot LBP interval bounds
-    y1, y2 = rect.global_bounds[0].item(), rect.global_bounds[1].item()
+    crown_interval = crown_bounds.concretize()
+    y1, y2 = crown_interval.lower.item(), crown_interval.upper.item()
     y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
 
     surf = ax.plot_surface(x1, x2, y1, color='blue', label='CROWN interval', alpha=0.4)
@@ -146,8 +50,8 @@ def plot_partition(model, args, rect, initial, safe, unsafe):
     surf._edgecolors2d = surf._edgecolor3d
 
     # Plot LBP linear bounds
-    y_lower = rect.affine.lower[0][0, 0] * x1 + rect.affine.lower[0][0, 1] * x2 + rect.affine.lower[1]
-    y_upper = rect.affine.upper[0][0, 0] * x1 + rect.affine.upper[0][0, 1] * x2 + rect.affine.upper[1]
+    y_lower = crown_bounds.lower[0][0, 0] * x1 + crown_bounds.lower[0][0, 1] * x2 + crown_bounds.lower[1]
+    y_upper = crown_bounds.upper[0][0, 0] * x1 + crown_bounds.upper[0][0, 1] * x2 + crown_bounds.upper[1]
 
     surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
     surf._facecolors2d = surf._facecolor3d
@@ -158,7 +62,7 @@ def plot_partition(model, args, rect, initial, safe, unsafe):
     surf._edgecolors2d = surf._edgecolor3d
 
     # Plot function
-    x1, x2 = rect.lower, rect.upper
+    x1, x2 = input_bounds.lower, input_bounds.upper
     x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 50), torch.linspace(x1[1], x2[1], 50))
     X = torch.cat(tuple(torch.dstack([x1, x2]))).to(args.device)
     y = model(X).view(50, 50)
@@ -195,7 +99,7 @@ def plot_bounds_2d(model, dynamics, args, config):
     cell_centers = torch.cartesian_prod(x1_slice_centers, x2_slice_centers)
     lower_x, upper_x = cell_centers - cell_width, cell_centers + cell_width
 
-    partitions = bound_propagation(model, lower_x, upper_x)
+    input_bounds, ibp_bounds, crown_bounds = bound_propagation(model, lower_x, upper_x)
 
     # Plot function over entire space
     plt.clf()
@@ -222,13 +126,14 @@ def plot_bounds_2d(model, dynamics, args, config):
     safe_partitions = []
     unsafe_partitions = []
 
-    for partition, initial, safe, unsafe in zip(partitions, initial_mask, safe_mask, unsafe_mask):
+    for i, initial, safe, unsafe in zip(range(len(input_bounds)), initial_mask, safe_mask, unsafe_mask):
+        partition_rect = input_bounds[i]
         verts = [
-            (partition.lower[0], partition.lower[1], y_grid),
-            (partition.lower[0], partition.upper[1], y_grid),
-            (partition.upper[0], partition.upper[1], y_grid),
-            (partition.upper[0], partition.lower[1], y_grid),
-            (partition.lower[0], partition.lower[1], y_grid)
+            (partition_rect.lower[0], partition_rect.lower[1], y_grid),
+            (partition_rect.lower[0], partition_rect.upper[1], y_grid),
+            (partition_rect.upper[0], partition_rect.upper[1], y_grid),
+            (partition_rect.upper[0], partition_rect.lower[1], y_grid),
+            (partition_rect.lower[0], partition_rect.lower[1], y_grid)
         ]
 
         if initial:
@@ -251,10 +156,15 @@ def plot_bounds_2d(model, dynamics, args, config):
     plt.title(f'Barrier function & partitioning')
     plt.show()
 
-    for partition, initial, safe, unsafe in tqdm(zip(partitions, initial_mask, safe_mask, unsafe_mask)):
-        lower, upper = partition.global_bounds
+    for i, initial, safe, unsafe in tqdm(zip(range(len(input_bounds)), initial_mask, safe_mask, unsafe_mask)):
+        partition_rect = input_bounds[i]
+        partition_ibp = ibp_bounds[i]
+        partition_crown = crown_bounds[i]
+
+        interval_crown = partition_crown.concretize()
+
         # if lower < 0 or unsafe and lower < 1:
-        if lower < partition.interval.lower or upper > partition.interval.upper:
-            print((lower, upper), (partition.interval.lower, partition.interval.upper))
+        if interval_crown.lower < partition_ibp.lower or interval_crown.upper > partition_ibp.upper:
+            print((interval_crown.lower, interval_crown.upper), (partition_ibp.lower, partition_ibp.upper))
             print(initial, safe, unsafe)
-            plot_partition(model, args, partition, initial, safe, unsafe)
+            plot_partition(model, args, partition_rect, partition_ibp, partition_crown, initial, safe, unsafe)

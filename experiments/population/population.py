@@ -50,6 +50,7 @@ def test(certifier, status_config, kappa=None):
 
 
 def train(learner, certifier, args, config):
+    logger.info('Starting training')
     test(certifier, config['test'])
 
     dataset = PopulationDataset(config['training'], learner.dynamics)
@@ -102,6 +103,8 @@ def save(learner, args):
 
 
 def population_main(args, config):
+    logger.info('Constructing model')
+
     factory = BoundModelFactory()
     dynamics = Population(config['dynamics']).to(args.device)
     barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)

@@ -3,18 +3,20 @@ import logging
 import os.path
 
 import torch
+from bound_propagation import BoundModelFactory
 from torch import optim
 from torch.optim.lr_scheduler import ExponentialLR
+from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
-
-from .dynamics import Polynomial
+from partitioning import PartitioningSubsampleDataset, PartitioningDataLoader
+from .dataset import PolynomialDataset
+from .dynamics import Polynomial, BoundPolynomial
 from .partitioning import polynomial_partitioning
 from .plot import plot_bounds_2d
 
 from learned_cbf.certifier import NeuralSBFCertifier
 from learned_cbf.learner import AdversarialNeuralSBF
-from learned_cbf.partitioning import PartitioningSubsampleDataset, PartitioningDataLoader
 from learned_cbf.networks import FCNNBarrierNetwork
 
 logger = logging.getLogger(__name__)
@@ -22,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def step(learner, optimizer, partitioning, kappa, epoch):
     optimizer.zero_grad(set_to_none=True)
-    loss = learner.loss(partitioning, kappa, method='ibp')
+    loss = learner.loss(partitioning, kappa, method='ibp', violation_normalization_factor=100.0)
     loss.backward()
     optimizer.step()
 
@@ -48,29 +50,49 @@ def test(certifier, status_config, kappa=None):
 
 
 def train(learner, certifier, args, config):
-    test(certifier, config['training']['status'])
+    logger.info('Starting training')
+    test(certifier, config['test'])
 
-    dataset = PartitioningSubsampleDataset(polynomial_partitioning(config, learner.dynamics))
-    dataloader = PartitioningDataLoader(dataset, batch_size=config['training']['batch_size'], drop_last=True)
+    dataset = PolynomialDataset(config['training'], learner.dynamics)
+    dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
 
-    optimizer = optim.Adam(learner.parameters(), lr=1e-3)
+    optimizer = optim.AdamW(learner.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
-    kappa = 0.99
+    kappa = 1.0
 
     for epoch in trange(config['training']['epochs'], desc='Epoch', colour='red', position=0, leave=False):
         for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+
             partitioning = partitioning.to(args.device)
             step(learner, optimizer, partitioning, kappa, epoch)
 
-        if epoch % 10 == 9:
-            test(certifier, config['training']['status'], kappa)
+        if epoch % config['training']['test_every'] == config['training']['test_every'] - 1:
+            test(certifier, config['test'], kappa)
 
         scheduler.step()
-        if epoch >= 10:
-            kappa *= 0.99
+        kappa *= 0.99
 
-    while not certifier.certify(method='ibp', batch_size=config['training']['status']['ibp_batch_size']):
-        step(learner, optimizer, certifier.partitioning, 0.0, config['training']['epochs'])
+    while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
+        logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
+        for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+
+            partitioning = partitioning.to(args.device)
+            step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
+
+    logger.info('Training complete')
+
+
+def subsample_partitioning(partitioning, config):
+    quarter_batch = config['training']['iter_per_epoch'] // 4
+    initial_idx = torch.randperm(len(partitioning.initial))[:quarter_batch]
+    safe_idx = torch.randperm(len(partitioning.safe))[:quarter_batch]
+    unsafe_idx = torch.randperm(len(partitioning.unsafe))[:quarter_batch]
+    state_space_idx = torch.randperm(len(partitioning.state_space))[:quarter_batch]
+    idx = initial_idx, safe_idx, unsafe_idx, state_space_idx
+
+    return partitioning[idx]
 
 
 def save(learner, args):
@@ -81,16 +103,20 @@ def save(learner, args):
 
 
 def polynomial_main(args, config):
+    logger.info('Constructing model')
+
+    factory = BoundModelFactory()
+    factory.register(Polynomial, BoundPolynomial)
     dynamics = Polynomial(config['dynamics']).to(args.device)
     barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
     partitioning = polynomial_partitioning(config, dynamics).to(args.device)
-    learner = AdversarialNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
-    certifier = NeuralSBFCertifier(barrier, dynamics, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
+    learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
+    certifier = NeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
-    # sbf.load_state_dict(torch.load(args.save_path))
+    # learner.load_state_dict(torch.load(args.save_path))
 
     train(learner, certifier, args, config)
     save(learner, args)
-    test(certifier, config['training']['status'])
+    test(certifier, config['test'])
 
-    plot_bounds_2d(barrier, dynamics, args)
+    plot_bounds_2d(barrier, dynamics, args, config)

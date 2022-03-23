@@ -29,7 +29,7 @@ LOGGING_CONFIG = {
             'level': 'DEBUG',
             'propagate': False
         },
-        'population': {  # population experiment logger
+        'experiments': {  # experiment logger
             'handlers': ['default'],
             'level': 'DEBUG',
             'propagate': False
