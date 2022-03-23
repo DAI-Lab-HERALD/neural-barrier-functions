@@ -42,7 +42,7 @@ def test_method(certifier, method, batch_size, kappa=None):
 
     loss_barrier, unsafety_prob = loss_barrier.item(), unsafety_prob.item()
     beta, gamma = beta.item(), gamma.item()
-    msg = f'[{method.upper()}] certification: ({loss_barrier:>7f}/{unsafety_prob:>7f}), gamma: {gamma:>7f}, beta: {beta:>7f}'
+    msg = f'[{method.upper()}] certification: ({loss_barrier:>11f}/{unsafety_prob:>7f}), gamma: {gamma:>7f}, beta: {beta:>7f}'
     if kappa is not None:
         msg += f', kappa: {kappa:>4f}'
     logger.info(msg)
