@@ -102,12 +102,12 @@ class Polynomial(StochasticDynamics, nn.Module):
 
 # @torch.jit.script
 def _delta(W_tilde: torch.Tensor, beta_lower: torch.Tensor, beta_upper: torch.Tensor) -> torch.Tensor:
-    return torch.where(W_tilde < 0, beta_lower.unsqueeze(-2), beta_upper.unsqueeze(-2))
+    return torch.where(W_tilde < 0, beta_lower.unsqueeze(-1), beta_upper.unsqueeze(-1))
 
 
 # @torch.jit.script
 def _lambda(W_tilde: torch.Tensor, alpha_lower: torch.Tensor, alpha_upper: torch.Tensor) -> torch.Tensor:
-    return torch.where(W_tilde < 0, alpha_lower.unsqueeze(-2), alpha_upper.unsqueeze(-2))
+    return torch.where(W_tilde < 0, alpha_lower.unsqueeze(-1), alpha_upper.unsqueeze(-1))
 
 
 # @torch.jit.script
@@ -235,8 +235,8 @@ class BoundPolynomial(BoundModule):
             beta = self.beta_upper, self.beta_lower
             lower = crown_backward_polynomial_jit(linear_bounds.lower[0][..., 0], alpha, beta)
 
-            lowerA = torch.cat([torch.ones_like(lower[0]), lower[0]], dim=-1)
-            lower_bias = linear_bounds.lower[1] + torch.cat([torch.zeros_like(lower[1]), lower[1]], dim=-1)
+            lowerA = torch.stack([torch.ones_like(lower[0]), lower[0]], dim=-1)
+            lower_bias = linear_bounds.lower[1] + torch.stack([torch.zeros_like(lower[1]), lower[1]], dim=-1)
             lower = (lowerA, lower_bias)
 
         if linear_bounds.upper is None:
@@ -246,8 +246,8 @@ class BoundPolynomial(BoundModule):
             beta = self.beta_lower, self.beta_upper
             upper = crown_backward_polynomial_jit(linear_bounds.upper[0][..., 0], alpha, beta)
 
-            upperA = torch.cat([torch.ones_like(upper[0]), upper[0]], dim=-1)
-            upper_bias = linear_bounds.upper[1] + torch.cat([torch.zeros_like(upper[1]), upper[1]], dim=-1)
+            upperA = torch.stack([torch.ones_like(upper[0]), upper[0]], dim=-1)
+            upper_bias = linear_bounds.upper[1] + torch.stack([torch.zeros_like(upper[1]), upper[1]], dim=-1)
             upper = (upperA, upper_bias)
 
         return LinearBounds(linear_bounds.region, lower, upper)
