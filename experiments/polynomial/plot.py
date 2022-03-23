@@ -4,18 +4,19 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
 
+from bounds import bounds
 from experiments.polynomial.dynamics import BoundPolynomial, Polynomial
 
 
-def bound_propagation(model, lower_x, upper_x):
+def bound_propagation(model, lower_x, upper_x, config):
     input_bounds = HyperRectangle(lower_x, upper_x)
 
-    ibp_bounds = model.ibp(input_bounds).cpu()
-    crown_bounds = model.crown_ibp(input_bounds).cpu()
+    # ibp_bounds = bounds(model, input_bounds, method='ibp', batch_size=config['test']['ibp_batch_size'])
+    # crown_bounds = bounds(model, input_bounds, method='crown_ibp_linear', batch_size=config['test']['crown_ibp_batch_size'])
 
     input_bounds = input_bounds.cpu()
 
-    return input_bounds, ibp_bounds, crown_bounds
+    return input_bounds, None, None  #ibp_bounds, crown_bounds
 
 
 def plot_partition(model, args, input_bounds, ibp_bounds, crown_bounds, initial, safe, unsafe):
@@ -88,9 +89,9 @@ def plot_partition(model, args, input_bounds, ibp_bounds, crown_bounds, initial,
 def plot_bounds_2d(model, dynamics, args, config):
     num_slices = 80
 
-    factory = BoundModelFactory()
-    factory.register(Polynomial, BoundPolynomial)
-    model = factory.build(model)
+    # factory = BoundModelFactory()
+    # factory.register(Polynomial, BoundPolynomial)
+    # model = factory.build(model)
 
     x1_space = torch.linspace(-3.5, 2.0, num_slices + 1, device=args.device)
     x1_cell_width = (x1_space[1] - x1_space[0]) / 2
@@ -105,7 +106,7 @@ def plot_bounds_2d(model, dynamics, args, config):
     cell_centers = torch.cartesian_prod(x1_slice_centers, x2_slice_centers)
     lower_x, upper_x = cell_centers - cell_width, cell_centers + cell_width
 
-    input_bounds, ibp_bounds, crown_bounds = bound_propagation(model, lower_x, upper_x)
+    input_bounds, ibp_bounds, crown_bounds = bound_propagation(model, lower_x, upper_x, config)
 
     # Plot function over entire space
     plt.clf()
