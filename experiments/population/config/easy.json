@@ -17,11 +17,11 @@
     "type": "fcnn",
     "input_dim": 2,
     "hidden_nodes": 256,
-    "hidden_layers": 3,
+    "hidden_layers": 5,
     "activation": "relu"
   },
   "training": {
-    "batch_size": 400,
+    "batch_size": 200,
     "iter_per_epoch": 200,
     "eps": 0.0375,
     "epochs": 150,

@@ -113,9 +113,9 @@ class AdversarialNeuralSBF(nn.Module):
 
         return (1.0 - safety_weight) * loss_barrier + safety_weight * loss_safety_prob
 
-    def loss_barrier(self, partitioning, **kwargs):
+    def loss_barrier(self, partitioning, violation_normalization_factor=1.0, **kwargs):
         loss = self.loss_state_space(partitioning, **kwargs) + self.loss_unsafe(partitioning, **kwargs)
-        return loss
+        return loss * violation_normalization_factor
 
     def loss_unsafe(self, partitioning, **kwargs):
         """
@@ -130,7 +130,7 @@ class AdversarialNeuralSBF(nn.Module):
         lower, _ = bounds(self.barrier, partitioning.unsafe, bound_upper=False, **kwargs)
         violation = (1 - lower).partition_max().clamp(min=0)
 
-        return torch.dot(violation.view(-1), partitioning.unsafe.volumes) / partitioning.unsafe.volume
+        return torch.dot(violation.view(-1), partitioning.unsafe.volumes)
 
     def loss_state_space(self, partitioning, **kwargs):
         """
@@ -145,7 +145,7 @@ class AdversarialNeuralSBF(nn.Module):
             lower, _ = bounds(self.barrier, partitioning.state_space, bound_upper=False, **kwargs)
             violation = (0 - lower).partition_max().clamp(min=0)
 
-            return torch.dot(violation.view(-1), partitioning.state_space.volumes) / partitioning.state_space.volume
+            return torch.dot(violation.view(-1), partitioning.state_space.volumes)
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
             return 0.0

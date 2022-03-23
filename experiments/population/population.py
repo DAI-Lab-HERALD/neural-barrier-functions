@@ -3,8 +3,8 @@ import logging
 import os.path
 
 import torch
-from bound_propagation import BoundModelFactory
-from torch import optim
+from bound_propagation import BoundModelFactory, LinearBounds, IntervalBounds, BoundModule
+from torch import optim, nn
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def step(learner, optimizer, partitioning, kappa, epoch):
     optimizer.zero_grad(set_to_none=True)
-    loss = learner.loss(partitioning, kappa, method='combined')
+    loss = learner.loss(partitioning, kappa, method='combined', violation_normalization_factor=100.0)
     loss.backward()
     optimizer.step()
 
@@ -45,7 +45,7 @@ def test_method(certifier, method, batch_size, kappa=None):
 @torch.no_grad()
 def test(certifier, status_config, kappa=None):
     test_method(certifier, method='ibp', batch_size=status_config['ibp_batch_size'], kappa=kappa)
-    test_method(certifier, method='crown_ibp_linear', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
+    # test_method(certifier, method='crown_ibp_linear', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
     test_method(certifier, method='optimal', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
 
 
@@ -55,7 +55,7 @@ def train(learner, certifier, args, config):
     dataset = PopulationDataset(config['training'], learner.dynamics)
     dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
 
-    optimizer = optim.Adam(learner.parameters(), lr=1e-3)
+    optimizer = optim.AdamW(learner.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
     kappa = 1.0
 
@@ -70,7 +70,7 @@ def train(learner, certifier, args, config):
             test(certifier, config['test'], kappa)
 
         scheduler.step()
-        kappa *= 0.97
+        kappa *= 0.99
 
     while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
         logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
