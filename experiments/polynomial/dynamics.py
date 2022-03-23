@@ -45,7 +45,7 @@ class Polynomial(StochasticDynamics, nn.Module):
 
     def forward(self, x):
         x1 = self.dt * x[..., 1] + self.z
-        x2 = self.dt * ((x[..., 0] ** 3) / 3.0 - x[..., 0] - x[..., 1]).unsqueeze(0).expand_as(x1)
+        x2 = self.dt * ((x[..., 0] ** 3) / 3.0 - x.sum(dim=-1)).unsqueeze(0).expand_as(x1)
 
         x = torch.stack([x1, x2], dim=-1)
         return x
@@ -56,9 +56,9 @@ class Polynomial(StochasticDynamics, nn.Module):
         else:
             lower_x, upper_x = x, x
 
-        cond1 = overlap_circle(lower_x, upper_x, torch.tensor([1.5, 0]), math.sqrt(0.25))
-        cond2 = overlap_rectangle(lower_x, upper_x, torch.tensor([-1.8, -0.1]), torch.tensor([-1.2, 0.1]))
-        cond3 = overlap_rectangle(lower_x, upper_x, torch.tensor([-1.4, -0.5]), torch.tensor([-1.2, 0.1]))
+        cond1 = overlap_circle(lower_x, upper_x, torch.tensor([1.5, 0], device=x.device), math.sqrt(0.25))
+        cond2 = overlap_rectangle(lower_x, upper_x, torch.tensor([-1.8, -0.1], device=x.device), torch.tensor([-1.2, 0.1], device=x.device))
+        cond3 = overlap_rectangle(lower_x, upper_x, torch.tensor([-1.4, -0.5], device=x.device), torch.tensor([-1.2, 0.1], device=x.device))
 
         return cond1 | cond2 | cond3
 
@@ -68,9 +68,9 @@ class Polynomial(StochasticDynamics, nn.Module):
         else:
             lower_x, upper_x = x, x
 
-        cond1 = overlap_outside_circle(lower_x, upper_x, torch.tensor([-1.0, -1.0]), math.sqrt(0.16))
-        cond2 = overlap_outside_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.6, 0.5]))
-        cond3 = overlap_outside_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.8, 0.3]))
+        cond1 = overlap_outside_circle(lower_x, upper_x, torch.tensor([-1.0, -1.0], device=x.device), math.sqrt(0.16))
+        cond2 = overlap_outside_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1], device=x.device), torch.tensor([0.6, 0.5], device=x.device))
+        cond3 = overlap_outside_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1], device=x.device), torch.tensor([0.8, 0.3], device=x.device))
 
         return cond1 & cond2 & cond3
 
@@ -80,9 +80,9 @@ class Polynomial(StochasticDynamics, nn.Module):
         else:
             lower_x, upper_x = x, x
 
-        cond1 = overlap_circle(lower_x, upper_x, torch.tensor([-1.0, -1.0]), math.sqrt(0.16))
-        cond2 = overlap_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.6, 0.5]))
-        cond3 = overlap_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1]), torch.tensor([0.8, 0.3]))
+        cond1 = overlap_circle(lower_x, upper_x, torch.tensor([-1.0, -1.0], device=x.device), math.sqrt(0.16))
+        cond2 = overlap_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1], device=x.device), torch.tensor([0.6, 0.5], device=x.device))
+        cond3 = overlap_rectangle(lower_x, upper_x, torch.tensor([0.4, 0.1], device=x.device), torch.tensor([0.8, 0.3], device=x.device))
 
         return cond1 | cond2 | cond3
 

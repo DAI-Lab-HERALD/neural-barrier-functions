@@ -1,8 +1,10 @@
 import torch
-from bound_propagation import HyperRectangle
+from bound_propagation import HyperRectangle, BoundModelFactory
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
+
+from experiments.polynomial.dynamics import BoundPolynomial, Polynomial
 
 
 def bound_propagation(model, lower_x, upper_x):
@@ -85,6 +87,10 @@ def plot_partition(model, args, input_bounds, ibp_bounds, crown_bounds, initial,
 @torch.no_grad()
 def plot_bounds_2d(model, dynamics, args, config):
     num_slices = 80
+
+    factory = BoundModelFactory()
+    factory.register(Polynomial, BoundPolynomial)
+    model = factory.build(model)
 
     x1_space = torch.linspace(-3.5, 2.0, num_slices + 1, device=args.device)
     x1_cell_width = (x1_space[1] - x1_space[0]) / 2

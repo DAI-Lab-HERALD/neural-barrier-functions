@@ -83,15 +83,15 @@ def train(learner, certifier, args, config):
             test(certifier, config['test'], kappa)
 
         scheduler.step()
-        kappa *= 0.99
+        kappa *= 0.97
 
-    while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
-        logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
-        for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
-            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
-
-            partitioning = partitioning.to(args.device)
-            step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
+    # while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
+    #     logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
+    #     for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+    #         # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+    #
+    #         partitioning = partitioning.to(args.device)
+    #         step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
 
     logger.info('Training complete')
 
