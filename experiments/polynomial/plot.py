@@ -111,8 +111,8 @@ def plot_bounds_2d(model, dynamics, args, config):
     plt.clf()
     ax = plt.axes(projection='3d')
 
-    x1_space = torch.linspace(-3.5, 2.0, 500, device=args.device)
-    x2_space = torch.linspace(-2.0, 1.0, 500, device=args.device)
+    x1_space = torch.linspace(-3.5, 2.0, 500)
+    x2_space = torch.linspace(-2.0, 1.0, 500)
     x1, x2 = torch.meshgrid(x1_space, x2_space)
 
     X = torch.cat(tuple(torch.dstack([x1, x2]))).to(args.device)
