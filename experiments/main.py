@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 
 import torch
 
-from experiments.polynomial.polynomial import polynomial_main
+from polynomial.polynomial import polynomial_main
 from log import configure_logging
 from population.population import population_main
 from utils import load_config

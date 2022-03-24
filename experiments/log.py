@@ -29,7 +29,12 @@ LOGGING_CONFIG = {
             'level': 'DEBUG',
             'propagate': False
         },
-        'experiments': {  # experiment logger
+        'population': {  # population experiment logger
+            'handlers': ['default'],
+            'level': 'DEBUG',
+            'propagate': False
+        },
+        'polynomial': {  # polynomial experiment logger
             'handlers': ['default'],
             'level': 'DEBUG',
             'propagate': False
