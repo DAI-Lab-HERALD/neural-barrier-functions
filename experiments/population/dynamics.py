@@ -1,5 +1,5 @@
 import torch
-from torch import nn
+from torch import nn, Tensor
 from torch.distributions import Normal
 
 from learned_cbf.dynamics import StochasticDynamics
@@ -19,13 +19,16 @@ class Population(nn.Linear, StochasticDynamics):
         self.register_buffer('weight', torch.as_tensor([
             [0.0, dynamics_config['fertility_rate']],
             [dynamics_config['survival_juvenile'], dynamics_config['survival_adult']]
-        ]), persistent=True)
+        ]).unsqueeze(0), persistent=True)
 
         dist = Normal(0.0, dynamics_config['sigma'])
         z = dist.sample((self.num_samples,))
-        self.register_buffer('bias', torch.stack([torch.zeros_like(z), z], dim=-1).unsqueeze(-2), persistent=True)
+        self.register_buffer('bias', torch.stack([torch.zeros_like(z), z], dim=-1).unsqueeze(1), persistent=True)
 
         self.safe_set_type = dynamics_config['safe_set']
+
+    def forward(self, input: Tensor) -> Tensor:
+        return input.matmul(self.weight.transpose(-1, 1)) + self.bias
 
     def close_far(self, x, eps):
         if eps is not None:
