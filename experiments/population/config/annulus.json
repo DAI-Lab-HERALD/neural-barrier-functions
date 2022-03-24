@@ -25,7 +25,8 @@
     "iter_per_epoch": 200,
     "eps": 0.00703125,
     "epochs": 150,
-    "test_every": 25
+    "empirical_epochs": 20,
+    "test_every": 1
   },
   "test": {
     "ibp_batch_size": 500,

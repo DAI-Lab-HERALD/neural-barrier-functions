@@ -25,6 +25,7 @@
     "iter_per_epoch": 200,
     "eps": 0.01,
     "epochs": 150,
+    "empirical_epochs": 20,
     "test_every": 25
   },
   "test": {

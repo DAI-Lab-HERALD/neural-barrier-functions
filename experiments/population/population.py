@@ -15,7 +15,7 @@ from .partitioning import population_partitioning, plot_partitioning
 from .plot import plot_bounds_2d
 
 from learned_cbf.certifier import NeuralSBFCertifier
-from learned_cbf.learner import AdversarialNeuralSBF
+from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.partitioning import PartitioningSubsampleDataset, PartitioningDataLoader
 from learned_cbf.networks import FCNNBarrierNetwork, ResidualBarrierNetwork
 
@@ -24,7 +24,12 @@ logger = logging.getLogger(__name__)
 
 def step(learner, optimizer, partitioning, kappa, epoch):
     optimizer.zero_grad(set_to_none=True)
-    loss = learner.loss(partitioning, kappa, method='combined', violation_normalization_factor=100.0)
+
+    if isinstance(learner, EmpiricalNeuralSBF):
+        loss = learner.loss(partitioning.state_space.center, kappa)
+    else:
+        loss = learner.loss(partitioning, kappa, method='ibp', violation_normalization_factor=100.0)
+
     loss.backward()
     optimizer.step()
 
@@ -46,7 +51,7 @@ def test_method(certifier, method, batch_size, kappa=None):
 def test(certifier, status_config, kappa=None):
     test_method(certifier, method='ibp', batch_size=status_config['ibp_batch_size'], kappa=kappa)
     # test_method(certifier, method='crown_ibp_linear', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
-    test_method(certifier, method='optimal', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
+    # test_method(certifier, method='optimal', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
 
 
 def train(learner, certifier, args, config):
@@ -55,6 +60,8 @@ def train(learner, certifier, args, config):
 
     dataset = PopulationDataset(config['training'], learner.dynamics)
     dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
+
+    empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
 
     optimizer = optim.AdamW(learner.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
@@ -65,7 +72,11 @@ def train(learner, certifier, args, config):
             # plot_partitioning(partitioning, config['dynamics']['safe_set'])
 
             partitioning = partitioning.to(args.device)
-            step(learner, optimizer, partitioning, kappa, epoch)
+
+            if epoch < config['training']['empirical_epochs']:
+                step(empirical_learner, optimizer, partitioning, kappa, epoch)
+            else:
+                step(learner, optimizer, partitioning, kappa, epoch)
 
         if epoch % config['training']['test_every'] == config['training']['test_every'] - 1:
             test(certifier, config['test'], kappa)
@@ -73,13 +84,13 @@ def train(learner, certifier, args, config):
         scheduler.step()
         kappa *= 0.99
 
-    while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
-        logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
-        for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
-            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
-
-            partitioning = partitioning.to(args.device)
-            step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
+    # while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
+    #     logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
+    #     for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+    #         # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+    #
+    #         partitioning = partitioning.to(args.device)
+    #         step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
 
     logger.info('Training complete')
 
