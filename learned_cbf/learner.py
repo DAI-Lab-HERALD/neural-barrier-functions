@@ -215,11 +215,6 @@ class EmpiricalNeuralSBF(nn.Module):
         loss_barrier = self.loss_barrier(x)
         loss_safety_prob = self.loss_safety_prob(x)
 
-        # if loss_barrier.item() >= 1.0e-10:
-        #     return loss_barrier
-        # else:
-        #     return loss_safety_prob
-
         return (1.0 - safety_weight) * loss_barrier + safety_weight * loss_safety_prob
 
     def loss_barrier(self, x):
