@@ -14,9 +14,16 @@ def bound_propagation(model, lower_x, upper_x, config):
     # ibp_bounds = bounds(model, input_bounds, method='ibp', batch_size=config['test']['ibp_batch_size'])
     # crown_bounds = bounds(model, input_bounds, method='crown_ibp_linear', batch_size=config['test']['crown_ibp_batch_size'])
 
+    factory = BoundModelFactory()
+    factory.register(Polynomial, BoundPolynomial)
+    model = factory.build(model)
+
+    ibp_bounds = model.ibp(input_bounds).cpu()
+    crown_bounds = model.crown(input_bounds).cpu()
+
     input_bounds = input_bounds.cpu()
 
-    return input_bounds, None, None  #ibp_bounds, crown_bounds
+    return input_bounds, ibp_bounds, crown_bounds
 
 
 def plot_partition(model, args, input_bounds, ibp_bounds, crown_bounds, initial, safe, unsafe):
