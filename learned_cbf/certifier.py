@@ -171,4 +171,4 @@ class NeuralSBFCertifier(nn.Module):
         Allow a small violation to account for potential numerical (FP) errors.
         :return: true if the barrier network is a valid barrier
         """
-        return self.barrier_violation(**kwargs).item() <= certification_threshold
+        return self.barrier_violation(**kwargs).item() <= self.certification_threshold
