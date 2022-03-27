@@ -3,8 +3,8 @@ import logging
 import os.path
 
 import torch
-from bound_propagation import BoundModelFactory, LinearBounds, IntervalBounds, BoundModule
-from torch import optim, nn
+from bound_propagation import BoundModelFactory
+from torch import optim
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
@@ -16,8 +16,7 @@ from .plot import plot_bounds_2d
 
 from learned_cbf.certifier import NeuralSBFCertifier
 from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
-from learned_cbf.partitioning import PartitioningSubsampleDataset, PartitioningDataLoader
-from learned_cbf.networks import FCNNBarrierNetwork, ResidualBarrierNetwork
+from learned_cbf.networks import FCNNBarrierNetwork
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +30,7 @@ def step(learner, optimizer, partitioning, kappa, epoch):
         loss = learner.loss(partitioning, kappa, method='ibp', violation_normalization_factor=100.0)
 
     loss.backward()
+    torch.nn.utils.clip_grad_norm_(learner.parameters(), 1.0)
     optimizer.step()
 
 
@@ -41,7 +41,7 @@ def test_method(certifier, method, batch_size, kappa=None):
 
     loss_barrier, unsafety_prob = loss_barrier.item(), unsafety_prob.item()
     beta, gamma = beta.item(), gamma.item()
-    msg = f'[{method.upper()}] certification: ({loss_barrier:>7f}/{unsafety_prob:>7f}), gamma: {gamma:>7f}, beta: {beta:>7f}'
+    msg = f'[{method.upper()}] certification: ({loss_barrier:>.10f}/{unsafety_prob:>7f}), gamma: {gamma:>7f}, beta: {beta:>7f}'
     if kappa is not None:
         msg += f', kappa: {kappa:>4f}'
     logger.info(msg)
@@ -82,28 +82,17 @@ def train(learner, certifier, args, config):
             test(certifier, config['test'], kappa)
 
         scheduler.step()
-        kappa *= 0.97
+        kappa *= 0.95
 
-    # while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
-    #     logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
-    #     for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
-    #         # plot_partitioning(partitioning, config['dynamics']['safe_set'])
-    #
-    #         partitioning = partitioning.to(args.device)
-    #         step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
+    while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
+        logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
+        for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+
+            partitioning = partitioning.to(args.device)
+            step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
 
     logger.info('Training complete')
-
-
-def subsample_partitioning(partitioning, config):
-    quarter_batch = config['training']['iter_per_epoch'] // 4
-    initial_idx = torch.randperm(len(partitioning.initial))[:quarter_batch]
-    safe_idx = torch.randperm(len(partitioning.safe))[:quarter_batch]
-    unsafe_idx = torch.randperm(len(partitioning.unsafe))[:quarter_batch]
-    state_space_idx = torch.randperm(len(partitioning.state_space))[:quarter_batch]
-    idx = initial_idx, safe_idx, unsafe_idx, state_space_idx
-
-    return partitioning[idx]
 
 
 def save(learner, args):
