@@ -83,28 +83,17 @@ def train(learner, certifier, args, config):
             test(certifier, config['test'], kappa)
 
         scheduler.step()
-        kappa *= 0.97
+        kappa *= 0.95
 
-    # while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
-    #     logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
-    #     for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
-    #         # plot_partitioning(partitioning, config['dynamics']['safe_set'])
-    #
-    #         partitioning = partitioning.to(args.device)
-    #         step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
+    while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
+        logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
+        for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+
+            partitioning = partitioning.to(args.device)
+            step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
 
     logger.info('Training complete')
-
-
-def subsample_partitioning(partitioning, config):
-    quarter_batch = config['training']['iter_per_epoch'] // 4
-    initial_idx = torch.randperm(len(partitioning.initial))[:quarter_batch]
-    safe_idx = torch.randperm(len(partitioning.safe))[:quarter_batch]
-    unsafe_idx = torch.randperm(len(partitioning.unsafe))[:quarter_batch]
-    state_space_idx = torch.randperm(len(partitioning.state_space))[:quarter_batch]
-    idx = initial_idx, safe_idx, unsafe_idx, state_space_idx
-
-    return partitioning[idx]
 
 
 def save(learner, args):
