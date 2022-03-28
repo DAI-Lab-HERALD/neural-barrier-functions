@@ -46,9 +46,17 @@ class NeuralSBFCertifier(nn.Module):
 
         def reduce_mean(bounds):
             if isinstance(bounds, IntervalBounds):
-                return IntervalBounds(bounds.region, bounds.lower.mean(dim=0), bounds.upper.mean(dim=0))
+                return IntervalBounds(
+                    bounds.region,
+                    bounds.lower.mean(dim=0) if bounds.lower is not None else None,
+                    bounds.upper.mean(dim=0) if bounds.upper is not None else None
+                )
             elif isinstance(bounds, LinearBounds):
-                return LinearBounds(bounds.region, (bounds.lower[0].mean(dim=0), bounds.lower[1].mean(dim=0)), (bounds.upper[0].mean(dim=0), bounds.upper[1].mean(dim=0)))
+                return LinearBounds(
+                    bounds.region,
+                    (bounds.lower[0].mean(dim=0), bounds.lower[1].mean(dim=0)) if bounds.lower is not None else None,
+                    (bounds.upper[0].mean(dim=0), bounds.upper[1].mean(dim=0)) if bounds.upper is not None else None
+                )
             else:
                 raise ValueError('Bounds can only be linear or interval')
 
