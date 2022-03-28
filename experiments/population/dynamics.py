@@ -47,7 +47,7 @@ class Population(nn.Linear, StochasticDynamics):
         if self.safe_set_type == 'circle':
             return closest_point.norm(dim=-1) <= 1.0
         elif self.safe_set_type == 'annulus':
-            return (farthest_point.norm(dim=-1) >= 2.0) & (closest_point.norm(dim=-1) <= 2.5)
+            return (farthest_point.abs().sum(dim=-1) >= 4.0) & (closest_point.abs().sum(dim=-1) <= 5.0)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -57,7 +57,7 @@ class Population(nn.Linear, StochasticDynamics):
         if self.safe_set_type == 'circle':
             return closest_point.norm(dim=-1) <= 2.0
         elif self.safe_set_type == 'annulus':
-            return (farthest_point.norm(dim=-1) >= 1.0) & (closest_point.norm(dim=-1) <= 3.5)
+            return (farthest_point.abs().sum(dim=-1) >= 3.0) & (closest_point.abs().sum(dim=-1) <= 6.0)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -67,7 +67,7 @@ class Population(nn.Linear, StochasticDynamics):
         if self.safe_set_type == 'circle':
             return farthest_point.norm(dim=-1) >= 2.0
         elif self.safe_set_type == 'annulus':
-            return (closest_point.norm(dim=-1) <= 1.0) | (farthest_point.norm(dim=-1) >= 3.5)
+            return (closest_point.abs().sum(dim=-1) <= 3.0) | (farthest_point.abs().sum(dim=-1) >= 6.0)
         else:
             raise ValueError('Invalid safe set for population')
 

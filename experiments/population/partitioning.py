@@ -36,15 +36,11 @@ def plot_partitioning(partitioning, safe_set_type):
         plt.xlim(-3, 3)
         plt.ylim(-3, 3)
     elif safe_set_type == 'annulus':
-        circle_init1 = plt.Circle((0, 0), 2.0, color='g', fill=False)
-        circle_init2 = plt.Circle((0, 0), 2.5, color='g', fill=False)
-        ax.add_patch(circle_init1)
-        ax.add_patch(circle_init2)
+        plt.plot([4.0, 0.0], [0.0, 4.0], color='g')
+        plt.plot([5.0, 0.0], [0.0, 5.0], color='g')
 
-        circle_safe1 = plt.Circle((0, 0), 1.0, color='r', fill=False)
-        circle_safe2 = plt.Circle((0, 0), 3.5, color='r', fill=False)
-        ax.add_patch(circle_safe1)
-        ax.add_patch(circle_safe2)
+        plt.plot([6.0, 0.0], [0.0, 6.0], color='r')
+        plt.plot([3.0, 0.0], [0.0, 3.0], color='r')
 
         plt.xlim(0.0, 4.5)
         plt.ylim(0.0, 4.5)

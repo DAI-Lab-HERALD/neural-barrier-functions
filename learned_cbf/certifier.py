@@ -114,7 +114,7 @@ class NeuralSBFCertifier(nn.Module):
             lower, _ = bounds(self.barrier, self.partitioning.unsafe, bound_upper=False, **kwargs)
             violation = (1 - lower).partition_max().clamp(min=0)
 
-        return torch.dot(violation.view(-1), self.partitioning.unsafe.volumes) / self.partitioning.unsafe.volume
+        return torch.dot(violation.view(-1), self.partitioning.unsafe.volumes)
 
     @torch.no_grad()
     def state_space_violation(self, **kwargs):
@@ -137,7 +137,7 @@ class NeuralSBFCertifier(nn.Module):
                 lower, _ = bounds(self.barrier, self.partitioning.state_space, bound_upper=False, **kwargs)
                 violation = (0 - lower).partition_max().clamp(min=0)
 
-            return torch.dot(violation.view(-1), self.partitioning.state_space.volumes) / self.partitioning.state_space.volume
+            return torch.dot(violation.view(-1), self.partitioning.state_space.volumes)
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
             return 0.0
@@ -171,4 +171,4 @@ class NeuralSBFCertifier(nn.Module):
         Allow a small violation to account for potential numerical (FP) errors.
         :return: true if the barrier network is a valid barrier
         """
-        return self.barrier_violation(**kwargs).item() <= certification_threshold
+        return self.barrier_violation(**kwargs).item() <= self.certification_threshold

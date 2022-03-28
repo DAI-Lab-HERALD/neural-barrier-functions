@@ -43,8 +43,6 @@ class AdversarialNeuralSBF(nn.Module):
                 expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
                 idx = expectation_no_beta.argmax()
 
-                del lower, upper, expectation_no_beta
-
                 beta_max_partition = partitioning.safe[idx]
                 beta_max_partition = Partitions((
                     beta_max_partition.lower.unsqueeze(0),
@@ -53,7 +51,6 @@ class AdversarialNeuralSBF(nn.Module):
 
             _, upper = bounds(self.barrier_dynamics, beta_max_partition, bound_lower=False, method='crown_ibp_linear', **kwargs)
             lower, _ = bounds(self.barrier, beta_max_partition, bound_upper=False, method='ibp', **kwargs)
-            beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
         else:
             with torch.no_grad():
                 _, upper = bounds(self.barrier_dynamics, partitioning.safe, bound_lower=False, **kwargs)
@@ -61,8 +58,6 @@ class AdversarialNeuralSBF(nn.Module):
 
                 expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
                 idx = expectation_no_beta.argmax()
-
-                del lower, upper, expectation_no_beta
 
                 beta_max_partition = partitioning.safe[idx]
                 beta_max_partition = Partitions((
@@ -72,8 +67,8 @@ class AdversarialNeuralSBF(nn.Module):
 
             _, upper = bounds(self.barrier_dynamics, beta_max_partition, bound_lower=False, **kwargs)
             lower, _ = bounds(self.barrier, beta_max_partition, bound_upper=False, **kwargs)
-            beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
 
+        beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
         return beta
 
     def gamma(self, partitioning, **kwargs):
@@ -193,7 +188,8 @@ class EmpiricalNeuralSBF(nn.Module):
         expectation = self.barrier(self.dynamics(x)).mean(dim=0)
         bx = self.barrier(x)
 
-        return (expectation - bx / self.alpha).max().clamp(min=0)
+        beta = (expectation - bx / self.alpha)[:, 0]
+        return beta.max().clamp(min=0)
 
     def gamma(self, x):
         """
@@ -204,7 +200,8 @@ class EmpiricalNeuralSBF(nn.Module):
 
         x = x[self.dynamics.initial(x)]
 
-        return self.barrier(x).max().clamp(min=0)
+        gamma = self.barrier(x)[:, 0]
+        return gamma.max().clamp(min=0)
 
     def loss(self, x, safety_weight=0.5):
         if safety_weight == 1.0:
@@ -214,11 +211,6 @@ class EmpiricalNeuralSBF(nn.Module):
 
         loss_barrier = self.loss_barrier(x)
         loss_safety_prob = self.loss_safety_prob(x)
-
-        # if loss_barrier.item() >= 1.0e-10:
-        #     return loss_barrier
-        # else:
-        #     return loss_safety_prob
 
         return (1.0 - safety_weight) * loss_barrier + safety_weight * loss_safety_prob
 
