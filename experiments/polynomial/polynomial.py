@@ -9,8 +9,9 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
+from euler import BoundEuler, Euler
 from .dataset import PolynomialDataset
-from .dynamics import Polynomial, BoundPolynomial
+from .dynamics import Polynomial, PolynomialUpdate, BoundPolynomialUpdate
 from .partitioning import polynomial_partitioning
 from .plot import plot_bounds_2d
 
@@ -106,7 +107,9 @@ def polynomial_main(args, config):
     logger.info('Constructing model')
 
     factory = BoundModelFactory()
-    factory.register(Polynomial, BoundPolynomial)
+    factory.register(PolynomialUpdate, BoundPolynomialUpdate)
+    factory.register(Euler, BoundEuler)
+
     dynamics = Polynomial(config['dynamics']).to(args.device)
     barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
     partitioning = polynomial_partitioning(config, dynamics).to(args.device)
