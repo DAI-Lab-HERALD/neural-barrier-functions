@@ -109,6 +109,7 @@ def dubins_car_main(args, config):
     factory = BoundModelFactory()
     factory.register(DubinsCar, BoundDubinsCar)
     factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
+
     dynamics = DubinsCarFixedStrategyComposition(config['dynamics']).to(args.device)
     barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
     partitioning = dubins_car_partitioning(config, dynamics).to(args.device)

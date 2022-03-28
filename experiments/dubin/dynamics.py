@@ -21,13 +21,13 @@ class DubinsCar(StochasticDynamics, nn.Module):
         self.velocity = dynamics_config['velocity']
 
         dist = Normal(0.0, torch.tensor(dynamics_config['sigma']))
-        self.register_buffer('z', dist.sample((self.num_samples, 3)).view(-1, 1))
+        self.register_buffer('z', dist.sample((self.num_samples, 3)).view(-1, 1, 3))
 
     def forward(self, x):
-        x1 = x[..., 0] + self.dt * self.velocity * x[..., 2].sin() + self.z[..., 0]
-        x2 = x[..., 1] + self.dt * self.velocity * x[..., 2].cos() + self.z[..., 1]
+        x1 = x[..., 0] + self.dt * (self.velocity * x[..., 2].sin() + self.z[..., 0])
+        x2 = x[..., 1] + self.dt * (self.velocity * x[..., 2].cos() + self.z[..., 1])
         # x[..., 3] = u, i.e. the control. We assume it's concatenated on the last dimension
-        x3 = x[..., 2] + self.dt * x[..., 3] + self.z[..., 2]
+        x3 = x[..., 2] + self.dt * (x[..., 3] + self.z[..., 2])
 
         x = torch.stack([x1, x2, x3], dim=-1)
         return x
@@ -48,7 +48,7 @@ class DubinsCar(StochasticDynamics, nn.Module):
         else:
             lower_x, upper_x = x, x
 
-        return overlap_outside_circle(lower_x, upper_x, torch.tensor([0.0, 0.0], device=x.device), math.sqrt(0.04))
+        return overlap_outside_circle(lower_x[..., :2], upper_x[..., :2], torch.tensor([0.0, 0.0], device=x.device), math.sqrt(0.04))
 
     def unsafe(self, x, eps=None):
         if eps is not None:
@@ -56,7 +56,7 @@ class DubinsCar(StochasticDynamics, nn.Module):
         else:
             lower_x, upper_x = x, x
 
-        return overlap_circle(lower_x, upper_x, torch.tensor([0.0, 0.0], device=x.device), math.sqrt(0.04))
+        return overlap_circle(lower_x[..., :2], upper_x[..., :2], torch.tensor([0.0, 0.0], device=x.device), math.sqrt(0.04))
 
     def state_space(self, x, eps=None):
         if eps is not None:
@@ -231,19 +231,19 @@ class BoundDubinsCar(BoundModule):
             self.alpha_beta(preactivation=bounds)
             self.bounded = True
 
-        x1_lower = bounds.lower[..., 0] + self.dt * self.velocity * bounds.lower[..., 2].sin() + self.z[..., 0]
-        x1_upper = bounds.upper[..., 0] + self.dt * self.velocity * bounds.upper[..., 2].sin() + self.z[..., 0]
+        x1_lower = bounds.lower[..., 0] + self.module.dt * (self.module.velocity * bounds.lower[..., 2].sin() + self.module.z[..., 0])
+        x1_upper = bounds.upper[..., 0] + self.module.dt * (self.module.velocity * bounds.upper[..., 2].sin() + self.module.z[..., 0])
 
-        x2_lower = bounds.lower[..., 1] + self.dt * self.velocity * torch.min(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos()) + self.z[..., 1]
+        x2_lower = bounds.lower[..., 1] + self.module.dt * self.module.velocity * (torch.min(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos()) + self.module.z[..., 1])
 
         across_center = (bounds.lower[..., 2] <= 0.0) & (bounds.upper[..., 2] >= 0.0)
         center_max = across_center * torch.ones_like(bounds.upper[..., 1])
         boundary_max = torch.max(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos())
-        x2_upper = bounds.upper[..., 1] + self.dt * self.velocity * torch.max(boundary_max, center_max) + self.z[..., 1]
+        x2_upper = bounds.upper[..., 1] + self.module.dt * (self.module.velocity * torch.max(boundary_max, center_max) + self.module.z[..., 1])
 
         # x[..., 3] = u, i.e. the control. We assume it's concatenated on the last dimension
-        x3_lower = bounds.lower[..., 2] + self.dt * bounds.lower[..., 3] + self.z[..., 2]
-        x3_upper = bounds.upper[..., 2] + self.dt * bounds.upper[..., 3] + self.z[..., 2]
+        x3_lower = bounds.lower[..., 2] + self.module.dt * (bounds.lower[..., 3] + self.module.z[..., 2])
+        x3_upper = bounds.upper[..., 2] + self.module.dt * (bounds.upper[..., 3] + self.module.z[..., 2])
 
         lower = torch.stack([x1_lower, x2_lower, x3_lower], dim=-1)
         upper = torch.stack([x1_upper, x2_upper, x3_upper], dim=-1)
@@ -257,7 +257,8 @@ class BoundDubinsCar(BoundModule):
 
 class DubinsFixedStrategy(nn.Module):
     def forward(self, x):
-        return -x[..., 2].sin() + 3 * (x[..., 0] * x[..., 2].sin() + x[..., 1] * x[..., 2].cos()) / (0.5 + x[..., 0]**2 + x[..., 1]**2)
+        u = -x[..., 2].sin() + 3 * (x[..., 0] * x[..., 2].sin() + x[..., 1] * x[..., 2].cos()) / (0.5 + x[..., 0]**2 + x[..., 1]**2)
+        return u.unsqueeze(-1)
 
 
 class BoundDubinsFixedStrategy(BoundModule):
@@ -294,8 +295,8 @@ class BoundDubinsFixedStrategy(BoundModule):
             bounds.upper[..., 0] * bounds.lower[..., 2].sin(),
             bounds.upper[..., 0] * bounds.upper[..., 2].sin(),
         ], dim=-1)
-        lower_x_sin_phi = torch.min(x_sin_phi, dim=-1)
-        upper_x_sin_phi = torch.max(x_sin_phi, dim=-1)
+        lower_x_sin_phi = torch.min(x_sin_phi, dim=-1).values
+        upper_x_sin_phi = torch.max(x_sin_phi, dim=-1).values
 
         lower_cos = torch.min(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos())
         across_center3 = (bounds.lower[..., 2] <= 0) & (bounds.upper[..., 2] >= 0)
@@ -307,8 +308,8 @@ class BoundDubinsFixedStrategy(BoundModule):
             bounds.upper[..., 0] * lower_cos,
             bounds.upper[..., 0] * upper_cos,
         ], dim=-1)
-        lower_y_cos_phi = torch.min(y_cos_phi, dim=-1)
-        upper_y_cos_phi = torch.max(y_cos_phi, dim=-1)
+        lower_y_cos_phi = torch.min(y_cos_phi, dim=-1).values
+        upper_y_cos_phi = torch.max(y_cos_phi, dim=-1).values
 
         lower_nom = 3 * (lower_x_sin_phi + lower_y_cos_phi)
         upper_nom = 3 * (upper_x_sin_phi + upper_y_cos_phi)
@@ -319,8 +320,8 @@ class BoundDubinsFixedStrategy(BoundModule):
             upper_nom * lower_div,
             upper_nom * upper_div,
         ], dim=-1)
-        lower_frac = torch.min(frac, dim=-1)
-        upper_frac = torch.max(frac, dim=-1)
+        lower_frac = torch.min(frac, dim=-1).values
+        upper_frac = torch.max(frac, dim=-1).values
 
         lower += lower_frac
         upper += upper_frac
@@ -333,9 +334,26 @@ class BoundDubinsFixedStrategy(BoundModule):
         return 1
 
 
-class DubinsCarFixedStrategyComposition(nn.Sequential):
+class DubinsCarFixedStrategyComposition(nn.Sequential, StochasticDynamics):
     def __init__(self, dynamics_config):
-        super().__init__(
+        StochasticDynamics.__init__(self, dynamics_config['num_samples'])
+        nn.Sequential.__init__(self,
             Cat(DubinsFixedStrategy()),
             DubinsCar(dynamics_config)
         )
+
+    def initial(self, x, eps=None):
+        return self[1].initial(x, eps)
+
+    def safe(self, x, eps=None):
+        return self[1].safe(x, eps)
+
+    def unsafe(self, x, eps=None):
+        return self[1].unsafe(x, eps)
+
+    def state_space(self, x, eps=None):
+        return self[1].state_space(x, eps)
+
+    @property
+    def volume(self):
+        return self[1].volume
