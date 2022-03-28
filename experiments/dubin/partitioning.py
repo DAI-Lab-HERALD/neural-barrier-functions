@@ -9,42 +9,41 @@ from learned_cbf.partitioning import Partitioning
 
 
 def plot_partitioning(partitioning):
+    """
+    Plot partitioning, but ignore direction partitioning (i.e. only the partitioning on x and y) since the safe set is
+    only defined by these, and the initial set is defined by x and y, and a limited range directions.
+    TODO: Visualize the direction of travel for the initial sets
+    :param partitioning:
+    :return:
+    """
     fig, ax = plt.subplots()
 
     patch_collection = []
     for lower, width in zip(partitioning.initial.lower, partitioning.initial.width):
-        rect = plt.Rectangle(lower, width[0], width[1])
+        rect = plt.Rectangle(lower[..., :2], width[0], width[1])
         patch_collection.append(rect)
-    ax.add_collection(PatchCollection(patch_collection, color='g', alpha=0.1, linewidth=1))
+    ax.add_collection(PatchCollection(patch_collection, color='g', alpha=0.1 / 45, linewidth=1))
 
     patch_collection = []
     for lower, width in zip(partitioning.safe.lower, partitioning.safe.width):
-        rect = plt.Rectangle(lower, width[0], width[1], color='b', alpha=0.1, linewidth=1)
+        rect = plt.Rectangle(lower[..., :2], width[0], width[1])
         patch_collection.append(rect)
-    ax.add_collection(PatchCollection(patch_collection, color='b', alpha=0.1, linewidth=1))
+    ax.add_collection(PatchCollection(patch_collection, color='b', alpha=0.1 / 45, linewidth=1))
 
     patch_collection = []
     for lower, width in zip(partitioning.unsafe.lower, partitioning.unsafe.width):
-        rect = plt.Rectangle(lower, width[0], width[1], color='r', alpha=0.1, linewidth=1)
+        rect = plt.Rectangle(lower[..., :2], width[0], width[1])
         patch_collection.append(rect)
-    ax.add_collection(PatchCollection(patch_collection, color='r', alpha=0.1, linewidth=1))
+    ax.add_collection(PatchCollection(patch_collection, color='r', alpha=0.1 / 45, linewidth=1))
 
-    circle_init = plt.Circle((1.5, 0), math.sqrt(0.25), color='g', fill=False)
-    rect1_init = plt.Rectangle((-1.8, -0.1), 0.6, 0.2, color='g', fill=False)
-    rect2_init = plt.Rectangle((-1.4, -0.5), 0.2, 0.6, color='g', fill=False)
-    ax.add_patch(circle_init)
-    ax.add_patch(rect1_init)
-    ax.add_patch(rect2_init)
+    rect_init = plt.Rectangle((-0.1, -2.0), 0.2, 0.2, color='g', fill=False)
+    ax.add_patch(rect_init)
 
-    circle_unsafe = plt.Circle((-1.0, -1.0), math.sqrt(0.16), color='r', fill=False)
-    rect1_unsafe = plt.Rectangle((0.4, 0.1), 0.2, 0.4, color='r', fill=False)
-    rect2_unsafe = plt.Rectangle((0.4, 0.1), 0.4, 0.2, color='r', fill=False)
+    circle_unsafe = plt.Circle((0.0, 0.0), math.sqrt(0.04), color='r', fill=False)
     ax.add_patch(circle_unsafe)
-    ax.add_patch(rect1_unsafe)
-    ax.add_patch(rect2_unsafe)
 
-    plt.xlim(-3.5, 2.0)
-    plt.ylim(-2.0, 1.0)
+    plt.xlim(-2.0, 2.0)
+    plt.ylim(-2.0, 2.0)
 
     plt.show()
 
@@ -81,6 +80,6 @@ def dubins_car_partitioning(config, dynamics):
         (lower_x, upper_x)
     )
 
-    # plot_partitioning(partitioning)
+    plot_partitioning(partitioning)
 
     return partitioning
