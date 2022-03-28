@@ -5,7 +5,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
 
 from bounds import bounds
-from experiments.polynomial.dynamics import BoundPolynomial, Polynomial
+from experiments.dubin.dynamics import DubinsCar, BoundDubinsCar
 
 
 def bound_propagation(model, lower_x, upper_x, config):
@@ -15,7 +15,7 @@ def bound_propagation(model, lower_x, upper_x, config):
     # crown_bounds = bounds(model, input_bounds, method='crown_ibp_linear', batch_size=config['test']['crown_ibp_batch_size'])
 
     factory = BoundModelFactory()
-    factory.register(Polynomial, BoundPolynomial)
+    factory.register(DubinsCar, BoundDubinsCar)
     model = factory.build(model)
 
     ibp_bounds = model.ibp(input_bounds).cpu()

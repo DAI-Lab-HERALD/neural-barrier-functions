@@ -83,7 +83,7 @@ def train(learner, certifier, args, config):
             test(certifier, config['test'], kappa)
 
         scheduler.step()
-        kappa *= 0.97
+        kappa *= 0.95
 
     # while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
     #     logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
