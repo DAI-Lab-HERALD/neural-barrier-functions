@@ -3,7 +3,7 @@
   "dynamics": {
     "sigma": 0.1,
     "num_samples": 500,
-    "dt": 0.5,
+    "dt": 0.1,
     "horizon": 10
   },
   "partitioning": {
@@ -18,15 +18,15 @@
     "activation": "relu"
   },
   "training": {
-    "batch_size": 1000,
+    "batch_size": 500,
     "iter_per_epoch": 400,
     "eps": [0.0171875, 0.009375],
     "epochs": 150,
     "empirical_epochs": 20,
-    "test_every": 1
+    "test_every": 5
   },
   "test": {
-    "ibp_batch_size": 500,
-    "crown_ibp_batch_size": 50
+    "ibp_batch_size": 2000,
+    "crown_ibp_batch_size": 100
   }
 }
