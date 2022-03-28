@@ -1,4 +1,5 @@
 import torch
+from bound_propagation import IntervalBounds, LinearBounds
 from torch import nn
 
 from bounds import bounds
@@ -43,26 +44,34 @@ class NeuralSBFCertifier(nn.Module):
         """
         assert self.partitioning.safe is not None
 
+        def reduce_mean(bounds):
+            if isinstance(bounds, IntervalBounds):
+                return IntervalBounds(bounds.region, bounds.lower.mean(dim=0), bounds.upper.mean(dim=0))
+            elif isinstance(bounds, LinearBounds):
+                return LinearBounds(bounds.region, (bounds.lower[0].mean(dim=0), bounds.lower[1].mean(dim=0)), (bounds.upper[0].mean(dim=0), bounds.upper[1].mean(dim=0)))
+            else:
+                raise ValueError('Bounds can only be linear or interval')
+
         if kwargs.get('method') == 'optimal':
             kwargs.pop('method')
 
-            _, upper_ibp = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, method='ibp', **kwargs)
-            _, upper_crown = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, method='crown_ibp_linear', **kwargs)
+            _, upper_ibp = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, method='ibp', reduce=reduce_mean, **kwargs)
+            _, upper_crown = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, method='crown_ibp_linear', reduce=reduce_mean, **kwargs)
 
             lower_ibp, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, method='ibp', **kwargs)
             lower_crown, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, method='crown_ibp_linear', **kwargs)
 
-            beta_ibp_ibp = (upper_ibp.mean(dim=0) - lower_ibp / self.alpha).partition_max().max().clamp(min=0)
-            beta_ibp_crown = (upper_ibp.mean(dim=0) - lower_crown / self.alpha).partition_max().max().clamp(min=0)
-            beta_crown_ibp = (upper_crown.mean(dim=0) - lower_ibp / self.alpha).partition_max().max().clamp(min=0)
-            beta_crown_crown = (upper_crown.mean(dim=0) - lower_crown / self.alpha).partition_max().max().clamp(min=0)
+            beta_ibp_ibp = (upper_ibp - lower_ibp / self.alpha).partition_max().max().clamp(min=0)
+            beta_ibp_crown = (upper_ibp - lower_crown / self.alpha).partition_max().max().clamp(min=0)
+            beta_crown_ibp = (upper_crown - lower_ibp / self.alpha).partition_max().max().clamp(min=0)
+            beta_crown_crown = (upper_crown - lower_crown / self.alpha).partition_max().max().clamp(min=0)
 
             beta = torch.min(torch.stack([beta_ibp_ibp, beta_ibp_crown, beta_crown_ibp, beta_crown_crown]))
         else:
-            _, upper = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, **kwargs)
+            _, upper = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, reduce=reduce_mean, **kwargs)
             lower, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, **kwargs)
 
-            beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().max().clamp(min=0)
+            beta = (upper - lower / self.alpha).partition_max().max().clamp(min=0)
 
         return beta
 
