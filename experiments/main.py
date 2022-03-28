@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 
 import torch
 
+from dubin.dubin import dubins_car_main
 from polynomial.polynomial import polynomial_main
 from log import configure_logging
 from population.population import population_main
@@ -15,6 +16,8 @@ def main(args):
         population_main(args, config)
     elif config['system'] == 'polynomial':
         polynomial_main(args, config)
+    elif config['system'] == 'dubin':
+        dubins_car_main(args, config)
     else:
         raise ValueError(f'System {config["system"]} not defined')
 

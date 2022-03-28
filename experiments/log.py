@@ -38,6 +38,11 @@ LOGGING_CONFIG = {
             'handlers': ['default'],
             'level': 'DEBUG',
             'propagate': False
+        },
+        'dubin': {  # dubin experiment logger
+            'handlers': ['default'],
+            'level': 'DEBUG',
+            'propagate': False
         }
     }
 }

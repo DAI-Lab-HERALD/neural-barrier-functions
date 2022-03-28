@@ -9,9 +9,10 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
-from .dataset import PolynomialDataset
-from .dynamics import Polynomial, BoundPolynomial
-from .partitioning import polynomial_partitioning
+from .dataset import DubinDataset
+from .dynamics import DubinsCar, BoundDubinsCar, DubinsFixedStrategy, BoundDubinsFixedStrategy, \
+    DubinsCarFixedStrategyComposition
+from .partitioning import dubins_car_partitioning
 from .plot import plot_bounds_2d
 
 from learned_cbf.certifier import NeuralSBFCertifier
@@ -58,7 +59,7 @@ def train(learner, certifier, args, config):
     logger.info('Starting training')
     test(certifier, config['test'])
 
-    dataset = PolynomialDataset(config['training'], learner.dynamics)
+    dataset = DubinDataset(config['training'], learner.dynamics)
     dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
 
     empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
@@ -82,15 +83,15 @@ def train(learner, certifier, args, config):
             test(certifier, config['test'], kappa)
 
         scheduler.step()
-        kappa *= 0.95
+        kappa *= 0.97
 
-    while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
-        logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
-        for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
-            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
-
-            partitioning = partitioning.to(args.device)
-            step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
+    # while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
+    #     logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
+    #     for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+    #         # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+    #
+    #         partitioning = partitioning.to(args.device)
+    #         step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
 
     logger.info('Training complete')
 
@@ -102,14 +103,15 @@ def save(learner, args):
     torch.save(learner.state_dict(), args.save_path)
 
 
-def polynomial_main(args, config):
+def dubins_car_main(args, config):
     logger.info('Constructing model')
 
     factory = BoundModelFactory()
-    factory.register(Polynomial, BoundPolynomial)
-    dynamics = Polynomial(config['dynamics']).to(args.device)
+    factory.register(DubinsCar, BoundDubinsCar)
+    factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
+    dynamics = DubinsCarFixedStrategyComposition(config['dynamics']).to(args.device)
     barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
-    partitioning = polynomial_partitioning(config, dynamics).to(args.device)
+    partitioning = dubins_car_partitioning(config, dynamics).to(args.device)
     learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
     certifier = NeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
@@ -119,4 +121,4 @@ def polynomial_main(args, config):
     save(learner, args)
     test(certifier, config['test'])
 
-    plot_bounds_2d(barrier, dynamics, args, config)
+    # plot_bounds_2d(barrier, dynamics, args, config)
