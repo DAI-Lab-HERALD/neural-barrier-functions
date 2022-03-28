@@ -3,8 +3,9 @@ from typing import Tuple
 
 import numpy as np
 import torch
-from bound_propagation import BoundModule, IntervalBounds, LinearBounds, Cat
+from bound_propagation import BoundModule, IntervalBounds, LinearBounds, Cat, HyperRectangle
 from bound_propagation.activation import assert_bound_order, regimes
+from matplotlib import pyplot as plt
 from torch import nn
 from torch.distributions import Normal
 
@@ -225,15 +226,13 @@ class BoundDubinsCar(BoundModule):
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
-    @assert_bound_order
-    def ibp_forward(self, bounds, save_relaxation=False):
-        if save_relaxation:
-            self.alpha_beta(preactivation=bounds)
-            self.bounded = True
-
+    def ibp_x_sin_phi(self, bounds):
         x1_lower = bounds.lower[..., 0] + self.module.dt * (self.module.velocity * bounds.lower[..., 2].sin() + self.module.z[..., 0])
         x1_upper = bounds.upper[..., 0] + self.module.dt * (self.module.velocity * bounds.upper[..., 2].sin() + self.module.z[..., 0])
 
+        return x1_lower, x1_upper
+
+    def ibp_y_cos_phi(self, bounds):
         x2_lower = bounds.lower[..., 1] + self.module.dt * self.module.velocity * (torch.min(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos()) + self.module.z[..., 1])
 
         across_center = (bounds.lower[..., 2] <= 0.0) & (bounds.upper[..., 2] >= 0.0)
@@ -241,9 +240,24 @@ class BoundDubinsCar(BoundModule):
         boundary_max = torch.max(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos())
         x2_upper = bounds.upper[..., 1] + self.module.dt * (self.module.velocity * torch.max(boundary_max, center_max) + self.module.z[..., 1])
 
+        return x2_lower, x2_upper
+
+    def ibp_control(self, bounds):
         # x[..., 3] = u, i.e. the control. We assume it's concatenated on the last dimension
         x3_lower = bounds.lower[..., 2] + self.module.dt * (bounds.lower[..., 3] + self.module.z[..., 2])
         x3_upper = bounds.upper[..., 2] + self.module.dt * (bounds.upper[..., 3] + self.module.z[..., 2])
+
+        return x3_lower, x3_upper
+
+    @assert_bound_order
+    def ibp_forward(self, bounds, save_relaxation=False):
+        if save_relaxation:
+            self.alpha_beta(preactivation=bounds)
+            self.bounded = True
+
+        x1_lower, x1_upper = self.ibp_x_sin_phi(bounds)
+        x2_lower, x2_upper = self.ibp_y_cos_phi(bounds)
+        x3_lower, x3_upper = self.ibp_control(bounds)
 
         lower = torch.stack([x1_lower, x2_lower, x3_lower], dim=-1)
         upper = torch.stack([x1_upper, x2_upper, x3_upper], dim=-1)
@@ -255,10 +269,179 @@ class BoundDubinsCar(BoundModule):
         return 3
 
 
+def plot_dubins_car():
+    dynamics = DubinsCar({
+        'sigma': 0.1,
+        'num_samples': 500,
+        'dt': 0.1,
+        'velocity': 1.0,
+        'horizon': 2
+      })
+    bound = BoundDubinsCar(dynamics, None)
+
+    x_space = torch.linspace(-2.0, 2.0, 4)
+    x_cell_width = (x_space[1] - x_space[0]) / 2
+    x_slice_centers = (x_space[:-1] + x_space[1:]) / 2
+
+    phi_space = torch.linspace(-np.pi / 2, np.pi / 2, 4)
+    phi_cell_width = (phi_space[1] - phi_space[0]) / 2
+    phi_slice_centers = (phi_space[:-1] + phi_space[1:]) / 2
+
+    u_space = torch.linspace(1.0, 2.0, 2)
+    u_cell_width = (u_space[1] - u_space[0]) / 2
+    u_slice_centers = (u_space[:-1] + u_space[1:]) / 2
+
+    cell_width = torch.stack([x_cell_width, x_cell_width, phi_cell_width, u_cell_width], dim=-1)
+    cell_centers = torch.cartesian_prod(x_slice_centers, x_slice_centers, phi_slice_centers, u_slice_centers)
+
+    ibp_bounds = bound.ibp(HyperRectangle.from_eps(cell_centers, cell_width))
+    # crown_bounds = bound.crown_ibp(HyperRectangle.from_eps(cell_centers, cell_width))
+
+    for i in range(len(ibp_bounds)):
+        # X
+        x1, x2 = ibp_bounds.region.lower[i, [0, 2]], ibp_bounds.region.upper[i, [0, 2]]
+
+        plt.clf()
+        ax = plt.axes(projection='3d')
+
+        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 10), torch.linspace(x1[1], x2[1], 10))
+
+        # Plot IBP
+        y1, y2 = ibp_bounds.lower[0, i, 0].item(), ibp_bounds.upper[0, i, 0].item()
+        y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+
+        surf = ax.plot_surface(x1, x2, y1, color='yellow', label='IBP', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+        surf._edgecolors2d = surf._edgecolor3d
+
+        surf = ax.plot_surface(x1, x2, y2, color='yellow', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        # # Plot LBP interval bounds
+        # crown_interval = crown_bounds.concretize()
+        # y1, y2 = crown_interval.lower.item(), crown_interval.upper.item()
+        # y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+        #
+        # surf = ax.plot_surface(x1, x2, y1, color='blue', label='CROWN interval', alpha=0.4)
+        # surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # surf = ax.plot_surface(x1, x2, y2, color='blue', alpha=0.4)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # # Plot LBP linear bounds
+        # y_lower = crown_bounds.lower[0][0, 0] * x1 + crown_bounds.lower[0][0, 1] * x2 + crown_bounds.lower[1]
+        # y_upper = crown_bounds.upper[0][0, 0] * x1 + crown_bounds.upper[0][0, 1] * x2 + crown_bounds.upper[1]
+        #
+        # surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # surf = ax.plot_surface(x1, x2, y_upper, color='green', alpha=0.4, shade=False)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+
+        # Plot function
+        x1, x2 = ibp_bounds.region.lower[i, [0, 2]], ibp_bounds.region.upper[i, [0, 2]]
+        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 50), torch.linspace(x1[1], x2[1], 50))
+        x3, x4 = torch.zeros_like(x1), torch.zeros_like(x1)
+        X = torch.cat(tuple(torch.dstack([x1, x3, x2, x4])))
+        y = dynamics(X)[0, :, 0].view(50, 50)
+
+        surf = ax.plot_surface(x1, x2, y, color='red', label="Dubin's car - x", shade=False)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        # General plot config
+        plt.xlabel('x')
+        plt.ylabel('y')
+
+        plt.title(f'Bound propagation')
+        plt.legend()
+
+        plt.show()
+
+        # Y
+        x1, x2 = ibp_bounds.region.lower[i, [1, 2]], ibp_bounds.region.upper[i, [1, 2]]
+
+        plt.clf()
+        ax = plt.axes(projection='3d')
+
+        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 10), torch.linspace(x1[1], x2[1], 10))
+
+        # Plot IBP
+        y1, y2 = ibp_bounds.lower[0, i, 1].item(), ibp_bounds.upper[0, i, 1].item()
+        y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+
+        surf = ax.plot_surface(x1, x2, y1, color='yellow', label='IBP', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+        surf._edgecolors2d = surf._edgecolor3d
+
+        surf = ax.plot_surface(x1, x2, y2, color='yellow', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        # # Plot LBP interval bounds
+        # crown_interval = crown_bounds.concretize()
+        # y1, y2 = crown_interval.lower.item(), crown_interval.upper.item()
+        # y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+        #
+        # surf = ax.plot_surface(x1, x2, y1, color='blue', label='CROWN interval', alpha=0.4)
+        # surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # surf = ax.plot_surface(x1, x2, y2, color='blue', alpha=0.4)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+
+        # # Plot LBP linear bounds
+        # y_lower = crown_bounds.lower[0][0, 0] * x1 + crown_bounds.lower[0][0, 1] * x2 + crown_bounds.lower[1]
+        # y_upper = crown_bounds.upper[0][0, 0] * x1 + crown_bounds.upper[0][0, 1] * x2 + crown_bounds.upper[1]
+        #
+        # surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # surf = ax.plot_surface(x1, x2, y_upper, color='green', alpha=0.4, shade=False)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+
+        # Plot function
+        x1, x2 = ibp_bounds.region.lower[i, [1, 2]], ibp_bounds.region.upper[i, [1, 2]]
+        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 50), torch.linspace(x1[1], x2[1], 50))
+        x3, x4 = torch.zeros_like(x1), torch.zeros_like(x1)
+        X = torch.cat(tuple(torch.dstack([x3, x1, x2, x4])))
+        y = dynamics(X)[0, :, 1].view(50, 50)
+
+        surf = ax.plot_surface(x1, x2, y, color='red', label="Dubin's car - y", shade=False)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        # General plot config
+        plt.xlabel('x')
+        plt.ylabel('y')
+
+        plt.title(f'Bound propagation')
+        plt.legend()
+
+        plt.show()
+
+
 class DubinsFixedStrategy(nn.Module):
     def forward(self, x):
-        u = -x[..., 2].sin() + 3 * (x[..., 0] * x[..., 2].sin() + x[..., 1] * x[..., 2].cos()) / (0.5 + x[..., 0]**2 + x[..., 1]**2)
+        u = -x[..., 2].sin() + 3 * (self.x_sin_phi(x) + self.y_cos_phi(x)) * self.div(x)
         return u.unsqueeze(-1)
+
+    def div(self, x):
+        return 1.0 / (0.5 + x[..., 0]**2 + x[..., 1]**2)
+
+    def x_sin_phi(self, x):
+        return x[..., 0] * x[..., 2].sin()
+
+    def y_cos_phi(self, x):
+        return x[..., 1] * x[..., 2].cos()
 
 
 class BoundDubinsFixedStrategy(BoundModule):
@@ -272,11 +455,7 @@ class BoundDubinsFixedStrategy(BoundModule):
     def crown_backward(self, linear_bounds):
         raise NotImplementedError()
 
-    @assert_bound_order
-    def ibp_forward(self, bounds, save_relaxation=False):
-        lower = -bounds.upper[..., 2].sin()
-        upper = -bounds.lower[..., 2].sin()
-
+    def ibp_div(self, bounds):
         across_center1 = (bounds.lower[..., 0] <= 0) & (bounds.upper[..., 0] >= 0)
         across_center2 = (bounds.lower[..., 1] <= 0) & (bounds.upper[..., 1] >= 0)
 
@@ -289,6 +468,9 @@ class BoundDubinsFixedStrategy(BoundModule):
         lower_div = 1.0 / (0.5 + max1 + max2)
         upper_div = 1.0 / (0.5 + min1 + min2)
 
+        return lower_div, upper_div
+
+    def ibp_x_sin_phi(self, bounds):
         x_sin_phi = torch.stack([
             bounds.lower[..., 0] * bounds.lower[..., 2].sin(),
             bounds.lower[..., 0] * bounds.upper[..., 2].sin(),
@@ -298,6 +480,9 @@ class BoundDubinsFixedStrategy(BoundModule):
         lower_x_sin_phi = torch.min(x_sin_phi, dim=-1).values
         upper_x_sin_phi = torch.max(x_sin_phi, dim=-1).values
 
+        return lower_x_sin_phi, upper_x_sin_phi
+
+    def ibp_y_cos_phi(self, bounds):
         lower_cos = torch.min(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos())
         across_center3 = (bounds.lower[..., 2] <= 0) & (bounds.upper[..., 2] >= 0)
         upper_cos = torch.max(torch.max(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos()), torch.ones_like(lower_cos) * across_center3)
@@ -310,6 +495,17 @@ class BoundDubinsFixedStrategy(BoundModule):
         ], dim=-1)
         lower_y_cos_phi = torch.min(y_cos_phi, dim=-1).values
         upper_y_cos_phi = torch.max(y_cos_phi, dim=-1).values
+
+        return lower_y_cos_phi, upper_y_cos_phi
+
+    @assert_bound_order
+    def ibp_forward(self, bounds, save_relaxation=False):
+        lower = -bounds.upper[..., 2].sin()
+        upper = -bounds.lower[..., 2].sin()
+
+        lower_div, upper_div = self.ibp_div(bounds)
+        lower_x_sin_phi, upper_x_sin_phi = self.ibp_x_sin_phi(bounds)
+        lower_y_cos_phi, upper_y_cos_phi = self.ibp_y_cos_phi(bounds)
 
         lower_nom = 3 * (lower_x_sin_phi + lower_y_cos_phi)
         upper_nom = 3 * (upper_x_sin_phi + upper_y_cos_phi)
@@ -332,6 +528,275 @@ class BoundDubinsFixedStrategy(BoundModule):
         assert in_size == 3
 
         return 1
+
+
+def plot_dubins_car_fixed_strategy_div():
+    dynamics = DubinsFixedStrategy()
+    bound = BoundDubinsFixedStrategy(dynamics, None)
+
+    x_space = torch.linspace(-2.0, 2.0, 4)
+    x_cell_width = (x_space[1] - x_space[0]) / 2
+    x_slice_centers = (x_space[:-1] + x_space[1:]) / 2
+
+    phi_space = torch.linspace(-np.pi / 2, np.pi / 2, 2)
+    phi_cell_width = (phi_space[1] - phi_space[0]) / 2
+    phi_slice_centers = (phi_space[:-1] + phi_space[1:]) / 2
+
+    cell_width = torch.stack([x_cell_width, x_cell_width, phi_cell_width], dim=-1)
+    cell_centers = torch.cartesian_prod(x_slice_centers, x_slice_centers, phi_slice_centers)
+
+    input_bounds = HyperRectangle.from_eps(cell_centers, cell_width)
+
+    ibp_bounds = bound.ibp_div(input_bounds)
+    # crown_bounds = bound.crown_ibp(HyperRectangle.from_eps(cell_centers, cell_width))
+
+    for i in range(len(input_bounds)):
+        # X
+        x1, x2 = input_bounds.lower[i, [0, 1]], input_bounds.upper[i, [0, 1]]
+
+        plt.clf()
+        ax = plt.axes(projection='3d')
+
+        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 10), torch.linspace(x1[1], x2[1], 10))
+
+        # Plot IBP
+        y1, y2 = ibp_bounds[0][i].item(), ibp_bounds[1][i].item()
+        y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+
+        surf = ax.plot_surface(x1, x2, y1, color='yellow', label='IBP', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+        surf._edgecolors2d = surf._edgecolor3d
+
+        surf = ax.plot_surface(x1, x2, y2, color='yellow', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        # # Plot LBP interval bounds
+        # crown_interval = crown_bounds.concretize()
+        # y1, y2 = crown_interval.lower.item(), crown_interval.upper.item()
+        # y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+        #
+        # surf = ax.plot_surface(x1, x2, y1, color='blue', label='CROWN interval', alpha=0.4)
+        # surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # surf = ax.plot_surface(x1, x2, y2, color='blue', alpha=0.4)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # # Plot LBP linear bounds
+        # y_lower = crown_bounds.lower[0][0, 0] * x1 + crown_bounds.lower[0][0, 1] * x2 + crown_bounds.lower[1]
+        # y_upper = crown_bounds.upper[0][0, 0] * x1 + crown_bounds.upper[0][0, 1] * x2 + crown_bounds.upper[1]
+        #
+        # surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # surf = ax.plot_surface(x1, x2, y_upper, color='green', alpha=0.4, shade=False)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+
+        # Plot function
+        x1, x2 = input_bounds.lower[i, [0, 1]], input_bounds.upper[i, [0, 1]]
+        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 50), torch.linspace(x1[1], x2[1], 50))
+        x3 = torch.zeros_like(x1)
+        X = torch.cat(tuple(torch.dstack([x1, x2, x3])))
+        y = dynamics.div(X).view(50, 50)
+
+        surf = ax.plot_surface(x1, x2, y, color='red', label='Div in strategy', shade=False)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        # General plot config
+        plt.xlabel('x')
+        plt.ylabel('y')
+
+        plt.title(f'Bound propagation')
+        plt.legend()
+
+        plt.show()
+
+
+def plot_dubins_car_fixed_strategy_x_sin_phi():
+    dynamics = DubinsFixedStrategy()
+    bound = BoundDubinsFixedStrategy(dynamics, None)
+
+    x1_space = torch.linspace(-2.0, 2.0, 4)
+    x1_cell_width = (x1_space[1] - x1_space[0]) / 2
+    x1_slice_centers = (x1_space[:-1] + x1_space[1:]) / 2
+
+    x2_space = torch.linspace(-2.0, 2.0, 2)
+    x2_cell_width = (x2_space[1] - x2_space[0]) / 2
+    x2_slice_centers = (x2_space[:-1] + x2_space[1:]) / 2
+
+    phi_space = torch.linspace(-np.pi / 2, np.pi / 2, 4)
+    phi_cell_width = (phi_space[1] - phi_space[0]) / 2
+    phi_slice_centers = (phi_space[:-1] + phi_space[1:]) / 2
+
+    cell_width = torch.stack([x1_cell_width, x2_cell_width, phi_cell_width], dim=-1)
+    cell_centers = torch.cartesian_prod(x1_slice_centers, x2_slice_centers, phi_slice_centers)
+
+    input_bounds = HyperRectangle.from_eps(cell_centers, cell_width)
+
+    ibp_bounds = bound.ibp_x_sin_phi(input_bounds)
+    # crown_bounds = bound.crown_ibp(HyperRectangle.from_eps(cell_centers, cell_width))
+
+    for i in range(len(input_bounds)):
+        # X
+        x1, x2 = input_bounds.lower[i, [0, 2]], input_bounds.upper[i, [0, 2]]
+
+        plt.clf()
+        ax = plt.axes(projection='3d')
+
+        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 10), torch.linspace(x1[1], x2[1], 10))
+
+        # Plot IBP
+        y1, y2 = ibp_bounds[0][i].item(), ibp_bounds[1][i].item()
+        y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+
+        surf = ax.plot_surface(x1, x2, y1, color='yellow', label='IBP', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+        surf._edgecolors2d = surf._edgecolor3d
+
+        surf = ax.plot_surface(x1, x2, y2, color='yellow', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        # # Plot LBP interval bounds
+        # crown_interval = crown_bounds.concretize()
+        # y1, y2 = crown_interval.lower.item(), crown_interval.upper.item()
+        # y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+        #
+        # surf = ax.plot_surface(x1, x2, y1, color='blue', label='CROWN interval', alpha=0.4)
+        # surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # surf = ax.plot_surface(x1, x2, y2, color='blue', alpha=0.4)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # # Plot LBP linear bounds
+        # y_lower = crown_bounds.lower[0][0, 0] * x1 + crown_bounds.lower[0][0, 1] * x2 + crown_bounds.lower[1]
+        # y_upper = crown_bounds.upper[0][0, 0] * x1 + crown_bounds.upper[0][0, 1] * x2 + crown_bounds.upper[1]
+        #
+        # surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # surf = ax.plot_surface(x1, x2, y_upper, color='green', alpha=0.4, shade=False)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+
+        # Plot function
+        x1, x2 = input_bounds.lower[i, [0, 2]], input_bounds.upper[i, [0, 2]]
+        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 50), torch.linspace(x1[1], x2[1], 50))
+        x3 = torch.zeros_like(x1)
+        X = torch.cat(tuple(torch.dstack([x1, x3, x2])))
+        y = dynamics.x_sin_phi(X).view(50, 50)
+
+        surf = ax.plot_surface(x1, x2, y, color='red', label='Div in strategy', shade=False)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        # General plot config
+        plt.xlabel('x')
+        plt.ylabel('y')
+
+        plt.title(f'Bound propagation')
+        plt.legend()
+
+        plt.show()
+
+
+def plot_dubins_car_fixed_strategy_y_cos_phi():
+    dynamics = DubinsFixedStrategy()
+    bound = BoundDubinsFixedStrategy(dynamics, None)
+
+    x1_space = torch.linspace(-2.0, 2.0, 2)
+    x1_cell_width = (x1_space[1] - x1_space[0]) / 2
+    x1_slice_centers = (x1_space[:-1] + x1_space[1:]) / 2
+
+    x2_space = torch.linspace(-2.0, 2.0, 4)
+    x2_cell_width = (x2_space[1] - x2_space[0]) / 2
+    x2_slice_centers = (x2_space[:-1] + x2_space[1:]) / 2
+
+    phi_space = torch.linspace(-np.pi / 2, np.pi / 2, 4)
+    phi_cell_width = (phi_space[1] - phi_space[0]) / 2
+    phi_slice_centers = (phi_space[:-1] + phi_space[1:]) / 2
+
+    cell_width = torch.stack([x1_cell_width, x2_cell_width, phi_cell_width], dim=-1)
+    cell_centers = torch.cartesian_prod(x1_slice_centers, x2_slice_centers, phi_slice_centers)
+
+    input_bounds = HyperRectangle.from_eps(cell_centers, cell_width)
+
+    ibp_bounds = bound.ibp_y_cos_phi(input_bounds)
+    # crown_bounds = bound.crown_ibp(HyperRectangle.from_eps(cell_centers, cell_width))
+
+    for i in range(len(input_bounds)):
+        # X
+        x1, x2 = input_bounds.lower[i, [1, 2]], input_bounds.upper[i, [1, 2]]
+
+        plt.clf()
+        ax = plt.axes(projection='3d')
+
+        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 10), torch.linspace(x1[1], x2[1], 10))
+
+        # Plot IBP
+        y1, y2 = ibp_bounds[0][i].item(), ibp_bounds[1][i].item()
+        y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+
+        surf = ax.plot_surface(x1, x2, y1, color='yellow', label='IBP', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+        surf._edgecolors2d = surf._edgecolor3d
+
+        surf = ax.plot_surface(x1, x2, y2, color='yellow', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        # # Plot LBP interval bounds
+        # crown_interval = crown_bounds.concretize()
+        # y1, y2 = crown_interval.lower.item(), crown_interval.upper.item()
+        # y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+        #
+        # surf = ax.plot_surface(x1, x2, y1, color='blue', label='CROWN interval', alpha=0.4)
+        # surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # surf = ax.plot_surface(x1, x2, y2, color='blue', alpha=0.4)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # # Plot LBP linear bounds
+        # y_lower = crown_bounds.lower[0][0, 0] * x1 + crown_bounds.lower[0][0, 1] * x2 + crown_bounds.lower[1]
+        # y_upper = crown_bounds.upper[0][0, 0] * x1 + crown_bounds.upper[0][0, 1] * x2 + crown_bounds.upper[1]
+        #
+        # surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+        #
+        # surf = ax.plot_surface(x1, x2, y_upper, color='green', alpha=0.4, shade=False)
+        # surf._facecolors2d = surf._facecolor3d
+        # surf._edgecolors2d = surf._edgecolor3d
+
+        # Plot function
+        x1, x2 = input_bounds.lower[i, [1, 2]], input_bounds.upper[i, [1, 2]]
+        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 50), torch.linspace(x1[1], x2[1], 50))
+        x3 = torch.zeros_like(x1)
+        X = torch.cat(tuple(torch.dstack([x3, x1, x2])))
+        y = dynamics.y_cos_phi(X).view(50, 50)
+
+        surf = ax.plot_surface(x1, x2, y, color='red', label='Div in strategy', shade=False)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        # General plot config
+        plt.xlabel('x')
+        plt.ylabel('y')
+
+        plt.title(f'Bound propagation')
+        plt.legend()
+
+        plt.show()
 
 
 class DubinsCarFixedStrategyComposition(nn.Sequential, StochasticDynamics):
@@ -357,3 +822,13 @@ class DubinsCarFixedStrategyComposition(nn.Sequential, StochasticDynamics):
     @property
     def volume(self):
         return self[1].volume
+
+
+if __name__ == '__main__':
+    # plot_dubins_car()
+    # plot_dubins_car_fixed_strategy_div()
+    # plot_dubins_car_fixed_strategy_x_sin_phi()
+    plot_dubins_car_fixed_strategy_y_cos_phi()
+
+    # Given that these four shows true bounds and the rest is simple interval arithmetic, I believe IBP for both the
+    # dynamics and the fixed strategy.
