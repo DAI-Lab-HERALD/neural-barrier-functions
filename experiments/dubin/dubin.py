@@ -9,9 +9,10 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
+from euler import Euler, BoundEuler
 from .dataset import DubinDataset
-from .dynamics import DubinsCar, BoundDubinsCar, DubinsFixedStrategy, BoundDubinsFixedStrategy, \
-    DubinsCarFixedStrategyComposition
+from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, DubinsFixedStrategy, BoundDubinsFixedStrategy, \
+    DubinsCarNoActuation, BoundDubinsCarNoActuation, DubinsCarStrategyComposition
 from .partitioning import dubins_car_partitioning
 from .plot import plot_bounds_2d
 
@@ -64,7 +65,7 @@ def train(learner, certifier, args, config):
 
     empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
 
-    optimizer = optim.AdamW(learner.parameters(), lr=1e-3)
+    optimizer = optim.AdamW(learner.parameters(), lr=5e-4)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
     kappa = 1.0
 
@@ -107,10 +108,12 @@ def dubins_car_main(args, config):
     logger.info('Constructing model')
 
     factory = BoundModelFactory()
-    factory.register(DubinsCar, BoundDubinsCar)
+    factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
     factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
+    factory.register(DubinsCarNoActuation, BoundDubinsCarNoActuation)
+    factory.register(Euler, BoundEuler)
 
-    dynamics = DubinsCarFixedStrategyComposition(config['dynamics']).to(args.device)
+    dynamics = DubinsCarStrategyComposition(config['dynamics'], DubinsCarNoActuation()).to(args.device)
     barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
     partitioning = dubins_car_partitioning(config, dynamics).to(args.device)
     learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
