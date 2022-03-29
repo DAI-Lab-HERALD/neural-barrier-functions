@@ -22,15 +22,15 @@ class DubinsCarUpdate(nn.Module):
         self.velocity = dynamics_config['velocity']
 
         dist = Normal(0.0, torch.tensor(dynamics_config['sigma']))
-        self.register_buffer('z', dist.sample((dynamics_config['num_samples'], 3)).view(-1, 1, 3))
+        self.register_buffer('z', dist.sample((dynamics_config['num_samples'],)).view(-1, 1))
 
     def forward(self, x):
-        x1 = self.velocity * x[..., 2].sin() + self.z[..., 0]
-        x2 = self.velocity * x[..., 2].cos() + self.z[..., 1]
+        x1 = self.velocity * x[..., 2].sin()
+        x2 = self.velocity * x[..., 2].cos()
         # x[..., 3] = u, i.e. the control. We assume it's concatenated on the last dimension
-        x3 = x[..., 3] + self.z[..., 2]
+        x3 = x[..., 3] + self.z
 
-        x = torch.stack([x1, x2, x3], dim=-1)
+        x = torch.stack([x1.unsqueeze(0).expand_as(x3), x2.unsqueeze(0).expand_as(x3), x3], dim=-1)
         return x
 
 
@@ -52,7 +52,7 @@ def crown_backward_dubin_jit(W_tilde: torch.Tensor, alpha: Tuple[torch.Tensor, t
     return W_tilde, bias
 
 
-class BoundDubinsCar(BoundModule):
+class BoundDubinsCarUpdate(BoundModule):
     def __init__(self, module, factory, **kwargs):
         super().__init__(module, factory, **kwargs)
 
@@ -187,25 +187,25 @@ class BoundDubinsCar(BoundModule):
         return LinearBounds(linear_bounds.region, lower, upper)
 
     def ibp_x_sin_phi(self, bounds):
-        x1_lower = bounds.lower[..., 0] + self.module.dt * (self.module.velocity * bounds.lower[..., 2].sin() + self.module.z[..., 0])
-        x1_upper = bounds.upper[..., 0] + self.module.dt * (self.module.velocity * bounds.upper[..., 2].sin() + self.module.z[..., 0])
+        x1_lower = bounds.lower[..., 0] + self.module.dt * self.module.velocity * bounds.lower[..., 2].sin()
+        x1_upper = bounds.upper[..., 0] + self.module.dt * self.module.velocity * bounds.upper[..., 2].sin()
 
         return x1_lower, x1_upper
 
     def ibp_y_cos_phi(self, bounds):
-        x2_lower = bounds.lower[..., 1] + self.module.dt * self.module.velocity * (torch.min(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos()) + self.module.z[..., 1])
+        x2_lower = bounds.lower[..., 1] + self.module.dt * self.module.velocity * torch.min(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos())
 
         across_center = (bounds.lower[..., 2] <= 0.0) & (bounds.upper[..., 2] >= 0.0)
         center_max = across_center * torch.ones_like(bounds.upper[..., 1])
         boundary_max = torch.max(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos())
-        x2_upper = bounds.upper[..., 1] + self.module.dt * (self.module.velocity * torch.max(boundary_max, center_max) + self.module.z[..., 1])
+        x2_upper = bounds.upper[..., 1] + self.module.dt * self.module.velocity * torch.max(boundary_max, center_max)
 
         return x2_lower, x2_upper
 
     def ibp_control(self, bounds):
         # x[..., 3] = u, i.e. the control. We assume it's concatenated on the last dimension
-        x3_lower = bounds.lower[..., 2] + self.module.dt * (bounds.lower[..., 3] + self.module.z[..., 2])
-        x3_upper = bounds.upper[..., 2] + self.module.dt * (bounds.upper[..., 3] + self.module.z[..., 2])
+        x3_lower = bounds.lower[..., 2] + self.module.dt * (bounds.lower[..., 3] + self.module.z)
+        x3_upper = bounds.upper[..., 2] + self.module.dt * (bounds.upper[..., 3] + self.module.z)
 
         return x3_lower, x3_upper
 
@@ -219,8 +219,8 @@ class BoundDubinsCar(BoundModule):
         x2_lower, x2_upper = self.ibp_y_cos_phi(bounds)
         x3_lower, x3_upper = self.ibp_control(bounds)
 
-        lower = torch.stack([x1_lower, x2_lower, x3_lower], dim=-1)
-        upper = torch.stack([x1_upper, x2_upper, x3_upper], dim=-1)
+        lower = torch.stack([x1_lower.unsqueeze(0).expand_as(x3_lower), x2_lower.unsqueeze(0).expand_as(x3_lower), x3_lower], dim=-1)
+        upper = torch.stack([x1_upper.unsqueeze(0).expand_as(x3_upper), x2_upper.unsqueeze(0).expand_as(x3_upper), x3_upper], dim=-1)
         return IntervalBounds(bounds.region, lower, upper)
 
     def propagate_size(self, in_size):
@@ -235,7 +235,7 @@ def plot_dubins_car():
         'num_samples': 500,
         'velocity': 1.0
       })
-    bound = BoundDubinsCar(dynamics, None)
+    bound = BoundDubinsCarUpdate(dynamics, None)
 
     x_space = torch.linspace(-2.0, 2.0, 4)
     x_cell_width = (x_space[1] - x_space[0]) / 2
