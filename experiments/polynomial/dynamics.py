@@ -33,7 +33,7 @@ class PolynomialUpdate(nn.Module):
 
 # @torch.jit.script
 def _delta(W_tilde: torch.Tensor, beta_lower: torch.Tensor, beta_upper: torch.Tensor) -> torch.Tensor:
-    return torch.where(W_tilde < 0, beta_lower, beta_upper)
+    return torch.where(W_tilde < 0, beta_lower.unsqueeze(-1), beta_upper.unsqueeze(-1))
 
 
 # @torch.jit.script
@@ -43,11 +43,8 @@ def _lambda(W_tilde: torch.Tensor, alpha_lower: torch.Tensor, alpha_upper: torch
 
 # @torch.jit.script
 def crown_backward_polynomial_jit(W_tilde: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-    bias = W_tilde[..., 1] * _delta(W_tilde[..., 1], *beta)
-    W_tilde = W_tilde * _lambda(W_tilde, *alpha) + W_tilde.unsqueeze(1).matmul(torch.tensor([[-1.0, -1.0], [-1.0, -1.0]], device=W_tilde.device)).squeeze(1)
-
-    W_tilde = torch.stack([torch.zeros_like(W_tilde), W_tilde[..., [1, 0]]], dim=-2)
-    bias = torch.stack([torch.zeros_like(bias), bias], dim=-1)
+    bias = W_tilde * _delta(W_tilde, *beta)
+    W_tilde = torch.stack([W_tilde * _lambda(W_tilde, *alpha) - W_tilde, -W_tilde], dim=-1)
 
     return W_tilde, bias
 
@@ -170,13 +167,10 @@ class BoundPolynomialUpdate(BoundModule):
             lower = crown_backward_polynomial_jit(linear_bounds.lower[0][..., 1], alpha, beta)
 
             lowerA = linear_bounds.lower[0][..., 0]
-            lower_bias = self.module.z * lowerA[..., 0]
-            lower_bias = torch.stack([lower_bias, torch.zeros_like(lower_bias)], dim=-1)
-
-            lowerA = lowerA.matmul(torch.tensor([[1.0, 0.0], [0.0, 0.0]], device=lower[0].device))
+            lower_bias = self.module.z.unsqueeze(-1) * lowerA
             lowerA = torch.stack([torch.zeros_like(lowerA), lowerA], dim=-1)
 
-            lower = ((lower[0] + lowerA).unsqueeze(0).expand(self.module.z.size(0), lower[0].size(0), 2, 2), lower[1] + linear_bounds.upper[1] + lower_bias)
+            lower = (lower[0] + lowerA, lower[1] + linear_bounds.upper[1] + lower_bias)
 
         if linear_bounds.upper is None:
             upper = None
@@ -186,13 +180,10 @@ class BoundPolynomialUpdate(BoundModule):
             upper = crown_backward_polynomial_jit(linear_bounds.upper[0][..., 1], alpha, beta)
 
             upperA = linear_bounds.upper[0][..., 0]
-            upper_bias = self.module.z * upperA[..., 0]
-            upper_bias = torch.stack([upper_bias, torch.zeros_like(upper_bias)], dim=-1)
-
-            upperA = upperA.matmul(torch.tensor([[1.0, 0.0], [0.0, 0.0]], device=upper[0].device))
+            upper_bias = self.module.z.unsqueeze(-1) * upperA
             upperA = torch.stack([torch.zeros_like(upperA), upperA], dim=-1)
 
-            upper = ((upper[0] + upperA).unsqueeze(0).expand(self.module.z.size(0), upper[0].size(0), 2, 2), upper[1] + linear_bounds.upper[1] + upper_bias)
+            upper = (upper[0] + upperA, upper[1] + linear_bounds.upper[1] + upper_bias)
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
