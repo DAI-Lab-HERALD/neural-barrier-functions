@@ -24,6 +24,14 @@ class BoundEuler(BoundModule):
     def need_relaxation(self):
         return self.bound_update.need_relaxation
 
+    def clear_relaxation(self):
+        self.bound_update.clear_relaxation()
+
+    def backward_relaxation(self, region):
+        assert self.bound_update.need_relaxation
+
+        return self.bound_update.backward_relaxation(region)
+
     def crown_backward(self, linear_bounds):
         dt_bounds = LinearBounds(
             linear_bounds.region,
