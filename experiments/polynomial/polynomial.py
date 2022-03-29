@@ -28,7 +28,7 @@ def step(learner, optimizer, partitioning, kappa, epoch):
     if isinstance(learner, EmpiricalNeuralSBF):
         loss = learner.loss(partitioning.state_space.center, kappa)
     else:
-        loss = learner.loss(partitioning, kappa, method='ibp', violation_normalization_factor=100.0)
+        loss = learner.loss(partitioning, kappa, method='crown_ibp_linear', violation_normalization_factor=100.0)
 
     loss.backward()
     torch.nn.utils.clip_grad_norm_(learner.parameters(), 1.0)
@@ -51,8 +51,8 @@ def test_method(certifier, method, batch_size, kappa=None):
 @torch.no_grad()
 def test(certifier, test_config, kappa=None):
     test_method(certifier, method='ibp', batch_size=test_config['ibp_batch_size'], kappa=kappa)
-    # test_method(certifier, method='crown_ibp_linear', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
-    # test_method(certifier, method='optimal', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
+    test_method(certifier, method='crown_ibp_linear', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
+    test_method(certifier, method='optimal', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
 
 
 def train(learner, certifier, args, config):
