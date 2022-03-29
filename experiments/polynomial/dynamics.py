@@ -17,8 +17,6 @@ class PolynomialUpdate(nn.Module):
     def __init__(self, dynamics_config):
         super().__init__()
 
-        self.dt = dynamics_config['dt']
-
         dist = Normal(0.0, dynamics_config['sigma'])
         self.register_buffer('z', dist.sample((dynamics_config['num_samples'],)).view(-1, 1))
 
@@ -60,7 +58,7 @@ class BoundPolynomialUpdate(BoundModule):
         return x**3
 
     def derivative(self, x):
-        return 2 * x**2
+        return 3 * x**2
 
     def alpha_beta(self, preactivation):
         lower, upper = preactivation.lower[..., 0], preactivation.upper[..., 0]
@@ -114,27 +112,27 @@ class BoundPolynomialUpdate(BoundModule):
         #################
         # Upper bound #
         # If tangent to lower is above upper, then take direct slope between lower and upper
-        direct_upper = np & (slope <= lower_prime)
+        direct_upper = np & (slope >= lower_prime)
         add_linear(self.alpha_upper, self.beta_upper, mask=direct_upper, a=slope, x=upper, y=upper_act)
 
-        # Else use bisection to find upper bound on slope.
-        implicit_upper = np & (slope > lower_prime)
+        # Else use polynomial derivative to find upper bound on slope.
+        implicit_upper = np & (slope < lower_prime)
 
-        d_lower = 0.5 * (math.sqrt(5) + 1) * upper
+        d = -upper / 2.0
         # Slope has to attach to (upper, upper^3)
-        add_linear(self.alpha_upper, self.beta_upper, mask=implicit_upper, a=self.derivative(d_lower), x=upper, y=upper_act)
+        add_linear(self.alpha_upper, self.beta_upper, mask=implicit_upper, a=self.derivative(d), x=upper, y=upper_act)
 
         # Lower bound #
         # If tangent to upper is below lower, then take direct slope between lower and upper
-        direct_lower = np & (slope <= upper_prime)
+        direct_lower = np & (slope >= upper_prime)
         add_linear(self.alpha_lower, self.beta_lower, mask=direct_lower, a=slope, x=lower, y=lower_act)
 
-        # Else use bisection to find upper bound on slope.
-        implicit_lower = np & (slope > upper_prime)
+        # Else use polynomial derivative to find upper bound on slope.
+        implicit_lower = np & (slope < upper_prime)
 
-        d_upper = 0.5 * (math.sqrt(5) + 1) * lower
-        # Slope has to attach to (upper, sigma(upper))
-        add_linear(self.alpha_lower, self.beta_lower, mask=implicit_lower, a=self.derivative(d_upper), x=lower, y=lower_act)
+        d = -lower / 2.0
+        # Slope has to attach to (lower, lower^3)
+        add_linear(self.alpha_lower, self.beta_lower, mask=implicit_lower, a=self.derivative(d), x=lower, y=lower_act)
 
     @property
     def need_relaxation(self):
