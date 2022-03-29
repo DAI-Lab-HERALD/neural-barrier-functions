@@ -83,7 +83,7 @@ def linear2interval_batching(method, lower, upper, batch_size, bound_lower=True,
     else:
         batches = list(zip(lower.split(batch_size), upper.split(batch_size)))
         if reduce is None:
-            batches = [method(HyperRectangle(*batch)) for i, batch in enumerate(batches)]
+            batches = [method(HyperRectangle(*batch)).concretize() for i, batch in enumerate(batches)]
         else:
             batches = [reduce(method(HyperRectangle(*batch))).concretize() for i, batch in enumerate(batches)]
 
@@ -105,7 +105,7 @@ def linear_batching(method, lower, upper, batch_size, bound_lower=True, bound_up
         if reduce is None:
             batches = [method(HyperRectangle(*batch)) for i, batch in enumerate(batches)]
         else:
-            batches = [reduce(method(HyperRectangle(*batch))).concretize() for i, batch in enumerate(batches)]
+            batches = [reduce(method(HyperRectangle(*batch))) for i, batch in enumerate(batches)]
 
         out_lower = Affine(torch.cat([batch.lower[0] for batch in batches], dim=-3), torch.cat([batch.lower[1] for batch in batches], dim=-2), lower, upper) if bound_lower else None
         out_upper = Affine(torch.cat([batch.upper[0] for batch in batches], dim=-3), torch.cat([batch.upper[1] for batch in batches], dim=-2), lower, upper) if bound_upper else None
