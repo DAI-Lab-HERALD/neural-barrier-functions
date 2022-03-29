@@ -9,69 +9,29 @@ from matplotlib import pyplot as plt
 from torch import nn
 from torch.distributions import Normal
 
+from euler import Euler
 from learned_cbf.dynamics import StochasticDynamics
 from learned_cbf.utils import overlap_circle, overlap_rectangle, overlap_outside_circle
 
 
-class DubinsCar(StochasticDynamics, nn.Module):
+class DubinsCarUpdate(nn.Module):
     def __init__(self, dynamics_config):
-        StochasticDynamics.__init__(self, dynamics_config['num_samples'])
-        nn.Module.__init__(self)
+        super().__init__()
 
         self.dt = dynamics_config['dt']
         self.velocity = dynamics_config['velocity']
 
         dist = Normal(0.0, torch.tensor(dynamics_config['sigma']))
-        self.register_buffer('z', dist.sample((self.num_samples, 3)).view(-1, 1, 3))
+        self.register_buffer('z', dist.sample((dynamics_config['num_samples'], 3)).view(-1, 1, 3))
 
     def forward(self, x):
-        x1 = x[..., 0] + self.dt * (self.velocity * x[..., 2].sin() + self.z[..., 0])
-        x2 = x[..., 1] + self.dt * (self.velocity * x[..., 2].cos() + self.z[..., 1])
+        x1 = self.velocity * x[..., 2].sin() + self.z[..., 0]
+        x2 = self.velocity * x[..., 2].cos() + self.z[..., 1]
         # x[..., 3] = u, i.e. the control. We assume it's concatenated on the last dimension
-        x3 = x[..., 2] + self.dt * (x[..., 3] + self.z[..., 2])
+        x3 = x[..., 3] + self.z[..., 2]
 
         x = torch.stack([x1, x2, x3], dim=-1)
         return x
-
-    def initial(self, x, eps=None):
-        if eps is not None:
-            lower_x, upper_x = x - eps, x + eps
-        else:
-            lower_x, upper_x = x, x
-
-        return overlap_rectangle(lower_x, upper_x,
-                                 torch.tensor([-0.1, -2.0, -np.pi / 6.0], device=x.device),
-                                 torch.tensor([0.1, -1.8, np.pi / 6.0], device=x.device))
-
-    def safe(self, x, eps=None):
-        if eps is not None:
-            lower_x, upper_x = x - eps, x + eps
-        else:
-            lower_x, upper_x = x, x
-
-        return overlap_outside_circle(lower_x[..., :2], upper_x[..., :2], torch.tensor([0.0, 0.0], device=x.device), math.sqrt(0.04))
-
-    def unsafe(self, x, eps=None):
-        if eps is not None:
-            lower_x, upper_x = x - eps, x + eps
-        else:
-            lower_x, upper_x = x, x
-
-        return overlap_circle(lower_x[..., :2], upper_x[..., :2], torch.tensor([0.0, 0.0], device=x.device), math.sqrt(0.04))
-
-    def state_space(self, x, eps=None):
-        if eps is not None:
-            lower_x, upper_x = x - eps, x + eps
-        else:
-            lower_x, upper_x = x, x
-
-        return (upper_x[..., 0] >= -2.0) & (lower_x[..., 0] <= 2.0) &\
-               (upper_x[..., 1] >= -2.0) & (lower_x[..., 1] <= 2.0) & \
-               (upper_x[..., 2] >= -np.pi / 2) & (lower_x[..., 2] <= np.pi / 2)
-
-    @property
-    def volume(self):
-        return 4.0**2 * np.pi**2
 
 
 # @torch.jit.script
@@ -270,12 +230,10 @@ class BoundDubinsCar(BoundModule):
 
 
 def plot_dubins_car():
-    dynamics = DubinsCar({
+    dynamics = DubinsCarUpdate({
         'sigma': 0.1,
         'num_samples': 500,
-        'dt': 0.1,
-        'velocity': 1.0,
-        'horizon': 2
+        'velocity': 1.0
       })
     bound = BoundDubinsCar(dynamics, None)
 
@@ -799,29 +757,96 @@ def plot_dubins_car_fixed_strategy_y_cos_phi():
         plt.show()
 
 
-class DubinsCarFixedStrategyComposition(nn.Sequential, StochasticDynamics):
-    def __init__(self, dynamics_config):
+class DubinsCarNoActuation(nn.Module):
+    def forward(self, x):
+        return torch.zeros_like(x[..., :1])
+
+
+class BoundDubinsCarNoActuation(BoundModule):
+    @property
+    def need_relaxation(self):
+        return False
+
+    def __init__(self, module, factory, **kwargs):
+        super().__init__(module, factory, **kwargs)
+
+    def crown_backward(self, linear_bounds):
+        if linear_bounds.lower is None:
+            lower = None
+        else:
+            lower = (torch.zeros_like(linear_bounds.lower[0][..., :1]), torch.zeros_like(linear_bounds.lower[1]))
+
+        if linear_bounds.upper is None:
+            upper = None
+        else:
+            upper = (torch.zeros_like(linear_bounds.upper[0][..., :1]), torch.zeros_like(linear_bounds.upper[1]))
+
+        return LinearBounds(linear_bounds.region, lower, upper)
+
+    @assert_bound_order
+    def ibp_forward(self, bounds, save_relaxation=False):
+        return IntervalBounds(bounds.region, torch.zeros_like(bounds.lower[..., :1]), torch.zeros_like(bounds.upper[..., :1]))
+
+    def propagate_size(self, in_size):
+        assert in_size == 3
+
+        return 1
+
+
+class DubinsCarStrategyComposition(Euler, StochasticDynamics):
+    def __init__(self, dynamics_config, strategy=None):
         StochasticDynamics.__init__(self, dynamics_config['num_samples'])
-        nn.Sequential.__init__(self,
-            Cat(DubinsFixedStrategy()),
-            DubinsCar(dynamics_config)
+
+        if strategy is None:
+            strategy = DubinsCarNoActuation()
+
+        Euler.__init__(self,
+            nn.Sequential(
+                Cat(strategy),
+                DubinsCarUpdate(dynamics_config)
+            ),
+           dynamics_config['dt']
         )
 
     def initial(self, x, eps=None):
-        return self[1].initial(x, eps)
+        if eps is not None:
+            lower_x, upper_x = x - eps, x + eps
+        else:
+            lower_x, upper_x = x, x
+
+        return overlap_rectangle(lower_x, upper_x,
+                                 torch.tensor([-0.1, -2.0, -np.pi / 6.0], device=x.device),
+                                 torch.tensor([0.1, -1.8, np.pi / 6.0], device=x.device))
 
     def safe(self, x, eps=None):
-        return self[1].safe(x, eps)
+        if eps is not None:
+            lower_x, upper_x = x - eps, x + eps
+        else:
+            lower_x, upper_x = x, x
+
+        return overlap_outside_circle(lower_x[..., :2], upper_x[..., :2], torch.tensor([0.0, 0.0], device=x.device), math.sqrt(0.04))
 
     def unsafe(self, x, eps=None):
-        return self[1].unsafe(x, eps)
+        if eps is not None:
+            lower_x, upper_x = x - eps, x + eps
+        else:
+            lower_x, upper_x = x, x
+
+        return overlap_circle(lower_x[..., :2], upper_x[..., :2], torch.tensor([0.0, 0.0], device=x.device), math.sqrt(0.04))
 
     def state_space(self, x, eps=None):
-        return self[1].state_space(x, eps)
+        if eps is not None:
+            lower_x, upper_x = x - eps, x + eps
+        else:
+            lower_x, upper_x = x, x
+
+        return (upper_x[..., 0] >= -2.0) & (lower_x[..., 0] <= 2.0) &\
+               (upper_x[..., 1] >= -2.0) & (lower_x[..., 1] <= 2.0) & \
+               (upper_x[..., 2] >= -np.pi / 2) & (lower_x[..., 2] <= np.pi / 2)
 
     @property
     def volume(self):
-        return self[1].volume
+        return 4.0**2 * np.pi**2
 
 
 if __name__ == '__main__':
