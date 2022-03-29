@@ -30,44 +30,46 @@ class Population(nn.Linear, StochasticDynamics):
     def forward(self, input: Tensor) -> Tensor:
         return input.matmul(self.weight.transpose(-1, 1)) + self.bias
 
-    def close_far(self, x, eps):
+    def corners(self, x, eps):
         if eps is not None:
             lower_x, upper_x = x - eps, x + eps
 
-            closest_point = torch.min(lower_x.abs(), upper_x.abs())
-            farthest_point = torch.max(lower_x.abs(), upper_x.abs())
+            bottom_left = torch.min(lower_x.abs(), upper_x.abs())
+            bottom_right = torch.stack([torch.max(lower_x[..., 0].abs(), upper_x[..., 0].abs()), torch.min(lower_x[..., 1].abs(), upper_x[..., 1].abs())], dim=-1)
+            top_left = torch.stack([torch.min(lower_x[..., 0].abs(), upper_x[..., 0].abs()), torch.max(lower_x[..., 1].abs(), upper_x[..., 1].abs())], dim=-1)
+            top_right = torch.max(lower_x.abs(), upper_x.abs())
         else:
-            closest_point, farthest_point = x, x
+            bottom_left, bottom_right, top_left, top_right = x, x, x, x
 
-        return closest_point, farthest_point
+        return bottom_left, bottom_right, top_left, top_right
 
     def initial(self, x, eps=None):
-        closest_point, farthest_point = self.close_far(x, eps)
+        bottom_left, bottom_right, top_left, top_right = self.corners(x, eps)
 
         if self.safe_set_type == 'circle':
-            return closest_point.norm(dim=-1) <= 1.0
+            return bottom_left.norm(dim=-1) <= 1.0
         elif self.safe_set_type == 'annulus':
-            return (farthest_point.abs().sum(dim=-1) >= 4.0) & (closest_point.abs().sum(dim=-1) <= 5.0)
+            return (top_right.sum(dim=-1) >= 4.0) & (bottom_left.sum(dim=-1) <= 5.0)
         else:
             raise ValueError('Invalid safe set for population')
 
     def safe(self, x, eps=None):
-        closest_point, farthest_point = self.close_far(x, eps)
+        bottom_left, bottom_right, top_left, top_right = self.corners(x, eps)
 
         if self.safe_set_type == 'circle':
-            return closest_point.norm(dim=-1) <= 2.0
+            return bottom_left.norm(dim=-1) <= 2.0
         elif self.safe_set_type == 'annulus':
-            return (farthest_point.abs().sum(dim=-1) >= 3.0) & (closest_point.abs().sum(dim=-1) <= 6.0)
+            return (top_right.sum(dim=-1) >= 3.0) & (bottom_left.sum(dim=-1) <= 6.0)
         else:
             raise ValueError('Invalid safe set for population')
 
     def unsafe(self, x, eps=None):
-        closest_point, farthest_point = self.close_far(x, eps)
+        bottom_left, bottom_right, top_left, top_right = self.corners(x, eps)
 
         if self.safe_set_type == 'circle':
-            return farthest_point.norm(dim=-1) >= 2.0
+            return bottom_left.norm(dim=-1) >= 2.0
         elif self.safe_set_type == 'annulus':
-            return (closest_point.abs().sum(dim=-1) <= 3.0) | (farthest_point.abs().sum(dim=-1) >= 6.0)
+            return (bottom_left.sum(dim=-1) <= 3.0) | (top_right.sum(dim=-1) >= 6.0)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -80,7 +82,7 @@ class Population(nn.Linear, StochasticDynamics):
         if self.safe_set_type == 'circle':
             return (upper_x[..., 0] >= -3.0) & (lower_x[..., 0] <= 3.0) & (upper_x[..., 1] >= -3.0) & (lower_x[..., 1] <= 3.0)
         elif self.safe_set_type == 'annulus':
-            return (upper_x[..., 0] >= 0) & (lower_x[..., 0] <= 4.5) & (upper_x[..., 1] >= 0) & (lower_x[..., 1] <= 4.5)
+            return (upper_x[..., 0] >= 0) & (lower_x[..., 0] <= 8.0) & (upper_x[..., 1] >= 0) & (lower_x[..., 1] <= 8.0)
         else:
             raise ValueError('Invalid safe set for population')
 

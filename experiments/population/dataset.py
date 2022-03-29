@@ -15,7 +15,7 @@ class PopulationDataset(Dataset):
         if self.dynamics.safe_set_type == 'circle':
             self.dist = torch.distributions.Uniform(torch.tensor([-3.0, -3.0]), torch.tensor([3.0, 3.0]))
         elif self.dynamics.safe_set_type == 'annulus':
-            self.dist = torch.distributions.Uniform(torch.tensor([0.0, 0.0]), torch.tensor([4.5, 4.5]))
+            self.dist = torch.distributions.Uniform(torch.tensor([0.0, 0.0]), torch.tensor([8.0, 8.0]))
         else:
             raise ValueError('Invalid safe set for population')
 

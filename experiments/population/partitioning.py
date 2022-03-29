@@ -42,8 +42,8 @@ def plot_partitioning(partitioning, safe_set_type):
         plt.plot([6.0, 0.0], [0.0, 6.0], color='r')
         plt.plot([3.0, 0.0], [0.0, 3.0], color='r')
 
-        plt.xlim(0.0, 4.5)
-        plt.ylim(0.0, 4.5)
+        plt.xlim(0.0, 8.0)
+        plt.ylim(0.0, 8.0)
     else:
         raise ValueError('Invalid safe set for population')
 
@@ -60,7 +60,7 @@ def population_partitioning(config, dynamics):
     if safe_set_type == 'circle':
         x_lower, x_upper = -3.0, 3.0
     elif safe_set_type == 'annulus':
-        x_lower, x_upper = 0.0, 4.5
+        x_lower, x_upper = 0.0, 8.0
     else:
         raise ValueError('Invalid safe set for population')
 
@@ -85,6 +85,6 @@ def population_partitioning(config, dynamics):
         (lower_x, upper_x)
     )
 
-    # plot_partitioning(partitioning, safe_set_type)
+    plot_partitioning(partitioning, safe_set_type)
 
     return partitioning
