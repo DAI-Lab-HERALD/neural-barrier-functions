@@ -27,21 +27,20 @@ class BoundEuler(BoundModule):
     def crown_backward(self, linear_bounds):
         dt_bounds = LinearBounds(
             linear_bounds.region,
-            (linear_bounds.lower[0] / self.module.dt, torch.zeros_like(linear_bounds.lower[1])) if linear_bounds.lower is not None else None,
-            (linear_bounds.upper[0] / self.module.dt, torch.zeros_like(linear_bounds.upper[1])) if linear_bounds.upper is not None else None
+            (linear_bounds.lower[0], torch.zeros_like(linear_bounds.lower[1])) if linear_bounds.lower is not None else None,
+            (linear_bounds.upper[0], torch.zeros_like(linear_bounds.upper[1])) if linear_bounds.upper is not None else None
         )
-
         update_bounds = self.bound_update.crown_backward(dt_bounds)
 
         if linear_bounds.lower is None:
             lower = None
         else:
-            lower = (linear_bounds.lower[0] + update_bounds.lower[0], linear_bounds.lower[1] + update_bounds.lower[1])
+            lower = (linear_bounds.lower[0] + update_bounds.lower[0] * self.module.dt, linear_bounds.lower[1] + update_bounds.lower[1] * self.module.dt)
 
         if linear_bounds.upper is None:
             upper = None
         else:
-            upper = (linear_bounds.upper[0] + update_bounds.upper[0], linear_bounds.upper[1] + update_bounds.upper[1])
+            upper = (linear_bounds.upper[0] + update_bounds.upper[0] * self.module.dt, linear_bounds.upper[1] + update_bounds.upper[1] * self.module.dt)
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
