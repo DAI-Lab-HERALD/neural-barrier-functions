@@ -30,7 +30,7 @@ def step(learner, optimizer, partitioning, kappa, epoch):
     if isinstance(learner, EmpiricalNeuralSBF):
         loss = learner.loss(partitioning.state_space.center, kappa)
     else:
-        loss = learner.loss(partitioning, kappa, method='ibp', violation_normalization_factor=100.0)
+        loss = learner.loss(partitioning, kappa, method='ibp', violation_normalization_factor=1.0)
 
     loss.backward()
     torch.nn.utils.clip_grad_norm_(learner.parameters(), 1.0)
@@ -66,7 +66,7 @@ def train(learner, certifier, args, config):
 
     empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
 
-    optimizer = optim.AdamW(learner.parameters(), lr=5e-4)
+    optimizer = optim.AdamW(learner.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
     kappa = 1.0
 
@@ -87,13 +87,13 @@ def train(learner, certifier, args, config):
         scheduler.step()
         kappa *= 0.95
 
-    # while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
-    #     logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
-    #     for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
-    #         # plot_partitioning(partitioning, config['dynamics']['safe_set'])
-    #
-    #         partitioning = partitioning.to(args.device)
-    #         step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
+    while not certifier.certify(method='ibp', batch_size=config['test']['ibp_batch_size']):
+        logger.info(f'Current violation: {certifier.barrier_violation(method="ibp", batch_size=config["test"]["ibp_batch_size"])}')
+        for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+
+            partitioning = partitioning.to(args.device)
+            step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
 
     logger.info('Training complete')
 
