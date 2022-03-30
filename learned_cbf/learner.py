@@ -101,8 +101,6 @@ class AdversarialNeuralSBF(nn.Module):
             _, upper = bounds(self.barrier, partitioning.initial, bound_lower=False, **kwargs)
             idx = upper.partition_max().argmax()
 
-            del upper
-
             gamma_max_partition = partitioning.initial[idx]
             gamma_max_partition = Partitions((
                 gamma_max_partition.lower.unsqueeze(0),
