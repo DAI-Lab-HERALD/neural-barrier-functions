@@ -24,26 +24,40 @@ class DubinDataset(Dataset):
         return partitioning
 
     def generate(self):
-        x = self.dist.sample((self.batch_size,))
-        assert torch.all(self.dynamics.state_space(x))
+        num_particles = self.batch_size // 4
+        initial = self.dynamics.sample_initial(num_particles)
+        safe = self.dynamics.sample_safe(num_particles)
+        unsafe = self.dynamics.sample_unsafe(num_particles)
+        state_space = self.dynamics.sample_state_space(num_particles)
 
-        initial_mask = self.dynamics.initial(x)
-        safe_mask = self.dynamics.safe(x)
-        unsafe_mask = self.dynamics.unsafe(x)
+        partitioning = Partitioning(
+            (initial - self.eps, initial + self.eps),
+            (safe - self.eps, safe + self.eps),
+            (unsafe - self.eps, unsafe + self.eps),
+            (state_space - self.eps, state_space + self.eps)
+        )
+        return True, partitioning
 
-        if torch.any(initial_mask) and torch.any(safe_mask) and torch.any(unsafe_mask):
-            lower_x, upper_x = x - self.eps, x + self.eps
-
-            partitioning = Partitioning(
-                (lower_x[initial_mask], upper_x[initial_mask]),
-                (lower_x[safe_mask], upper_x[safe_mask]),
-                (lower_x[unsafe_mask], upper_x[unsafe_mask]),
-                (lower_x, upper_x)
-            )
-
-            return True, partitioning
-        else:
-            return False, None
+        # x = self.dist.sample((self.batch_size,))
+        # assert torch.all(self.dynamics.state_space(x))
+        #
+        # initial_mask = self.dynamics.initial(x)
+        # safe_mask = self.dynamics.safe(x)
+        # unsafe_mask = self.dynamics.unsafe(x)
+        #
+        # if torch.any(initial_mask) and torch.any(safe_mask) and torch.any(unsafe_mask):
+        #     lower_x, upper_x = x - self.eps, x + self.eps
+        #
+        #     partitioning = Partitioning(
+        #         (lower_x[initial_mask], upper_x[initial_mask]),
+        #         (lower_x[safe_mask], upper_x[safe_mask]),
+        #         (lower_x[unsafe_mask], upper_x[unsafe_mask]),
+        #         (lower_x, upper_x)
+        #     )
+        #
+        #     return True, partitioning
+        # else:
+        #     return False, None
 
     def __len__(self):
         return self.iter_per_epoch
