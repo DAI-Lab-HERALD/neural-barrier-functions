@@ -9,6 +9,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
+from monte_carlo import monte_carlo_simulation
 from .dataset import PopulationDataset
 from .dynamics import Population
 from .partitioning import population_partitioning, plot_partitioning
@@ -104,18 +105,23 @@ def save(learner, args):
 
 def population_main(args, config):
     logger.info('Constructing model')
-
-    factory = BoundModelFactory()
     dynamics = Population(config['dynamics']).to(args.device)
-    barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
-    partitioning = population_partitioning(config, dynamics).to(args.device)
-    learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
-    certifier = NeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
-    # learner.load_state_dict(torch.load(args.save_path))
+    if config['experiment_type'] == 'barrier_function':
+        factory = BoundModelFactory()
+        barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
+        partitioning = population_partitioning(config, dynamics).to(args.device)
+        learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
+        certifier = NeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
-    train(learner, certifier, args, config)
-    save(learner, args)
-    test(certifier, config['test'])
+        # learner.load_state_dict(torch.load(args.save_path))
 
-    plot_bounds_2d(barrier, dynamics, args, config)
+        train(learner, certifier, args, config)
+        save(learner, args)
+        test(certifier, config['test'])
+
+        plot_bounds_2d(barrier, dynamics, args, config)
+    elif config['experiment_type'] == 'monte_carlo':
+        monte_carlo_simulation(dynamics, config)
+    else:
+        raise ValueError('Invalid experiment type')

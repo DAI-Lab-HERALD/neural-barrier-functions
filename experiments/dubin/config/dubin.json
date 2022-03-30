@@ -1,5 +1,6 @@
 {
   "system": "dubin",
+  "experiment_type": "barrier_function",
   "dynamics": {
     "sigma": 0.01,
     "num_samples": 500,

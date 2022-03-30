@@ -1,5 +1,6 @@
 {
   "system": "population",
+  "experiment_type": "barrier_function",
   "dynamics": {
     "sigma": 0.1,
     "fertility_rate": 0.625,

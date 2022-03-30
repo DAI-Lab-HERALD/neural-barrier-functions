@@ -1,5 +1,6 @@
 {
   "system": "polynomial",
+  "experiment_type": "barrier_function",
   "dynamics": {
     "sigma": 0.1,
     "num_samples": 500,
