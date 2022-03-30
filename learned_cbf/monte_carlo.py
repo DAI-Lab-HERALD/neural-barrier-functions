@@ -21,7 +21,8 @@ def monte_carlo_simulation(dynamics, config):
     for _ in range(horizon):
         x = dynamics(x)
         # For each sample, pick one realization for next step
-        x = x[torch.randint(0, x.size(0)), torch.arange(x.size(1))]
+        particle_samples = torch.randint(x.size(0), (x.size(1),))
+        x = x[particle_samples, torch.arange(x.size(1))]
         traj.append(x)
 
         out_of_bounds |= ~dynamics.state_space(x) & ~unsafe

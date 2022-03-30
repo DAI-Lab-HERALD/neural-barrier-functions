@@ -820,7 +820,7 @@ class DubinsCarStrategyComposition(Euler, StochasticDynamics):
 
     def sample_initial(self, num_particles):
         dist = distributions.Uniform(torch.tensor([-0.1, -2.0, -np.pi / 6.0]), torch.tensor([0.1, -1.8, np.pi / 6.0]))
-        return dist.sample(num_particles)
+        return dist.sample((num_particles,))
 
     def safe(self, x, eps=None):
         if eps is not None:
