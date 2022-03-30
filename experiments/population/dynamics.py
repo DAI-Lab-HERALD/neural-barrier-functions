@@ -1,5 +1,6 @@
+import numpy as np
 import torch
-from torch import nn, Tensor
+from torch import nn, Tensor, distributions
 from torch.distributions import Normal
 
 from learned_cbf.dynamics import StochasticDynamics
@@ -50,6 +51,18 @@ class Population(nn.Linear, StochasticDynamics):
             return bottom_left.norm(dim=-1) <= 1.0
         elif self.safe_set_type == 'annulus':
             return (top_right.sum(dim=-1) >= 4.0) & (bottom_left.sum(dim=-1) <= 5.0)
+        else:
+            raise ValueError('Invalid safe set for population')
+
+    def sample_initial(self, num_particles):
+        if self.safe_set_type == 'circle':
+            dist = distributions.Uniform(0, 1)
+            r = 1.0 * dist.sample((num_particles,)).sqrt()
+            theta = dist.sample((num_particles,)) * 2 * np.pi
+
+            return torch.stack([r * theta.cos(), r * theta.sin()], dim=-1)
+        elif self.safe_set_type == 'annulus':
+            raise NotImplementedError()
         else:
             raise ValueError('Invalid safe set for population')
 

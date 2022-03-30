@@ -232,6 +232,9 @@ class Polynomial(Euler, StochasticDynamics):
 
         return cond1 | cond2 | cond3
 
+    def sample_initial(self, num_particles):
+        raise NotImplementedError()
+
     def safe(self, x, eps=None):
         if eps is not None:
             lower_x, upper_x = x - eps, x + eps

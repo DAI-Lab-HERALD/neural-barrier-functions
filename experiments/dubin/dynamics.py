@@ -6,7 +6,7 @@ import torch
 from bound_propagation import BoundModule, IntervalBounds, LinearBounds, Cat, HyperRectangle
 from bound_propagation.activation import assert_bound_order, regimes
 from matplotlib import pyplot as plt
-from torch import nn
+from torch import nn, distributions
 from torch.distributions import Normal
 
 from euler import Euler
@@ -817,6 +817,10 @@ class DubinsCarStrategyComposition(Euler, StochasticDynamics):
         return overlap_rectangle(lower_x, upper_x,
                                  torch.tensor([-0.1, -2.0, -np.pi / 6.0], device=x.device),
                                  torch.tensor([0.1, -1.8, np.pi / 6.0], device=x.device))
+
+    def sample_initial(self, num_particles):
+        dist = distributions.Uniform(torch.tensor([-0.1, -2.0, -np.pi / 6.0]), torch.tensor([0.1, -1.8, np.pi / 6.0]))
+        return dist.sample(num_particles)
 
     def safe(self, x, eps=None):
         if eps is not None:
