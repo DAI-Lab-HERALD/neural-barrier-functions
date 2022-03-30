@@ -13,27 +13,20 @@ def monte_carlo_simulation(dynamics, config):
     horizon = config['dynamics']['horizon']
 
     x = dynamics.sample_initial(num_particles)
+    traj = [x]
 
-    unsafe = None
-    out_of_bounds = None
+    unsafe = torch.full((num_particles,), False)
+    out_of_bounds = torch.full((num_particles,), False)
 
     for _ in range(horizon):
         x = dynamics(x)
         # For each sample, pick one realization for next step
         x = x[torch.randint(0, x.size(0)), torch.arange(x.size(1))]
+        traj.append(x)
 
-        if unsafe is None:
-            unsafe = x[dynamics.unsafe(x)]
-        else:
-            unsafe = torch.cat([unsafe, x[dynamics.unsafe(x)]])
+        out_of_bounds |= ~dynamics.state_space(x) & ~unsafe
+        unsafe |= dynamics.unsafe(x) & ~out_of_bounds
 
-        if out_of_bounds is None:
-            out_of_bounds = x[~dynamics.state_space(x)]
-        else:
-            out_of_bounds = torch.cat([out_of_bounds, x[~dynamics.state_space(x)]])
+    logger.info(f'Num particles: {num_particles}/unsafe: {unsafe.sum()}/out_of_bounds: {out_of_bounds.sum()}, ratio unsafe: {unsafe.sum() / num_particles}, ratio out_of_bounds: {out_of_bounds.sum() / num_particles}')
 
-        x = x[dynamics.safe(x) & dynamics.state_space]
-
-    logger.info(f'Safe: {x.size(0)}/unsafe: {unsafe.size(0)}/out_of_bounds: {out_of_bounds.size(0)}, ratio unsafe: {unsafe.size(0) / num_particles}, ratio out_of_bounds: {out_of_bounds.size(0) / num_particles}')
-
-    return x, unsafe, out_of_bounds
+    return x, torch.stack(traj), unsafe, out_of_bounds
