@@ -187,25 +187,25 @@ class BoundDubinsCarUpdate(BoundModule):
         return LinearBounds(linear_bounds.region, lower, upper)
 
     def ibp_x_sin_phi(self, bounds):
-        x1_lower = bounds.lower[..., 0] + self.module.dt * self.module.velocity * bounds.lower[..., 2].sin()
-        x1_upper = bounds.upper[..., 0] + self.module.dt * self.module.velocity * bounds.upper[..., 2].sin()
+        x1_lower = self.module.velocity * bounds.lower[..., 2].sin()
+        x1_upper = self.module.velocity * bounds.upper[..., 2].sin()
 
         return x1_lower, x1_upper
 
     def ibp_y_cos_phi(self, bounds):
-        x2_lower = bounds.lower[..., 1] + self.module.dt * self.module.velocity * torch.min(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos())
+        x2_lower = self.module.velocity * torch.min(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos())
 
         across_center = (bounds.lower[..., 2] <= 0.0) & (bounds.upper[..., 2] >= 0.0)
         center_max = across_center * torch.ones_like(bounds.upper[..., 1])
         boundary_max = torch.max(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos())
-        x2_upper = bounds.upper[..., 1] + self.module.dt * self.module.velocity * torch.max(boundary_max, center_max)
+        x2_upper = self.module.velocity * torch.max(boundary_max, center_max)
 
         return x2_lower, x2_upper
 
     def ibp_control(self, bounds):
         # x[..., 3] = u, i.e. the control. We assume it's concatenated on the last dimension
-        x3_lower = bounds.lower[..., 2] + self.module.dt * (bounds.lower[..., 3] + self.module.z)
-        x3_upper = bounds.upper[..., 2] + self.module.dt * (bounds.upper[..., 3] + self.module.z)
+        x3_lower = bounds.lower[..., 3] + self.module.z
+        x3_upper = bounds.upper[..., 3] + self.module.z
 
         return x3_lower, x3_upper
 
