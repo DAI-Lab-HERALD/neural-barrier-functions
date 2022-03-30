@@ -1,0 +1,14 @@
+{
+  "system": "population",
+  "experiment_type": "monte_carlo",
+  "num_particles": 10000,
+  "dynamics": {
+    "sigma": 0.1,
+    "fertility_rate": 0.2,
+    "survival_juvenile": 0.6,
+    "survival_adult": 0.9,
+    "num_samples": 500,
+    "horizon": 2,
+    "safe_set": "circle"
+  }
+}
