@@ -43,6 +43,11 @@ LOGGING_CONFIG = {
             'handlers': ['default'],
             'level': 'DEBUG',
             'propagate': False
+        },
+        'monte_carlo': {  # monte_carlo logger
+            'handlers': ['default'],
+            'level': 'DEBUG',
+            'propagate': False
         }
     }
 }
