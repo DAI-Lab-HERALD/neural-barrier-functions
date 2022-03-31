@@ -30,6 +30,8 @@ class PolynomialUpdate(nn.Module):
         x = torch.stack([x1, x2], dim=-1)
         return x
 
+
+@torch.jit.script
 def crown_backward_polynomial_jit(W_tilde: torch.Tensor, z: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
     _lambda = torch.where(W_tilde[..., 1] < 0, alpha[0].unsqueeze(-1), alpha[1].unsqueeze(-1))
     _delta = torch.where(W_tilde[..., 1] < 0, beta[0].unsqueeze(-1), beta[1].unsqueeze(-1))
