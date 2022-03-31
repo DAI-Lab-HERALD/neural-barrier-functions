@@ -214,14 +214,14 @@ class EmpiricalNeuralSBF(nn.Module):
         """
         return 1.0  # + F.softplus(self.rho)
 
-    def beta(self, x):
+    def beta(self, partitioning):
         """
         :return: beta in range [0, 1)
         """
-        assert torch.all(self.dynamics.state_space(x))
-        assert torch.any(self.dynamics.safe(x))
+        assert torch.all(self.dynamics.state_space(partitioning.safe.center, eps=partitioning.safe.width / 2))
+        assert torch.any(self.dynamics.safe(partitioning.safe.center, eps=partitioning.safe.width / 2))
 
-        x = x[self.dynamics.safe(x)]
+        x = partitioning.safe.center
 
         expectation = self.barrier(self.dynamics(x)).mean(dim=0)
         bx = self.barrier(x)
@@ -231,63 +231,63 @@ class EmpiricalNeuralSBF(nn.Module):
         return torch.dot(F.softmax(beta / T, dim=0), beta.clamp(min=0))
         # return beta.max()
 
-    def gamma(self, x):
+    def gamma(self, partitioning):
         """
         :return: gamma in range [0, 1)
         """
-        assert torch.all(self.dynamics.state_space(x))
-        assert torch.any(self.dynamics.initial(x))
+        assert torch.all(self.dynamics.state_space(partitioning.initial.center, eps=partitioning.initial.width / 2))
+        assert torch.any(self.dynamics.initial(partitioning.initial.center, eps=partitioning.initial.width / 2))
 
-        x = x[self.dynamics.initial(x)]
+        x = partitioning.initial.center
 
         gamma = self.barrier(x)[:, 0].view(-1)
         T = 0.02
         return torch.dot(F.softmax(gamma / T, dim=0), gamma.clamp(min=0))
         # return gamma.max()
 
-    def loss(self, x, safety_weight=0.5):
+    def loss(self, partitioning, safety_weight=0.5):
         if safety_weight == 1.0:
-            return self.loss_safety_prob(x)
+            return self.loss_safety_prob(partitioning)
         elif safety_weight == 0.0:
-            return self.loss_barrier(x)
+            return self.loss_barrier(partitioning)
 
-        loss_barrier = self.loss_barrier(x)
-        loss_safety_prob = self.loss_safety_prob(x)
+        loss_barrier = self.loss_barrier(partitioning)
+        loss_safety_prob = self.loss_safety_prob(partitioning)
 
         return (1.0 - safety_weight) * loss_barrier + safety_weight * loss_safety_prob
 
-    def loss_barrier(self, x):
-        loss = self.loss_state_space(x) + self.loss_unsafe(x)
+    def loss_barrier(self, partitioning):
+        loss = self.loss_state_space(partitioning) + self.loss_unsafe(partitioning)
         return loss
 
-    def loss_unsafe(self, x):
+    def loss_unsafe(self, partitioning):
         """
         Ensure that B(x) >= 1 for all x in X_u.
         :return: Loss for unsafe set
         """
-        assert torch.all(self.dynamics.state_space(x))
-        assert torch.any(self.dynamics.unsafe(x))
+        assert torch.all(self.dynamics.state_space(partitioning.unsafe.center, eps=partitioning.unsafe.width / 2))
+        assert torch.any(self.dynamics.unsafe(partitioning.unsafe.center, eps=partitioning.unsafe.width / 2))
 
-        x = x[self.dynamics.unsafe(x)]
+        x = partitioning.unsafe.center
 
         violation = (1 - self.barrier(x)).clamp(min=0)
         return violation.mean()
 
-    def loss_state_space(self, x):
+    def loss_state_space(self, partitioning):
         """
         Ensure that B(x) >= 0 for all x in X. If no partitioning is available,
         assume that barrier network ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
         :return: Loss for state space (zero if not partitioned)
         """
-        assert torch.all(self.dynamics.state_space(x))
+        assert torch.all(self.dynamics.state_space(partitioning.state_space.center))
 
-        violation = (0 - self.barrier(x)).clamp(min=0)
+        violation = (0 - self.barrier(partitioning.state_space.center)).clamp(min=0)
         return violation.mean()
 
-    def loss_safety_prob(self, x):
+    def loss_safety_prob(self, partitioning):
         """
         gamma + beta * horizon is an upper bound for probability of B(x) >= 1 in horizon steps.
         But we need to account for the fact that we backprop through dynamics in beta, num_samples times.
         :return: Upper bound for (1 - safety probability) adjusted to construct loss.
         """
-        return self.gamma(x) + self.beta(x) * self.horizon
+        return self.gamma(partitioning) + self.beta(partitioning) * self.horizon

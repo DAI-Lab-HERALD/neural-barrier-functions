@@ -27,7 +27,7 @@ def step(learner, optimizer, partitioning, kappa, epoch):
     optimizer.zero_grad(set_to_none=True)
 
     if isinstance(learner, EmpiricalNeuralSBF):
-        loss = learner.loss(partitioning.state_space.center, kappa)
+        loss = learner.loss(partitioning, kappa)
     else:
         loss = learner.loss(partitioning, kappa, method='crown_ibp_linear', violation_normalization_factor=100.0)
 
