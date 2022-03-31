@@ -156,7 +156,7 @@ class BoundPolynomialUpdate(BoundModule):
             beta = self.beta_upper, self.beta_lower
             lower = crown_backward_polynomial_jit(linear_bounds.lower[0], self.module.z, alpha, beta)
 
-            lower = (lower[0], lower[1] + linear_bounds.upper[1])
+            lower = (lower[0], lower[1] + linear_bounds.lower[1])
 
         if linear_bounds.upper is None:
             upper = None
