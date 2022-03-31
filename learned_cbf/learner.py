@@ -1,6 +1,8 @@
 import torch
-from bound_propagation import IntervalBounds, LinearBounds
 from torch import nn
+import torch.nn.functional as F
+
+from bound_propagation import IntervalBounds, LinearBounds
 
 from bounds import bounds
 from learned_cbf.partitioning import Partitions
@@ -91,9 +93,13 @@ class AdversarialNeuralSBF(nn.Module):
             _, upper = bounds(self.barrier_dynamics, partitioning.safe, bound_lower=False, reduce=reduce_mean, **kwargs)
             lower, _ = bounds(self.barrier, partitioning.safe, bound_upper=False, **kwargs)
 
-        beta = (upper - lower / self.alpha).partition_max().clamp(min=0)
-        beta = torch.dot(beta.view(-1), partitioning.safe.volumes) / partitioning.safe.volume
-        return beta
+        beta = (upper - lower / self.alpha).partition_max().view(-1)
+        T = 0.02
+        return torch.dot(F.softmax(beta / T, dim=0), beta.clamp(min=0))
+        # return beta.max()
+        # return beta.sum()
+
+        # return torch.dot(beta.view(-1), partitioning.safe.volumes) / partitioning.safe.volume
 
     def gamma(self, partitioning, **kwargs):
         """
@@ -102,7 +108,7 @@ class AdversarialNeuralSBF(nn.Module):
         assert partitioning.initial is not None
 
         if kwargs.get('method') == 'combined':
-            kwargs['method'] = 'crown_ibp_linear'
+            kwargs['method'] = 'crown_ibp_interval'
 
         # with torch.no_grad():
         #     _, upper = bounds(self.barrier, partitioning.initial, bound_lower=False, **kwargs)
@@ -116,10 +122,13 @@ class AdversarialNeuralSBF(nn.Module):
         #
         # _, upper = bounds(self.barrier, gamma_max_partition, bound_lower=False, **kwargs)
         _, upper = bounds(self.barrier, partitioning.initial, bound_lower=False, **kwargs)
-        gamma = upper.partition_max().clamp(min=0)
-        gamma = torch.dot(gamma.view(-1), partitioning.initial.volumes) / partitioning.initial.volume
+        gamma = upper.partition_max().view(-1)
+        T = 0.02
+        return torch.dot(F.softmax(gamma / T, dim=0), gamma.clamp(min=0))
+        # return gamma.max()
+        # return gamma.sum()
 
-        return gamma
+        # return torch.dot(gamma.view(-1), partitioning.initial.volumes) / partitioning.initial.volume
 
     def loss(self, partitioning, safety_weight=0.5, **kwargs):
         if safety_weight == 1.0:
@@ -148,6 +157,8 @@ class AdversarialNeuralSBF(nn.Module):
 
         lower, _ = bounds(self.barrier, partitioning.unsafe, bound_upper=False, **kwargs)
         violation = (1 - lower).partition_max().clamp(min=0)
+        # return violation.max()
+        # return violation.sum()
 
         return torch.dot(violation.view(-1), partitioning.unsafe.volumes) / partitioning.unsafe.volume
 
@@ -163,8 +174,10 @@ class AdversarialNeuralSBF(nn.Module):
         if partitioning.state_space is not None:
             lower, _ = bounds(self.barrier, partitioning.state_space, bound_upper=False, **kwargs)
             violation = (0 - lower).partition_max().clamp(min=0)
+            # return violation.max()
+            # return violation.sum()
 
-            return torch.dot(violation.view(-1), partitioning.state_space.volumes) / partitioning.state_space.volume
+            return torch.dot(violation.view(-1), partitioning.state_space.volumes) / partitioning.unsafe.volume
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
             return 0.0
@@ -175,7 +188,8 @@ class AdversarialNeuralSBF(nn.Module):
         But we need to account for the fact that we backprop through dynamics in beta, num_samples times.
         :return: Upper bound for (1 - safety probability) adjusted to construct loss.
         """
-        return self.gamma(partitioning, **kwargs) + self.beta(partitioning, **kwargs) * self.horizon
+        loss = self.gamma(partitioning, **kwargs) + self.beta(partitioning, **kwargs) * self.horizon
+        return loss
 
 
 class EmpiricalNeuralSBF(nn.Module):
@@ -212,8 +226,10 @@ class EmpiricalNeuralSBF(nn.Module):
         expectation = self.barrier(self.dynamics(x)).mean(dim=0)
         bx = self.barrier(x)
 
-        beta = (expectation - bx / self.alpha)[:, 0]
-        return beta.max().clamp(min=0)
+        beta = (expectation - bx / self.alpha)[:, 0].view(-1)
+        T = 0.02
+        return torch.dot(F.softmax(beta / T, dim=0), beta.clamp(min=0))
+        # return beta.max()
 
     def gamma(self, x):
         """
@@ -224,8 +240,10 @@ class EmpiricalNeuralSBF(nn.Module):
 
         x = x[self.dynamics.initial(x)]
 
-        gamma = self.barrier(x)[:, 0]
-        return gamma.max().clamp(min=0)
+        gamma = self.barrier(x)[:, 0].view(-1)
+        T = 0.02
+        return torch.dot(F.softmax(gamma / T, dim=0), gamma.clamp(min=0))
+        # return gamma.max()
 
     def loss(self, x, safety_weight=0.5):
         if safety_weight == 1.0:
@@ -252,8 +270,8 @@ class EmpiricalNeuralSBF(nn.Module):
 
         x = x[self.dynamics.unsafe(x)]
 
-        violation = (1 - self.barrier(x)).clamp(min=0).mean()
-        return violation
+        violation = (1 - self.barrier(x)).clamp(min=0)
+        return violation.mean()
 
     def loss_state_space(self, x):
         """
@@ -263,8 +281,8 @@ class EmpiricalNeuralSBF(nn.Module):
         """
         assert torch.all(self.dynamics.state_space(x))
 
-        violation = (0 - self.barrier(x)).clamp(min=0).mean()
-        return violation
+        violation = (0 - self.barrier(x)).clamp(min=0)
+        return violation.mean()
 
     def loss_safety_prob(self, x):
         """
