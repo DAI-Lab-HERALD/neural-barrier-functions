@@ -10,7 +10,6 @@ from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
 from monte_carlo import monte_carlo_simulation
-from .dataset import PopulationDataset
 from .dynamics import Population
 from .partitioning import population_partitioning, plot_partitioning
 from .plot import plot_bounds_2d
@@ -18,6 +17,7 @@ from .plot import plot_bounds_2d
 from learned_cbf.certifier import NeuralSBFCertifier
 from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.networks import FCNNBarrierNetwork
+from learned_cbf.dataset import StochasticSystemDataset
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def train(learner, certifier, args, config):
     logger.info('Starting training')
     test(certifier, config['test'])
 
-    dataset = PopulationDataset(config['training'], learner.dynamics)
+    dataset = StochasticSystemDataset(config['training'], learner.dynamics)
     dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
 
     empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)

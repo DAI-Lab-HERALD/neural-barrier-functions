@@ -19,11 +19,23 @@ class StochasticDynamics(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    def sample_safe(self, num_particles):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     def unsafe(self, x, eps=None):
-        return NotImplementedError()
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def sample_unsafe(self, num_particles):
+        raise NotImplementedError()
 
     @abc.abstractmethod
     def state_space(self, x, eps=None):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def sample_state_space(self, num_particles):
         raise NotImplementedError()
 
     @property

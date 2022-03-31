@@ -228,6 +228,9 @@ class Polynomial(Euler, StochasticDynamics):
 
         return cond1 & cond2 & cond3
 
+    def sample_safe(self, num_particles):
+        raise NotImplementedError()
+
     def unsafe(self, x, eps=None):
         if eps is not None:
             lower_x, upper_x = x - eps, x + eps
@@ -240,6 +243,9 @@ class Polynomial(Euler, StochasticDynamics):
 
         return cond1 | cond2 | cond3
 
+    def sample_unsafe(self, num_particles):
+        raise NotImplementedError()
+
     def state_space(self, x, eps=None):
         if eps is not None:
             lower_x, upper_x = x - eps, x + eps
@@ -248,6 +254,9 @@ class Polynomial(Euler, StochasticDynamics):
 
         return (upper_x[..., 0] >= -3.5) & (lower_x[..., 0] <= 2.0) &\
                (upper_x[..., 1] >= -2.0) & (lower_x[..., 1] <= 1.0)
+
+    def sample_state_space(self, num_particles):
+        raise NotImplementedError()
 
     @property
     def volume(self):

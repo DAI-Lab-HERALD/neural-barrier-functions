@@ -5,16 +5,14 @@ from torch.utils.data import Dataset
 from partitioning import Partitioning
 
 
-class DubinDataset(Dataset):
-    def __init__(self, config, dynamics, adjust_overlap=True):
+class StochasticSystemDataset(Dataset):
+    def __init__(self, config, dynamics):
         self.batch_size = config['batch_size']
         self.iter_per_epoch = config['iter_per_epoch']
         self.eps = torch.tensor(config['eps'])
+        self.adjust_overlap = config['adjust_overlap']
 
         self.dynamics = dynamics
-        self.adjust_overlap = adjust_overlap
-
-        self.dist = torch.distributions.Uniform(torch.tensor([-2.0, -2.0, -np.pi / 2]), torch.tensor([2.0, 2.0, np.pi / 2]))
 
     def __getitem__(self, item):
         valid, partitioning = self.generate()
@@ -54,12 +52,12 @@ class DubinDataset(Dataset):
         )
         return True, partitioning
 
-        # x = self.dist.sample((self.batch_size,))
-        # assert torch.all(self.dynamics.state_space(x))
+        # x = self.dynamics.sample_state_space(num_particles)
         #
-        # initial_mask = self.dynamics.initial(x)
-        # safe_mask = self.dynamics.safe(x)
-        # unsafe_mask = self.dynamics.unsafe(x)
+        # eps = self.eps if self.adjust_overlap else None
+        # initial_mask = self.dynamics.initial(x, eps=eps)
+        # safe_mask = self.dynamics.safe(x, eps=eps)
+        # unsafe_mask = self.dynamics.unsafe(x, eps=eps)
         #
         # if torch.any(initial_mask) and torch.any(safe_mask) and torch.any(unsafe_mask):
         #     lower_x, upper_x = x - self.eps, x + self.eps

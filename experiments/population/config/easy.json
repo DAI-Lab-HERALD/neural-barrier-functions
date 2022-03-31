@@ -8,7 +8,8 @@
     "survival_adult": 0.8,
     "num_samples": 500,
     "horizon": 10,
-    "safe_set": "circle"
+    "safe_set": "circle",
+    "adjust_overlap": true
   },
   "partitioning": {
     "method": "grid",

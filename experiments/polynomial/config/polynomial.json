@@ -5,7 +5,8 @@
     "sigma": 0.1,
     "num_samples": 500,
     "dt": 0.1,
-    "horizon": 10
+    "horizon": 10,
+    "adjust_overlap": true
   },
   "partitioning": {
     "method": "grid",

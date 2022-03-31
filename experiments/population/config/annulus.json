@@ -8,7 +8,8 @@
     "survival_adult": 0.5,
     "num_samples": 500,
     "horizon": 2,
-    "safe_set": "annulus"
+    "safe_set": "annulus",
+    "adjust_overlap": true
   },
   "partitioning": {
     "method": "grid",

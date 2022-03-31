@@ -76,6 +76,18 @@ class Population(nn.Linear, StochasticDynamics):
         else:
             raise ValueError('Invalid safe set for population')
 
+    def sample_safe(self, num_particles):
+        if self.safe_set_type == 'circle':
+            dist = distributions.Uniform(0, 1)
+            r = 2.0 * dist.sample((num_particles,)).sqrt()
+            theta = dist.sample((num_particles,)) * 2 * np.pi
+
+            return torch.stack([r * theta.cos(), r * theta.sin()], dim=-1)
+        elif self.safe_set_type == 'annulus':
+            raise NotImplementedError()
+        else:
+            raise ValueError('Invalid safe set for population')
+
     def unsafe(self, x, eps=None):
         bottom_left, bottom_right, top_left, top_right = self.corners(x, eps)
 
@@ -85,6 +97,12 @@ class Population(nn.Linear, StochasticDynamics):
             return (bottom_left.sum(dim=-1) <= 3.0) | (top_right.sum(dim=-1) >= 6.0)
         else:
             raise ValueError('Invalid safe set for population')
+
+    def sample_unsafe(self, num_particles):
+        x = self.sample_state_space(num_particles * 4)
+        x = x[self.unsafe(x)]
+
+        return x[:num_particles]
 
     def state_space(self, x, eps=None):
         if eps is not None:
@@ -98,6 +116,16 @@ class Population(nn.Linear, StochasticDynamics):
             return (upper_x[..., 0] >= 0) & (lower_x[..., 0] <= 8.0) & (upper_x[..., 1] >= 0) & (lower_x[..., 1] <= 8.0)
         else:
             raise ValueError('Invalid safe set for population')
+
+    def sample_state_space(self, num_particles):
+        if self.dynamics.safe_set_type == 'circle':
+            dist = torch.distributions.Uniform(torch.tensor([-3.0, -3.0]), torch.tensor([3.0, 3.0]))
+        elif self.dynamics.safe_set_type == 'annulus':
+            dist = torch.distributions.Uniform(torch.tensor([0.0, 0.0]), torch.tensor([8.0, 8.0]))
+        else:
+            raise ValueError('Invalid safe set for population')
+
+        return dist.sample((num_particles,))
 
     @property
     def volume(self):
