@@ -8,8 +8,7 @@
     "survival_adult": 0.5,
     "num_samples": 500,
     "horizon": 2,
-    "safe_set": "annulus",
-    "adjust_overlap": true
+    "safe_set": "annulus"
   },
   "partitioning": {
     "method": "grid",
@@ -28,7 +27,8 @@
     "eps": 0.0140625,
     "epochs": 150,
     "empirical_epochs": 20,
-    "test_every": 5
+    "test_every": 5,
+    "adjust_overlap": true
   },
   "test": {
     "ibp_batch_size": 500,

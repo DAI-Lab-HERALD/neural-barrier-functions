@@ -5,8 +5,7 @@
     "sigma": 0.1,
     "num_samples": 500,
     "dt": 0.1,
-    "horizon": 10,
-    "adjust_overlap": true
+    "horizon": 10
   },
   "partitioning": {
     "method": "grid",
@@ -25,7 +24,8 @@
     "eps": [0.0171875, 0.009375],
     "epochs": 150,
     "empirical_epochs": 20,
-    "test_every": 5
+    "test_every": 5,
+    "adjust_overlap": true
   },
   "test": {
     "ibp_batch_size": 2000,
