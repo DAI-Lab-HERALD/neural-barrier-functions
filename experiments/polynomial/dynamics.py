@@ -30,21 +30,12 @@ class PolynomialUpdate(nn.Module):
         x = torch.stack([x1, x2], dim=-1)
         return x
 
+def crown_backward_polynomial_jit(W_tilde: torch.Tensor, z: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    _lambda = torch.where(W_tilde[..., 1] < 0, alpha[0].unsqueeze(-1), alpha[1].unsqueeze(-1))
+    _delta = torch.where(W_tilde[..., 1] < 0, beta[0].unsqueeze(-1), beta[1].unsqueeze(-1))
 
-# @torch.jit.script
-def _delta(W_tilde: torch.Tensor, beta_lower: torch.Tensor, beta_upper: torch.Tensor) -> torch.Tensor:
-    return torch.where(W_tilde < 0, beta_lower.unsqueeze(-1), beta_upper.unsqueeze(-1))
-
-
-# @torch.jit.script
-def _lambda(W_tilde: torch.Tensor, alpha_lower: torch.Tensor, alpha_upper: torch.Tensor) -> torch.Tensor:
-    return torch.where(W_tilde < 0, alpha_lower.unsqueeze(-1), alpha_upper.unsqueeze(-1))
-
-
-# @torch.jit.script
-def crown_backward_polynomial_jit(W_tilde: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-    bias = W_tilde * _delta(W_tilde, *beta)
-    W_tilde = torch.stack([W_tilde * _lambda(W_tilde, *alpha) - W_tilde, -W_tilde], dim=-1)
+    bias = W_tilde[..., 1] * _delta + z.unsqueeze(-1) * W_tilde[..., 0]
+    W_tilde = torch.stack([W_tilde[..., 1] * _lambda - W_tilde[..., 1], W_tilde[..., 0] - W_tilde[..., 1]], dim=-1)
 
     return W_tilde, bias
 
@@ -79,12 +70,9 @@ class BoundPolynomialUpdate(BoundModule):
 
         slope = (upper_act - lower_act) / (upper - lower)
 
-        def add_linear(alpha, beta, mask, a, x, y, a_mask=True):
-            if a_mask:
-                a = a[mask]
-
-            alpha[mask] = a
-            beta[mask] = y[mask] - a * x[mask]
+        def add_linear(alpha, beta, mask, a, x, y):
+            alpha[mask] = a[mask]
+            beta[mask] = y[mask] - a[mask] * x[mask]
 
         ###################
         # Negative regime #
@@ -164,26 +152,17 @@ class BoundPolynomialUpdate(BoundModule):
         else:
             alpha = self.alpha_upper, self.alpha_lower
             beta = self.beta_upper, self.beta_lower
-            lower = crown_backward_polynomial_jit(linear_bounds.lower[0][..., 1], alpha, beta)
+            lower = crown_backward_polynomial_jit(linear_bounds.lower[0], self.module.z, alpha, beta)
 
-            lowerA = linear_bounds.lower[0][..., 0]
-            lower_bias = self.module.z.unsqueeze(-1) * lowerA
-            lowerA = torch.stack([torch.zeros_like(lowerA), lowerA], dim=-1)
-
-            lower = (lower[0] + lowerA, lower[1] + linear_bounds.upper[1] + lower_bias)
+            lower = (lower[0], lower[1] + linear_bounds.upper[1])
 
         if linear_bounds.upper is None:
             upper = None
         else:
             alpha = self.alpha_lower, self.alpha_upper
             beta = self.beta_lower, self.beta_upper
-            upper = crown_backward_polynomial_jit(linear_bounds.upper[0][..., 1], alpha, beta)
-
-            upperA = linear_bounds.upper[0][..., 0]
-            upper_bias = self.module.z.unsqueeze(-1) * upperA
-            upperA = torch.stack([torch.zeros_like(upperA), upperA], dim=-1)
-
-            upper = (upper[0] + upperA, upper[1] + linear_bounds.upper[1] + upper_bias)
+            upper = crown_backward_polynomial_jit(linear_bounds.upper[0], self.module.z, alpha, beta)
+            upper = (upper[0], upper[1] + linear_bounds.upper[1])
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
@@ -331,8 +310,8 @@ def plot_polynomial():
         surf._edgecolors2d = surf._edgecolor3d
 
         # Plot LBP linear bounds
-        y_lower = crown_bounds.lower[0][0, i, 0, 0] * x1 + crown_bounds.lower[0][0, i, 0, 1] * x2 + crown_bounds.lower[1][0, i, 0]
-        y_upper = crown_bounds.upper[0][0, i, 0, 0] * x1 + crown_bounds.upper[0][0, i, 0, 1] * x2 + crown_bounds.upper[1][0, i, 0]
+        y_lower = crown_bounds.lower[0][i, 0, 0] * x1 + crown_bounds.lower[0][i, 0, 1] * x2 + crown_bounds.lower[1][0, i, 0]
+        y_upper = crown_bounds.upper[0][i, 0, 0] * x1 + crown_bounds.upper[0][i, 0, 1] * x2 + crown_bounds.upper[1][0, i, 0]
 
         surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
         surf._facecolors2d = surf._facecolor3d
@@ -394,8 +373,8 @@ def plot_polynomial():
         surf._edgecolors2d = surf._edgecolor3d
 
         # Plot LBP linear bounds
-        y_lower = crown_bounds.lower[0][0, i, 1, 0] * x1 + crown_bounds.lower[0][0, i, 1, 1] * x2 + crown_bounds.lower[1][0, i, 1]
-        y_upper = crown_bounds.upper[0][0, i, 1, 0] * x1 + crown_bounds.upper[0][0, i, 1, 1] * x2 + crown_bounds.upper[1][0, i, 1]
+        y_lower = crown_bounds.lower[0][i, 1, 0] * x1 + crown_bounds.lower[0][i, 1, 1] * x2 + crown_bounds.lower[1][0, i, 1]
+        y_upper = crown_bounds.upper[0][i, 1, 0] * x1 + crown_bounds.upper[0][i, 1, 1] * x2 + crown_bounds.upper[1][0, i, 1]
 
         surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
         surf._facecolors2d = surf._facecolor3d
