@@ -4,7 +4,7 @@ from typing import Tuple
 import numpy as np
 import torch
 from bound_propagation import BoundModule, IntervalBounds, LinearBounds, Cat, HyperRectangle
-from bound_propagation.activation import assert_bound_order, regimes
+from bound_propagation.activation import assert_bound_order, regimes, bisection
 from matplotlib import pyplot as plt
 from torch import nn, distributions
 from torch.distributions import Normal
@@ -18,7 +18,6 @@ class DubinsCarUpdate(nn.Module):
     def __init__(self, dynamics_config):
         super().__init__()
 
-        self.dt = dynamics_config['dt']
         self.velocity = dynamics_config['velocity']
 
         dist = Normal(0.0, torch.tensor(dynamics_config['sigma']))
@@ -34,20 +33,13 @@ class DubinsCarUpdate(nn.Module):
         return x
 
 
-# @torch.jit.script
-def _delta(W_tilde: torch.Tensor, beta_lower: torch.Tensor, beta_upper: torch.Tensor) -> torch.Tensor:
-    return torch.where(W_tilde < 0, beta_lower.unsqueeze(-1), beta_upper.unsqueeze(-1))
+@torch.jit.script
+def crown_backward_dubin_jit(W_tilde: torch.Tensor, z: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    _lambda = torch.where(W_tilde[..., :2] < 0, alpha[0].unsqueeze(-2), alpha[1].unsqueeze(-2))
+    _delta = torch.where(W_tilde[..., :2] < 0, beta[0].unsqueeze(-2), beta[1].unsqueeze(-2))
 
-
-# @torch.jit.script
-def _lambda(W_tilde: torch.Tensor, alpha_lower: torch.Tensor, alpha_upper: torch.Tensor) -> torch.Tensor:
-    return torch.where(W_tilde < 0, alpha_lower.unsqueeze(-1), alpha_upper.unsqueeze(-1))
-
-
-# @torch.jit.script
-def crown_backward_dubin_jit(W_tilde: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-    bias = torch.sum(W_tilde * _delta(W_tilde, *beta), dim=-1)
-    W_tilde = W_tilde * _lambda(W_tilde, *alpha)
+    bias = torch.sum(W_tilde[..., :2] * _delta, dim=-1) + z.unsqueeze(-1) * W_tilde[..., 2]
+    W_tilde = torch.stack([torch.zeros_like(W_tilde[..., 0]), torch.zeros_like(W_tilde[..., 1]), torch.sum(W_tilde[..., :2] * _lambda, dim=-1), W_tilde[..., 2]], dim=-1)
 
     return W_tilde, bias
 
@@ -61,17 +53,19 @@ class BoundDubinsCarUpdate(BoundModule):
         self.bounded = False
 
     def func(self, x):
-        return x**3
+        return torch.stack([self.module.velocity * x.sin(), self.module.velocity * x.cos()], dim=-1)
 
     def derivative(self, x):
-        return 2 * x**2
+        return torch.stack([self.module.velocity * x.cos(), -self.module.velocity * x.sin()], dim=-1)
 
     def alpha_beta(self, preactivation):
-        lower, upper = preactivation.lower[..., 0], preactivation.upper[..., 0]
+        lower, upper = preactivation.lower[..., 2], preactivation.upper[..., 2]
         n, p, np = regimes(lower, upper)
 
-        self.alpha_lower, self.beta_lower = torch.zeros_like(lower), torch.zeros_like(lower)
-        self.alpha_upper, self.beta_upper = torch.zeros_like(lower), torch.zeros_like(lower)
+        zero = torch.zeros_like(lower.unsqueeze(-1).expand(-1, 2))
+
+        self.alpha_lower, self.beta_lower = zero.detach().clone(), zero.detach().clone()
+        self.alpha_upper, self.beta_upper = zero.detach().clone(), zero.detach().clone()
 
         lower_act, upper_act = self.func(lower), self.func(upper)
         lower_prime, upper_prime = self.derivative(lower), self.derivative(upper)
@@ -80,65 +74,117 @@ class BoundDubinsCarUpdate(BoundModule):
         d_act = self.func(d)
         d_prime = self.derivative(d)
 
-        slope = (upper_act - lower_act) / (upper - lower)
+        slope = (upper_act - lower_act) / (upper - lower).unsqueeze(-1)
 
-        def add_linear(alpha, beta, mask, a, x, y, a_mask=True):
+        def add_linear(alpha, beta, mask, order, a, x, y, a_mask=True):
             if a_mask:
-                a = a[mask]
+                a = a[mask, order]
 
-            alpha[mask] = a
-            beta[mask] = y[mask] - a * x[mask]
+            alpha[mask, order] = a
+            beta[mask, order] = y[mask, order] - a * x[mask]
 
-        ###################
-        # Negative regime #
-        ###################
+        #########################
+        # Negative regime - sin #
+        #########################
         # Upper bound
-        # - d = (lower + upper) / 2 for midpoint
-        # - Slope is sigma'(d) and it has to cross through sigma(d)
-        add_linear(self.alpha_upper, self.beta_upper, mask=n, a=d_prime, x=d, y=d_act)
-
-        # Lower bound
         # - Exact slope between lower and upper
-        add_linear(self.alpha_lower, self.beta_lower, mask=n, a=slope, x=lower, y=lower_act)
+        add_linear(self.alpha_upper, self.beta_upper, mask=n, order=0, a=slope, x=lower, y=lower_act)
 
-        ###################
-        # Positive regime #
-        ###################
         # Lower bound
         # - d = (lower + upper) / 2 for midpoint
         # - Slope is sigma'(d) and it has to cross through sigma(d)
-        add_linear(self.alpha_lower, self.beta_lower, mask=p, a=d_prime, x=d, y=d_act)
+        add_linear(self.alpha_lower, self.beta_lower, mask=n, order=0, a=d_prime, x=d, y=d_act)
 
+        #########################
+        # Negative regime - cos #
+        #########################
         # Upper bound
-        # - Exact slope between lower and upper
-        add_linear(self.alpha_upper, self.beta_upper, mask=p, a=slope, x=upper, y=upper_act)
+        # - d = (lower + upper) / 2 for midpoint
+        # - Slope is sigma'(d) and it has to cross through sigma(d)
+        add_linear(self.alpha_upper, self.beta_upper, mask=n, order=1, a=d_prime, x=d, y=d_act)
 
-        #################
-        # Crossing zero #
-        #################
+        # Lower bound
+        # - Exact slope between lower and upper
+        add_linear(self.alpha_lower, self.beta_lower, mask=n, order=1, a=slope, x=lower, y=lower_act)
+
+        #########################
+        # Positive regime - sin #
+        #########################
+        # Upper bound
+        # - d = (lower + upper) / 2 for midpoint
+        # - Slope is sigma'(d) and it has to cross through sigma(d)
+        add_linear(self.alpha_upper, self.beta_upper, mask=p, order=0, a=d_prime, x=d, y=d_act)
+
+        # Lower bound
+        # - Exact slope between lower and upper
+        add_linear(self.alpha_lower, self.beta_lower, mask=p, order=0, a=slope, x=upper, y=upper_act)
+
+        #########################
+        # Positive regime - cos #
+        #########################
+        # Upper bound
+        # - d = (lower + upper) / 2 for midpoint
+        # - Slope is sigma'(d) and it has to cross through sigma(d)
+        add_linear(self.alpha_upper, self.beta_upper, mask=p, order=1, a=d_prime, x=d, y=d_act)
+
+        # Lower bound
+        # - Exact slope between lower and upper
+        add_linear(self.alpha_lower, self.beta_lower, mask=p, order=1, a=slope, x=upper, y=upper_act)
+
+        #######################
+        # Crossing zero - sin #
+        #######################
         # Upper bound #
-        # If tangent to lower is above upper, then take direct slope between lower and upper
-        direct_upper = np & (slope <= lower_prime)
-        add_linear(self.alpha_upper, self.beta_upper, mask=direct_upper, a=slope, x=upper, y=upper_act)
+        # If tangent to upper is below lower, then take direct slope between lower and upper
+        direct_upper = np & (slope <= upper_prime)[..., 0]
+        add_linear(self.alpha_upper, self.beta_upper, mask=direct_upper, order=0, a=slope, x=upper, y=upper_act)
 
         # Else use bisection to find upper bound on slope.
-        implicit_upper = np & (slope > lower_prime)
+        implicit_upper = np & (slope > upper_prime)[..., 0]
 
-        d_lower = 0.5 * (math.sqrt(5) + 1) * upper
-        # Slope has to attach to (upper, upper^3)
-        add_linear(self.alpha_upper, self.beta_upper, mask=implicit_upper, a=self.derivative(d_lower), x=upper, y=upper_act)
+        def f_upper(d: torch.Tensor) -> torch.Tensor:
+            a_slope = (d.sin() - lower[implicit_upper].sin()) / (d - lower[implicit_upper])
+            a_derivative = d.cos()
+            return a_slope - a_derivative
+
+        # Bisection will return left and right bounds for d s.t. f_upper(d) is zero
+        # Derivative of left bound will over-approximate the slope - hence a true bound
+        d_upper, _ = bisection(torch.zeros_like(upper[implicit_upper]), upper[implicit_upper], f_upper)
+
+        # Slope has to attach to (lower, sin(lower))
+        add_linear(self.alpha_upper, self.beta_upper, mask=implicit_upper, order=0, a=d_upper.cos(), x=lower, y=lower_act, a_mask=False)
 
         # Lower bound #
         # If tangent to upper is below lower, then take direct slope between lower and upper
-        direct_lower = np & (slope <= upper_prime)
-        add_linear(self.alpha_lower, self.beta_lower, mask=direct_lower, a=slope, x=lower, y=lower_act)
+        direct_lower = np & (slope <= lower_prime)[..., 0]
+        add_linear(self.alpha_lower, self.beta_lower, mask=direct_lower, order=0, a=slope, x=lower, y=lower_act)
 
         # Else use bisection to find upper bound on slope.
-        implicit_lower = np & (slope > upper_prime)
+        implicit_lower = np & (slope > lower_prime)[..., 0]
 
-        d_upper = 0.5 * (math.sqrt(5) + 1) * lower
-        # Slope has to attach to (upper, sigma(upper))
-        add_linear(self.alpha_lower, self.beta_lower, mask=implicit_lower, a=self.derivative(d_upper), x=lower, y=lower_act)
+        def f_lower(d: torch.Tensor) -> torch.Tensor:
+            a_slope = (upper[implicit_lower].sin() - d.sin()) / (upper[implicit_lower] - d)
+            a_derivative = d.cos()
+            return a_derivative - a_slope
+
+        # Bisection will return left and right bounds for d s.t. f_lower(d) is zero
+        # Derivative of right bound will over-approximate the slope - hence a true bound
+        _, d_lower = bisection(lower[implicit_lower], torch.zeros_like(lower[implicit_lower]), f_lower)
+
+        # Slope has to attach to (upper, sin(upper))
+        add_linear(self.alpha_lower, self.beta_lower, mask=implicit_lower, order=0, a=d_lower.cos(), x=upper, y=upper_act, a_mask=False)
+
+        #######################
+        # Crossing zero - cos #
+        #######################
+        # Upper bound #
+        # - d = (lower + upper) / 2 for midpoint
+        # - Slope is sigma'(d) and it has to cross through sigma(d)
+        add_linear(self.alpha_upper, self.beta_upper, mask=np, order=1, a=d_prime, x=d, y=d_act)
+
+        # Lower bound #
+        # - Exact slope between lower and upper
+        add_linear(self.alpha_lower, self.beta_lower, mask=np, order=1, a=slope, x=lower, y=lower_act)
 
     @property
     def need_relaxation(self):
@@ -161,28 +207,23 @@ class BoundDubinsCarUpdate(BoundModule):
     def crown_backward(self, linear_bounds):
         assert self.bounded
 
-        # NOTE: The order of alpha and beta are deliberately reverse - this is not a mistake!
+        # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!
         if linear_bounds.lower is None:
             lower = None
         else:
             alpha = self.alpha_upper, self.alpha_lower
             beta = self.beta_upper, self.beta_lower
-            lower = crown_backward_dubin_jit(linear_bounds.lower[0][..., 0], alpha, beta)
+            lower = crown_backward_dubin_jit(linear_bounds.lower[0], self.module.z, alpha, beta)
 
-            lowerA = torch.stack([torch.ones_like(lower[0]), lower[0]], dim=-1)
-            lower_bias = linear_bounds.lower[1] + torch.stack([torch.zeros_like(lower[1]), lower[1]], dim=-1)
-            lower = (lowerA, lower_bias)
+            lower = (lower[0], lower[1] + linear_bounds.lower[1])
 
         if linear_bounds.upper is None:
             upper = None
         else:
             alpha = self.alpha_lower, self.alpha_upper
             beta = self.beta_lower, self.beta_upper
-            upper = crown_backward_dubin_jit(linear_bounds.upper[0][..., 0], alpha, beta)
-
-            upperA = torch.stack([torch.ones_like(upper[0]), upper[0]], dim=-1)
-            upper_bias = linear_bounds.upper[1] + torch.stack([torch.zeros_like(upper[1]), upper[1]], dim=-1)
-            upper = (upperA, upper_bias)
+            upper = crown_backward_dubin_jit(linear_bounds.upper[0], self.module.z, alpha, beta)
+            upper = (upper[0], upper[1] + linear_bounds.upper[1])
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
@@ -241,7 +282,7 @@ def plot_dubins_car():
     x_cell_width = (x_space[1] - x_space[0]) / 2
     x_slice_centers = (x_space[:-1] + x_space[1:]) / 2
 
-    phi_space = torch.linspace(-np.pi / 2, np.pi / 2, 4)
+    phi_space = torch.linspace(-np.pi / 2, np.pi / 2, 5)
     phi_cell_width = (phi_space[1] - phi_space[0]) / 2
     phi_slice_centers = (phi_space[:-1] + phi_space[1:]) / 2
 
@@ -253,7 +294,8 @@ def plot_dubins_car():
     cell_centers = torch.cartesian_prod(x_slice_centers, x_slice_centers, phi_slice_centers, u_slice_centers)
 
     ibp_bounds = bound.ibp(HyperRectangle.from_eps(cell_centers, cell_width))
-    # crown_bounds = bound.crown_ibp(HyperRectangle.from_eps(cell_centers, cell_width))
+    crown_bounds = bound.crown_ibp(HyperRectangle.from_eps(cell_centers, cell_width))
+    crown_interval = crown_bounds.concretize()
 
     for i in range(len(ibp_bounds)):
         # X
@@ -276,30 +318,29 @@ def plot_dubins_car():
         surf._facecolors2d = surf._facecolor3d
         surf._edgecolors2d = surf._edgecolor3d
 
-        # # Plot LBP interval bounds
-        # crown_interval = crown_bounds.concretize()
-        # y1, y2 = crown_interval.lower.item(), crown_interval.upper.item()
-        # y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
-        #
-        # surf = ax.plot_surface(x1, x2, y1, color='blue', label='CROWN interval', alpha=0.4)
-        # surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
-        # surf._edgecolors2d = surf._edgecolor3d
-        #
-        # surf = ax.plot_surface(x1, x2, y2, color='blue', alpha=0.4)
-        # surf._facecolors2d = surf._facecolor3d
-        # surf._edgecolors2d = surf._edgecolor3d
-        #
-        # # Plot LBP linear bounds
-        # y_lower = crown_bounds.lower[0][0, 0] * x1 + crown_bounds.lower[0][0, 1] * x2 + crown_bounds.lower[1]
-        # y_upper = crown_bounds.upper[0][0, 0] * x1 + crown_bounds.upper[0][0, 1] * x2 + crown_bounds.upper[1]
-        #
-        # surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
-        # surf._facecolors2d = surf._facecolor3d
-        # surf._edgecolors2d = surf._edgecolor3d
-        #
-        # surf = ax.plot_surface(x1, x2, y_upper, color='green', alpha=0.4, shade=False)
-        # surf._facecolors2d = surf._facecolor3d
-        # surf._edgecolors2d = surf._edgecolor3d
+        # Plot LBP interval bounds
+        y1, y2 = crown_interval.lower[0, i, 0].item(), crown_interval.upper[0, i, 0].item()
+        y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+
+        surf = ax.plot_surface(x1, x2, y1, color='blue', label='CROWN interval', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+        surf._edgecolors2d = surf._edgecolor3d
+
+        surf = ax.plot_surface(x1, x2, y2, color='blue', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        # Plot LBP linear bounds
+        y_lower = crown_bounds.lower[0][i, 0, 0] * x1 + crown_bounds.lower[0][i, 0, 2] * x2 + crown_bounds.lower[1][0, i, 0]
+        y_upper = crown_bounds.upper[0][i, 0, 0] * x1 + crown_bounds.upper[0][i, 0, 2] * x2 + crown_bounds.upper[1][0, i, 0]
+
+        surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        surf = ax.plot_surface(x1, x2, y_upper, color='green', alpha=0.4, shade=False)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
 
         # Plot function
         x1, x2 = ibp_bounds.region.lower[i, [0, 2]], ibp_bounds.region.upper[i, [0, 2]]
@@ -341,30 +382,29 @@ def plot_dubins_car():
         surf._facecolors2d = surf._facecolor3d
         surf._edgecolors2d = surf._edgecolor3d
 
-        # # Plot LBP interval bounds
-        # crown_interval = crown_bounds.concretize()
-        # y1, y2 = crown_interval.lower.item(), crown_interval.upper.item()
-        # y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
-        #
-        # surf = ax.plot_surface(x1, x2, y1, color='blue', label='CROWN interval', alpha=0.4)
-        # surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
-        # surf._edgecolors2d = surf._edgecolor3d
-        #
-        # surf = ax.plot_surface(x1, x2, y2, color='blue', alpha=0.4)
-        # surf._facecolors2d = surf._facecolor3d
-        # surf._edgecolors2d = surf._edgecolor3d
+        # Plot LBP interval bounds
+        y1, y2 = crown_interval.lower[0, i, 1].item(), crown_interval.upper[0, i, 1].item()
+        y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
 
-        # # Plot LBP linear bounds
-        # y_lower = crown_bounds.lower[0][0, 0] * x1 + crown_bounds.lower[0][0, 1] * x2 + crown_bounds.lower[1]
-        # y_upper = crown_bounds.upper[0][0, 0] * x1 + crown_bounds.upper[0][0, 1] * x2 + crown_bounds.upper[1]
-        #
-        # surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
-        # surf._facecolors2d = surf._facecolor3d
-        # surf._edgecolors2d = surf._edgecolor3d
-        #
-        # surf = ax.plot_surface(x1, x2, y_upper, color='green', alpha=0.4, shade=False)
-        # surf._facecolors2d = surf._facecolor3d
-        # surf._edgecolors2d = surf._edgecolor3d
+        surf = ax.plot_surface(x1, x2, y1, color='blue', label='CROWN interval', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+        surf._edgecolors2d = surf._edgecolor3d
+
+        surf = ax.plot_surface(x1, x2, y2, color='blue', alpha=0.4)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        # Plot LBP linear bounds
+        y_lower = crown_bounds.lower[0][i, 1, 1] * x1 + crown_bounds.lower[0][i, 1, 2] * x2 + crown_bounds.lower[1][0, i, 1]
+        y_upper = crown_bounds.upper[0][i, 1, 1] * x1 + crown_bounds.upper[0][i, 1, 2] * x2 + crown_bounds.upper[1][0, i, 1]
+
+        surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
+
+        surf = ax.plot_surface(x1, x2, y_upper, color='green', alpha=0.4, shade=False)
+        surf._facecolors2d = surf._facecolor3d
+        surf._edgecolors2d = surf._edgecolor3d
 
         # Plot function
         x1, x2 = ibp_bounds.region.lower[i, [1, 2]], ibp_bounds.region.upper[i, [1, 2]]
@@ -874,10 +914,10 @@ class DubinsCarStrategyComposition(Euler, StochasticDynamics):
 
 
 if __name__ == '__main__':
-    # plot_dubins_car()
+    plot_dubins_car()
     # plot_dubins_car_fixed_strategy_div()
     # plot_dubins_car_fixed_strategy_x_sin_phi()
-    plot_dubins_car_fixed_strategy_y_cos_phi()
+    # plot_dubins_car_fixed_strategy_y_cos_phi()
 
     # Given that these four shows true bounds and the rest is simple interval arithmetic, I believe IBP for both the
     # dynamics and the fixed strategy.
