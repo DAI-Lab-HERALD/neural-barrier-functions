@@ -12,7 +12,7 @@ from tqdm import trange, tqdm
 from euler import Euler, BoundEuler
 from monte_carlo import monte_carlo_simulation
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, DubinsFixedStrategy, BoundDubinsFixedStrategy, \
-    DubinsCarNoActuation, BoundDubinsCarNoActuation, DubinsCarStrategyComposition
+    DubinsCarNoActuation, BoundDubinsCarNoActuation, DubinsCarStrategyComposition, DubinsCarNNStrategy
 from .partitioning import dubins_car_partitioning
 from .plot import plot_bounds_2d
 
@@ -53,7 +53,7 @@ def test_method(certifier, method, batch_size, kappa=None):
 @torch.no_grad()
 def test(certifier, test_config, kappa=None):
     test_method(certifier, method='ibp', batch_size=test_config['ibp_batch_size'], kappa=kappa)
-    test_method(certifier, method='crown_ibp_linear', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
+    # test_method(certifier, method='crown_ibp_linear', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
     test_method(certifier, method='optimal', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
 
 
@@ -107,7 +107,7 @@ def save(learner, args):
 
 def dubins_car_main(args, config):
     logger.info('Constructing model')
-    dynamics = DubinsCarStrategyComposition(config['dynamics'], DubinsCarNoActuation()).to(args.device)
+    dynamics = DubinsCarStrategyComposition(config['dynamics'], DubinsCarNNStrategy()).to(args.device)
 
     if config['experiment_type'] == 'barrier_function':
         factory = BoundModelFactory()

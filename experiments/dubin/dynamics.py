@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from bound_propagation import BoundModule, IntervalBounds, LinearBounds, Cat, HyperRectangle
 from bound_propagation.activation import assert_bound_order, regimes, bisection
+from bound_propagation.saturation import Clamp
 from matplotlib import pyplot as plt
 from torch import nn, distributions
 from torch.distributions import Normal
@@ -831,6 +832,18 @@ class BoundDubinsCarNoActuation(BoundModule):
         assert in_size == 3
 
         return 1
+
+
+class DubinsCarNNStrategy(nn.Sequential):
+    def __init__(self):
+        super().__init__(
+            nn.Linear(3, 32),
+            nn.Tanh(),
+            nn.Linear(32, 32),
+            nn.Tanh(),
+            nn.Linear(32, 1),
+            Clamp(min=-3.0, max=3.0)
+        )
 
 
 class DubinsCarStrategyComposition(Euler, StochasticDynamics):
