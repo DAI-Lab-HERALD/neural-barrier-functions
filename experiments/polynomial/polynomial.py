@@ -18,7 +18,7 @@ from .plot import plot_bounds_2d
 from learned_cbf.certifier import NeuralSBFCertifier
 from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.networks import FCNNBarrierNetwork
-from learned_cbf.discretization import Euler, BoundEuler
+from learned_cbf.discretization import Euler, BoundEuler, BoundRK4, RK4
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ def step(learner, optimizer, partitioning, kappa, epoch):
     if isinstance(learner, EmpiricalNeuralSBF):
         loss = learner.loss(partitioning, kappa)
     else:
-        loss = learner.loss(partitioning, kappa, method='crown_ibp_linear', violation_normalization_factor=100.0)
+        loss = learner.loss(partitioning, kappa, method='combined', violation_normalization_factor=1.0)
 
     loss.backward()
     torch.nn.utils.clip_grad_norm_(learner.parameters(), 1.0)
@@ -52,7 +52,7 @@ def test_method(certifier, method, batch_size, kappa=None):
 @torch.no_grad()
 def test(certifier, test_config, kappa=None):
     test_method(certifier, method='ibp', batch_size=test_config['ibp_batch_size'], kappa=kappa)
-    test_method(certifier, method='crown_ibp_linear', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
+    # test_method(certifier, method='crown_ibp_linear', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
     test_method(certifier, method='optimal', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
 
 
@@ -111,7 +111,7 @@ def polynomial_main(args, config):
     if config['experiment_type'] == 'barrier_function':
         factory = BoundModelFactory()
         factory.register(PolynomialUpdate, BoundPolynomialUpdate)
-        factory.register(Euler, BoundEuler)
+        factory.register(RK4, BoundRK4)
 
         barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
         partitioning = polynomial_partitioning(config, dynamics).to(args.device)

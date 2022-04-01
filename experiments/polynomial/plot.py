@@ -5,19 +5,16 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
 
 from bounds import bounds
-from learned_cbf.discretization import BoundEuler, Euler
+from learned_cbf.discretization import BoundEuler, Euler, BoundRK4, RK4
 from experiments.polynomial.dynamics import PolynomialUpdate, BoundPolynomialUpdate
 
 
 def bound_propagation(model, lower_x, upper_x, config):
     input_bounds = HyperRectangle(lower_x, upper_x)
 
-    # ibp_bounds = bounds(model, input_bounds, method='ibp', batch_size=config['test']['ibp_batch_size'])
-    # crown_bounds = bounds(model, input_bounds, method='crown_ibp_linear', batch_size=config['test']['crown_ibp_batch_size'])
-
     factory = BoundModelFactory()
     factory.register(PolynomialUpdate, BoundPolynomialUpdate)
-    factory.register(Euler, BoundEuler)
+    factory.register(RK4, BoundRK4)
     model = factory.build(model)
 
     ibp_bounds = model.ibp(input_bounds).cpu()

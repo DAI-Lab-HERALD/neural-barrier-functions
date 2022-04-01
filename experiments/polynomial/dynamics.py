@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from torch import nn
 from torch.distributions import Normal
 
-from learned_cbf.discretization import Euler
+from learned_cbf.discretization import Euler, RK4
 from learned_cbf.dynamics import StochasticDynamics
 from learned_cbf.utils import overlap_circle, overlap_rectangle, overlap_outside_circle, overlap_outside_rectangle
 
@@ -25,7 +25,10 @@ class PolynomialUpdate(nn.Module):
 
     def forward(self, x):
         x1 = x[..., 1] + self.z
-        x2 = (self.x1_cubed(x) - x.sum(dim=-1)).unsqueeze(0).expand_as(x1)
+        x2 = self.x1_cubed(x) - x.sum(dim=-1)
+
+        if x2.dim() != x1.dim():
+            x2 = x2.unsqueeze(0).expand_as(x1)
 
         x = torch.stack([x1, x2], dim=-1)
         return x
@@ -183,8 +186,12 @@ class BoundPolynomialUpdate(BoundModule):
 
         x1_cubed_lower, x1_cubed_upper = self.ibp_forward_x1_cubed(bounds)
 
-        x2_lower = (x1_cubed_lower - bounds.upper.sum(dim=-1)).unsqueeze(0).expand_as(x1_lower)
-        x2_upper = (x1_cubed_upper - bounds.lower.sum(dim=-1)).unsqueeze(0).expand_as(x1_lower)
+        x2_lower = x1_cubed_lower - bounds.upper.sum(dim=-1)
+        x2_upper = x1_cubed_upper - bounds.lower.sum(dim=-1)
+
+        if x2_lower.dim() != x1_lower.dim():
+            x2_lower = x2_lower.unsqueeze(0).expand_as(x1_lower)
+            x2_upper = x2_upper.unsqueeze(0).expand_as(x1_upper)
 
         lower = torch.stack([x1_lower, x2_lower], dim=-1)
         upper = torch.stack([x1_upper, x2_upper], dim=-1)
@@ -196,10 +203,10 @@ class BoundPolynomialUpdate(BoundModule):
         return 2
 
 
-class Polynomial(Euler, StochasticDynamics):
+class Polynomial(RK4, StochasticDynamics):
     def __init__(self, dynamics_config):
         StochasticDynamics.__init__(self, dynamics_config['num_samples'])
-        Euler.__init__(self, PolynomialUpdate(dynamics_config), dynamics_config['dt'])
+        RK4.__init__(self, PolynomialUpdate(dynamics_config), dynamics_config['dt'])
 
     def initial(self, x, eps=None):
         if eps is not None:
