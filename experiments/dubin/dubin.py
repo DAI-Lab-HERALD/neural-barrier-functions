@@ -9,7 +9,6 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
-from euler import Euler, BoundEuler
 from monte_carlo import monte_carlo_simulation
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, DubinsFixedStrategy, BoundDubinsFixedStrategy, \
     DubinsCarNoActuation, BoundDubinsCarNoActuation, DubinsCarStrategyComposition, DubinsCarNNStrategy
@@ -20,6 +19,7 @@ from learned_cbf.certifier import NeuralSBFCertifier
 from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.networks import FCNNBarrierNetwork
 from learned_cbf.dataset import StochasticSystemDataset
+from learned_cbf.discretization import Euler, BoundEuler
 
 logger = logging.getLogger(__name__)
 

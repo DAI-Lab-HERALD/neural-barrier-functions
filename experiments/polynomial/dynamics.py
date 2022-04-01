@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from torch import nn
 from torch.distributions import Normal
 
-from euler import Euler, BoundEuler
+from learned_cbf.discretization import Euler
 from learned_cbf.dynamics import StochasticDynamics
 from learned_cbf.utils import overlap_circle, overlap_rectangle, overlap_outside_circle, overlap_outside_rectangle
 

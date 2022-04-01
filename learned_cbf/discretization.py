@@ -60,4 +60,10 @@ class BoundEuler(BoundModule):
         return IntervalBounds(bounds.region, lower, upper)
 
     def propagate_size(self, in_size):
-        return self.bound_update.propagate_size(in_size)
+        # While we know that in_size and out_size are the same, we need to propagate through bound_update{i} as
+        # they may need to store their in and out sizes.
+        out_size = self.bound_update.propagate_size(in_size)
+
+        assert in_size == out_size
+
+        return out_size

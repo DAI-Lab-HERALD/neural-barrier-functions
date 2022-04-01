@@ -5,7 +5,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
 
 from bounds import bounds
-from euler import BoundEuler, Euler
+from learned_cbf.discretization import BoundEuler, Euler
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, BoundDubinsFixedStrategy, \
     DubinsFixedStrategy, DubinsCarNoActuation, BoundDubinsCarNoActuation
 

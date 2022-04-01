@@ -9,7 +9,6 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
-from euler import BoundEuler, Euler
 from monte_carlo import monte_carlo_simulation
 from .dataset import PolynomialDataset
 from .dynamics import Polynomial, PolynomialUpdate, BoundPolynomialUpdate
@@ -19,6 +18,7 @@ from .plot import plot_bounds_2d
 from learned_cbf.certifier import NeuralSBFCertifier
 from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.networks import FCNNBarrierNetwork
+from learned_cbf.discretization import Euler, BoundEuler
 
 logger = logging.getLogger(__name__)
 
