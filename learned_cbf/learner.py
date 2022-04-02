@@ -4,8 +4,7 @@ import torch.nn.functional as F
 
 from bound_propagation import IntervalBounds, LinearBounds
 
-from bounds import bounds
-from learned_cbf.partitioning import Partitions
+from .bounds import bounds
 
 
 class AdversarialNeuralSBF(nn.Module):
@@ -18,18 +17,7 @@ class AdversarialNeuralSBF(nn.Module):
 
         self.horizon = horizon
 
-        # self.rho = nn.Parameter(torch.empty((1,)))
-
         # TODO: Sample from state space (place on partitioning) and assert output is 1-D
-
-    @property
-    def alpha(self):
-        """
-        Parameterize alpha by rho to allow constraint free optimization.
-        TODO: Change parameterization to allow [1, infty]
-        :return: alpha = 1
-        """
-        return 1.0  # + F.softplus(self.rho)
 
     def beta(self, partitioning, **kwargs):
         """
@@ -59,7 +47,7 @@ class AdversarialNeuralSBF(nn.Module):
             #     _, upper = bounds(self.barrier_dynamics, partitioning.safe, bound_lower=False, method='crown_ibp_interval', reduce=reduce_mean, **kwargs)
             #     lower, _ = bounds(self.barrier, partitioning.safe, bound_upper=False, method='ibp', **kwargs)
             #
-            #     expectation_no_beta = (upper.mean(dim=0) - lower / self.alpha).partition_max().clamp(min=0)
+            #     expectation_no_beta = (upper.mean(dim=0) - lower).partition_max()
             #     idx = expectation_no_beta.argmax()
             #
             #     beta_max_partition = partitioning.safe[idx]
@@ -78,7 +66,7 @@ class AdversarialNeuralSBF(nn.Module):
             #     _, upper = bounds(self.barrier_dynamics, partitioning.safe, bound_lower=False, reduce=reduce_mean, **kwargs)
             #     lower, _ = bounds(self.barrier, partitioning.safe, bound_upper=False, **kwargs)
             #
-            #     expectation_no_beta = (upper - lower / self.alpha).partition_max().clamp(min=0)
+            #     expectation_no_beta = (upper - lower).partition_max()
             #     idx = expectation_no_beta.argmax()
             #
             #     beta_max_partition = partitioning.safe[idx]
@@ -93,13 +81,12 @@ class AdversarialNeuralSBF(nn.Module):
             _, upper = bounds(self.barrier_dynamics, partitioning.safe, bound_lower=False, reduce=reduce_mean, **kwargs)
             lower, _ = bounds(self.barrier, partitioning.safe, bound_upper=False, **kwargs)
 
-        beta = (upper - lower / self.alpha).partition_max().view(-1)
+        beta = (upper - lower).partition_max().view(-1)
         T = 0.02
         return torch.dot(F.softmax(beta / T, dim=0), beta.clamp(min=0))
-        # return beta.max()
-        # return beta.sum()
+        # return beta.clamp(min=0).max()
 
-        # return torch.dot(beta.view(-1), partitioning.safe.volumes) / partitioning.safe.volume
+        # return torch.dot(beta.clamp(min=0).view(-1), partitioning.safe.volumes) / partitioning.safe.volume
 
     def gamma(self, partitioning, **kwargs):
         """
@@ -125,10 +112,9 @@ class AdversarialNeuralSBF(nn.Module):
         gamma = upper.partition_max().view(-1)
         T = 0.02
         return torch.dot(F.softmax(gamma / T, dim=0), gamma.clamp(min=0))
-        # return gamma.max()
-        # return gamma.sum()
+        # return gamma.clamp(min=0).max()
 
-        # return torch.dot(gamma.view(-1), partitioning.initial.volumes) / partitioning.initial.volume
+        # return torch.dot(gamma.clamp(min=0).view(-1), partitioning.initial.volumes) / partitioning.initial.volume
 
     def loss(self, partitioning, safety_weight=0.5, **kwargs):
         if safety_weight == 1.0:
@@ -201,18 +187,7 @@ class EmpiricalNeuralSBF(nn.Module):
 
         self.horizon = horizon
 
-        # self.rho = nn.Parameter(torch.empty((1,)))
-
         # TODO: Sample from state space (place on partitioning) and assert output is 1-D
-
-    @property
-    def alpha(self):
-        """
-        Parameterize alpha by rho to allow constraint free optimization.
-        TODO: Change parameterization to allow [1, infty]
-        :return: alpha = 1
-        """
-        return 1.0  # + F.softplus(self.rho)
 
     def beta(self, partitioning):
         """
@@ -226,10 +201,10 @@ class EmpiricalNeuralSBF(nn.Module):
         expectation = self.barrier(self.dynamics(x)).mean(dim=0)
         bx = self.barrier(x)
 
-        beta = (expectation - bx / self.alpha)[:, 0].view(-1)
+        beta = (expectation - bx).view(-1)
         T = 0.02
         return torch.dot(F.softmax(beta / T, dim=0), beta.clamp(min=0))
-        # return beta.max()
+        # return beta.clamp(min=0).max()
 
     def gamma(self, partitioning):
         """
@@ -240,10 +215,10 @@ class EmpiricalNeuralSBF(nn.Module):
 
         x = partitioning.initial.center
 
-        gamma = self.barrier(x)[:, 0].view(-1)
+        gamma = self.barrier(x).view(-1)
         T = 0.02
         return torch.dot(F.softmax(gamma / T, dim=0), gamma.clamp(min=0))
-        # return gamma.max()
+        # return gamma.clamp(min=0).max()
 
     def loss(self, partitioning, safety_weight=0.5):
         if safety_weight == 1.0:
