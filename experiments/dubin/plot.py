@@ -5,7 +5,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
 
 from bounds import bounds
-from learned_cbf.discretization import BoundEuler, Euler
+from learned_cbf.discretization import BoundEuler, Euler, RK4, BoundRK4
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, BoundDubinsFixedStrategy, \
     DubinsFixedStrategy, DubinsCarNoActuation, BoundDubinsCarNoActuation
 
@@ -20,7 +20,7 @@ def bound_propagation(model, lower_x, upper_x, config):
     factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
     factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
     factory.register(DubinsCarNoActuation, BoundDubinsCarNoActuation)
-    factory.register(Euler, BoundEuler)
+    factory.register(RK4, BoundRK4)
     model = factory.build(model)
 
     ibp_bounds = model.ibp(input_bounds).cpu()

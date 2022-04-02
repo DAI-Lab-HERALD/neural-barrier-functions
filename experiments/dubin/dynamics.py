@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from torch import nn, distributions
 from torch.distributions import Normal
 
-from learned_cbf.discretization import Euler
+from learned_cbf.discretization import Euler, RK4
 from learned_cbf.dynamics import StochasticDynamics
 from learned_cbf.utils import overlap_circle, overlap_rectangle, overlap_outside_circle
 
@@ -30,7 +30,11 @@ class DubinsCarUpdate(nn.Module):
         # x[..., 3] = u, i.e. the control. We assume it's concatenated on the last dimension
         x3 = x[..., 3] + self.z
 
-        x = torch.stack([x1.unsqueeze(0).expand_as(x3), x2.unsqueeze(0).expand_as(x3), x3], dim=-1)
+        if x1.dim() != x3.dim():
+            x1 = x1.unsqueeze(0).expand_as(x3)
+            x2 = x2.unsqueeze(0).expand_as(x3)
+
+        x = torch.stack([x1, x2, x3], dim=-1)
         return x
 
 
@@ -63,7 +67,7 @@ class BoundDubinsCarUpdate(BoundModule):
         lower, upper = preactivation.lower[..., 2], preactivation.upper[..., 2]
         n, p, np = regimes(lower, upper)
 
-        zero = torch.zeros_like(lower.unsqueeze(-1).expand(-1, 2))
+        zero = torch.zeros_like(lower.unsqueeze(-1).expand(*lower.size(), 2))
 
         self.alpha_lower, self.beta_lower = zero.detach().clone(), zero.detach().clone()
         self.alpha_upper, self.beta_upper = zero.detach().clone(), zero.detach().clone()
@@ -79,10 +83,10 @@ class BoundDubinsCarUpdate(BoundModule):
 
         def add_linear(alpha, beta, mask, order, a, x, y, a_mask=True):
             if a_mask:
-                a = a[mask, order]
+                a = a[mask][..., order]
 
-            alpha[mask, order] = a
-            beta[mask, order] = y[mask, order] - a * x[mask]
+            alpha[mask][..., order] = a
+            beta[mask][..., order] = y[mask][..., order] - a * x[mask]
 
         #########################
         # Negative regime - sin #
@@ -261,8 +265,14 @@ class BoundDubinsCarUpdate(BoundModule):
         x2_lower, x2_upper = self.ibp_y_cos_phi(bounds)
         x3_lower, x3_upper = self.ibp_control(bounds)
 
-        lower = torch.stack([x1_lower.unsqueeze(0).expand_as(x3_lower), x2_lower.unsqueeze(0).expand_as(x3_lower), x3_lower], dim=-1)
-        upper = torch.stack([x1_upper.unsqueeze(0).expand_as(x3_upper), x2_upper.unsqueeze(0).expand_as(x3_upper), x3_upper], dim=-1)
+        if x1_lower.dim() != x3_lower.dim():
+            x1_lower = x1_lower.unsqueeze(0).expand_as(x3_lower)
+            x1_upper = x1_upper.unsqueeze(0).expand_as(x3_upper)
+            x2_lower = x2_lower.unsqueeze(0).expand_as(x3_lower)
+            x2_upper = x2_upper.unsqueeze(0).expand_as(x3_upper)
+
+        lower = torch.stack([x1_lower, x2_lower, x3_lower], dim=-1)
+        upper = torch.stack([x1_upper, x2_upper, x3_upper], dim=-1)
         return IntervalBounds(bounds.region, lower, upper)
 
     def propagate_size(self, in_size):
@@ -846,14 +856,14 @@ class DubinsCarNNStrategy(nn.Sequential):
         )
 
 
-class DubinsCarStrategyComposition(Euler, StochasticDynamics):
+class DubinsCarStrategyComposition(RK4, StochasticDynamics):
     def __init__(self, dynamics_config, strategy=None):
         StochasticDynamics.__init__(self, dynamics_config['num_samples'])
 
         if strategy is None:
             strategy = DubinsCarNoActuation()
 
-        Euler.__init__(self,
+        RK4.__init__(self,
             nn.Sequential(
                 Cat(strategy),
                 DubinsCarUpdate(dynamics_config)
