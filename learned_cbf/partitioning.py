@@ -7,6 +7,7 @@ from torch.utils.data import Dataset, DataLoader, Sampler
 
 
 class Partitions(nn.Module):
+    # This is nn.Module to allow ".to(device)"
     def __init__(self, bounds):
         super().__init__()
 
