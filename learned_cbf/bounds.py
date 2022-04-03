@@ -43,6 +43,20 @@ class Affine:
 
         return max
 
+    def partition_min(self):
+        if isinstance(self.A, float):
+            assert self.A == 0.0
+            return self.b
+
+        center, diff = self.center, self.width / 2
+        center, diff = center.unsqueeze(-2), diff.unsqueeze(-2)
+
+        weight = self.A.transpose(-1, -2)
+        min = center.matmul(weight) - diff.matmul(weight.abs())
+        min = min.squeeze(-2) + self.b
+
+        return min
+
     def mean(self, dim=None):
         A = 0.0 if isinstance(self.A, float) else self.A.mean(dim=dim)
         b = self.b.mean(dim=dim)
