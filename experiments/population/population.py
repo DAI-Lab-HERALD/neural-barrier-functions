@@ -14,7 +14,7 @@ from .dynamics import Population
 from .partitioning import population_partitioning, plot_partitioning
 from .plot import plot_bounds_2d
 
-from learned_cbf.certifier import NeuralSBFCertifier
+from learned_cbf.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifier
 from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.networks import FCNNBarrierNetwork
 from learned_cbf.dataset import StochasticSystemDataset
@@ -112,7 +112,7 @@ def population_main(args, config):
         barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
         partitioning = population_partitioning(config, dynamics).to(args.device)
         learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
-        certifier = NeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
+        certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
         # learner.load_state_dict(torch.load(args.save_path))
 
