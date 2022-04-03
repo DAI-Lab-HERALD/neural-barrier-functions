@@ -24,19 +24,6 @@ class NeuralSBFCertifier(nn.Module):
         self.horizon = horizon
         self.certification_threshold = certification_threshold
 
-        # self.rho = nn.Parameter(torch.empty((1,)))
-
-        # TODO: Sample from state space (place on partitioning) and assert output is 1-D
-
-    @property
-    def alpha(self):
-        """
-        Parameterize alpha by rho to allow constraint free optimization.
-        TODO: Change parameterization to allow [1, infty]
-        :return: alpha = 1
-        """
-        return 1.0  # + F.softplus(self.rho)
-
     @torch.no_grad()
     def beta(self, **kwargs):
         """
@@ -69,17 +56,17 @@ class NeuralSBFCertifier(nn.Module):
             lower_ibp, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, method='ibp', **kwargs)
             lower_crown, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, method='crown_ibp_linear', **kwargs)
 
-            beta_ibp_ibp = (upper_ibp - lower_ibp / self.alpha).partition_max().max().clamp(min=0)
-            beta_ibp_crown = (upper_ibp - lower_crown / self.alpha).partition_max().max().clamp(min=0)
-            beta_crown_ibp = (upper_crown - lower_ibp / self.alpha).partition_max().max().clamp(min=0)
-            beta_crown_crown = (upper_crown - lower_crown / self.alpha).partition_max().max().clamp(min=0)
+            beta_ibp_ibp = (upper_ibp - lower_ibp).partition_max().max().clamp(min=0)
+            beta_ibp_crown = (upper_ibp - lower_crown).partition_max().max().clamp(min=0)
+            beta_crown_ibp = (upper_crown - lower_ibp).partition_max().max().clamp(min=0)
+            beta_crown_crown = (upper_crown - lower_crown).partition_max().max().clamp(min=0)
 
             beta = torch.min(torch.stack([beta_ibp_ibp, beta_ibp_crown, beta_crown_ibp, beta_crown_crown]))
         else:
             _, upper = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, reduce=reduce_mean, **kwargs)
             lower, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, **kwargs)
 
-            beta = (upper - lower / self.alpha).partition_max().max().clamp(min=0)
+            beta = (upper - lower).partition_max().max().clamp(min=0)
 
         return beta
 
