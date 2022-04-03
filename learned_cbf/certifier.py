@@ -105,20 +105,7 @@ class NeuralSBFCertifier(nn.Module):
         """
         assert self.partitioning.unsafe is not None
 
-        if kwargs.get('method') == 'optimal':
-            kwargs.pop('method')
-            lower, _ = bounds(self.barrier, self.partitioning.unsafe, bound_upper=False, method='ibp', **kwargs)
-            violation_ibp = (1 - lower).partition_max().clamp(min=0)
-
-            lower, _ = bounds(self.barrier, self.partitioning.unsafe, bound_upper=False, method='crown_ibp_interval', **kwargs)
-            violation_crown = (1 - lower).partition_max().clamp(min=0)
-
-            violation = torch.min(violation_ibp, violation_crown)
-        else:
-            lower, _ = bounds(self.barrier, self.partitioning.unsafe, bound_upper=False, **kwargs)
-            violation = (1 - lower).partition_max().clamp(min=0)
-
-        return torch.dot(violation.view(-1), self.partitioning.unsafe.volumes) / self.partitioning.unsafe.volume
+        return self.violation(self.partitioning.unsafe, 1, self.partitioning.unsafe.volumes, **kwargs)
 
     @torch.no_grad()
     def state_space_violation(self, **kwargs):
@@ -128,23 +115,27 @@ class NeuralSBFCertifier(nn.Module):
         :return: Loss for state space (zero if not partitioned)
         """
         if self.partitioning.state_space is not None:
-            if kwargs.get('method') == 'optimal':
-                kwargs.pop('method')
-                lower, _ = bounds(self.barrier, self.partitioning.state_space, bound_upper=False, method='ibp', **kwargs)
-                violation_ibp = (0 - lower).partition_max().clamp(min=0)
-
-                lower, _ = bounds(self.barrier, self.partitioning.state_space, bound_upper=False, method='crown_ibp_interval', **kwargs)
-                violation_crown = (0 - lower).partition_max().clamp(min=0)
-
-                violation = torch.min(violation_ibp, violation_crown)
-            else:
-                lower, _ = bounds(self.barrier, self.partitioning.state_space, bound_upper=False, **kwargs)
-                violation = (0 - lower).partition_max().clamp(min=0)
-
-            return torch.dot(violation.view(-1), self.partitioning.state_space.volumes) / self.partitioning.state_space.volume
+            return self.violation(self.partitioning.state_space, 0, self.partitioning.state_space.volumes, **kwargs)
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
             return 0.0
+
+    @torch.no_grad()
+    def violation(self, set, lower_bound, volumes, **kwargs):
+        if kwargs.get('method') == 'optimal':
+            kwargs.pop('method')
+            lower, _ = bounds(self.barrier, set, bound_upper=False, method='ibp', **kwargs)
+            violation_ibp = (lower_bound - lower).partition_max().clamp(min=0)
+
+            lower, _ = bounds(self.barrier, set, bound_upper=False, method='crown_ibp_interval', **kwargs)
+            violation_crown = (lower_bound - lower).partition_max().clamp(min=0)
+
+            violation = torch.min(violation_ibp, violation_crown)
+        else:
+            lower, _ = bounds(self.barrier, set, bound_upper=False, **kwargs)
+            violation = (lower_bound - lower).partition_max().clamp(min=0)
+
+        return torch.dot(violation.view(-1), volumes) / volumes.sum()
 
     @torch.no_grad()
     def unsafety_prob(self, return_beta_gamma=False, **kwargs):
