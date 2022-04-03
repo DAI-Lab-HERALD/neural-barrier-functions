@@ -85,6 +85,6 @@ def population_partitioning(config, dynamics):
         (lower_x, upper_x)
     )
 
-    plot_partitioning(partitioning, safe_set_type)
+    # plot_partitioning(partitioning, safe_set_type)
 
     return partitioning

@@ -5,14 +5,14 @@
     "sigma": 0.1,
     "fertility_rate": 0.2,
     "survival_juvenile": 0.6,
-    "survival_adult": 0.9,
+    "survival_adult": 0.8,
     "num_samples": 500,
-    "horizon": 2,
+    "horizon": 10,
     "safe_set": "circle"
   },
   "partitioning": {
     "method": "grid",
-    "num_slices": [640, 640]
+    "num_slices": [320, 320]
   },
   "model": {
     "type": "fcnn",
@@ -24,7 +24,7 @@
   "training": {
     "batch_size": 1000,
     "iter_per_epoch": 400,
-    "eps": 0.009375,
+    "eps": 0.01875,
     "epochs": 150,
     "empirical_epochs": 20,
     "test_every": 5,

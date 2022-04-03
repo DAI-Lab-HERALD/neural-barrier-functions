@@ -118,9 +118,9 @@ class Population(nn.Linear, StochasticDynamics):
             raise ValueError('Invalid safe set for population')
 
     def sample_state_space(self, num_particles):
-        if self.dynamics.safe_set_type == 'circle':
+        if self.safe_set_type == 'circle':
             dist = torch.distributions.Uniform(torch.tensor([-3.0, -3.0]), torch.tensor([3.0, 3.0]))
-        elif self.dynamics.safe_set_type == 'annulus':
+        elif self.safe_set_type == 'annulus':
             dist = torch.distributions.Uniform(torch.tensor([0.0, 0.0]), torch.tensor([8.0, 8.0]))
         else:
             raise ValueError('Invalid safe set for population')

@@ -22,9 +22,9 @@
     "activation": "relu"
   },
   "training": {
-    "batch_size": 200,
+    "batch_size": 1000,
     "iter_per_epoch": 400,
-    "eps": 0.01875,
+    "eps": 0.0375,
     "epochs": 150,
     "empirical_epochs": 20,
     "test_every": 5,
