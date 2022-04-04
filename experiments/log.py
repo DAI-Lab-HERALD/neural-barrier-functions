@@ -48,6 +48,11 @@ LOGGING_CONFIG = {
             'handlers': ['default'],
             'level': 'DEBUG',
             'propagate': False
+        },
+        'learned_cbf.certifier': {  # certifier logger
+            'handlers': ['default'],
+            'level': 'DEBUG',
+            'propagate': False
         }
     }
 }

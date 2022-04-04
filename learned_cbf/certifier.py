@@ -1,9 +1,14 @@
+import logging
+
 import torch
 from bound_propagation import IntervalBounds, LinearBounds
 from torch import nn
 
 from bounds import bounds
 from learned_cbf.partitioning import Partitions
+
+
+logger = logging.getLogger(__name__)
 
 
 def reduce_mean(bounds):
@@ -196,6 +201,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
         while not self.should_stop_beta_gamma(set, min, max, last_gap):
             last_gap = (max - min).max().item()
+            logger.debug(f'[BETA] Gap: {last_gap}, set size: {len(set)}, upper bound: {max.max().item()}')
 
             set = self.prune_beta_gamma(set, min, max)
             set = self.split_beta(set, **kwargs)
@@ -282,6 +288,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
         while not self.should_stop_beta_gamma(set, min, max, last_gap):
             last_gap = (max - min).max().item()
+            logger.debug(f'[GAMMA] Gap: {last_gap}, set size: {len(set)}, upper bound: {max.max().item()}')
 
             set = self.prune_beta_gamma(set, min, max)
             set = self.split(set, **kwargs)
@@ -322,7 +329,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         :return: Loss for unsafe set
         """
         assert self.initial_partitioning.unsafe is not None
-        return self.violation(self.initial_partitioning.unsafe, 1, self.dynamics.unsafe, **kwargs)
+        return self.violation('UNSAFE', self.initial_partitioning.unsafe, 1, self.dynamics.unsafe, **kwargs)
 
     @torch.no_grad()
     def state_space_violation(self, **kwargs):
@@ -332,18 +339,19 @@ class SplittingNeuralSBFCertifier(nn.Module):
         :return: Loss for state space (zero if not partitioned)
         """
         if self.initial_partitioning.state_space is not None:
-            return self.violation(self.initial_partitioning.state_space, 0, self.dynamics.state_space, **kwargs)
+            return self.violation('STATE_SPACE', self.initial_partitioning.state_space, 0, self.dynamics.state_space, **kwargs)
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
             return 0.0
 
     @torch.no_grad()
-    def violation(self, set, lower_bound, contain_func, **kwargs):
+    def violation(self, label, set, lower_bound, contain_func, **kwargs):
         min, max = self.min_max(set, **kwargs)
         last_gap = torch.finfo(min.dtype).max
 
         while not self.should_stop_violation(set, min, max, lower_bound, last_gap):
             last_gap = (max - min).max().item()
+            logger.debug(f'[{label}] Gap: {last_gap}, set size: {len(set)}, lower bound: {min.min().item()}')
 
             set = self.prune_violation(set, min, max, lower_bound)
             set = self.split(set, **kwargs)
