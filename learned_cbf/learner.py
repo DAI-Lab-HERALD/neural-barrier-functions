@@ -82,7 +82,7 @@ class AdversarialNeuralSBF(nn.Module):
             lower, _ = bounds(self.barrier, partitioning.safe, bound_upper=False, **kwargs)
 
         beta = (upper - lower).partition_max().view(-1)
-        T = 0.02
+        T = 0.005
         return torch.dot(F.softmax(beta / T, dim=0), beta.clamp(min=0))
         # return beta.clamp(min=0).max()
 
@@ -110,7 +110,7 @@ class AdversarialNeuralSBF(nn.Module):
         # _, upper = bounds(self.barrier, gamma_max_partition, bound_lower=False, **kwargs)
         _, upper = bounds(self.barrier, partitioning.initial, bound_lower=False, **kwargs)
         gamma = upper.partition_max().view(-1)
-        T = 0.02
+        T = 0.005
         return torch.dot(F.softmax(gamma / T, dim=0), gamma.clamp(min=0))
         # return gamma.clamp(min=0).max()
 
@@ -202,7 +202,7 @@ class EmpiricalNeuralSBF(nn.Module):
         bx = self.barrier(x)
 
         beta = (expectation - bx).view(-1)
-        T = 0.02
+        T = 0.005
         return torch.dot(F.softmax(beta / T, dim=0), beta.clamp(min=0))
         # return beta.clamp(min=0).max()
 
@@ -216,7 +216,7 @@ class EmpiricalNeuralSBF(nn.Module):
         x = partitioning.initial.center
 
         gamma = self.barrier(x).view(-1)
-        T = 0.02
+        T = 0.005
         return torch.dot(F.softmax(gamma / T, dim=0), gamma.clamp(min=0))
         # return gamma.clamp(min=0).max()
 
