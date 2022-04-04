@@ -203,7 +203,11 @@ class SplittingNeuralSBFCertifier(nn.Module):
             last_gap = (max - min).max().item()
             logger.debug(f'[BETA] Gap: {last_gap}, set size: {len(set)}, upper bound: {max.max().item()}')
 
-            set = self.prune_beta_gamma(set, min, max)
+            set, prune_all = self.prune_beta_gamma(set, min, max)
+
+            if prune_all:
+                break
+
             set = self.split_beta(set, **kwargs)
             set = self.region_prune(set, self.dynamics.safe)
 
@@ -290,7 +294,11 @@ class SplittingNeuralSBFCertifier(nn.Module):
             last_gap = (max - min).max().item()
             logger.debug(f'[GAMMA] Gap: {last_gap}, set size: {len(set)}, upper bound: {max.max().item()}')
 
-            set = self.prune_beta_gamma(set, min, max)
+            set, prune_all = self.prune_beta_gamma(set, min, max)
+
+            if prune_all:
+                break
+
             set = self.split(set, **kwargs)
             set = self.region_prune(set, self.dynamics.initial)
 
@@ -305,9 +313,9 @@ class SplittingNeuralSBFCertifier(nn.Module):
         keep = ~prune
 
         if torch.all(prune):
-            keep[max.argmax()] = True
+            return set, True
 
-        return Partitions((set.lower[keep], set.upper[keep]))
+        return Partitions((set.lower[keep], set.upper[keep])), False
 
     def should_stop_beta_gamma(self, set, min, max, last_gap):
         gap = (max - min).max().item()
@@ -353,7 +361,11 @@ class SplittingNeuralSBFCertifier(nn.Module):
             last_gap = (max - min).max().item()
             logger.debug(f'[{label}] Gap: {last_gap}, set size: {len(set)}, lower bound: {min.min().item()}')
 
-            set = self.prune_violation(set, min, max, lower_bound)
+            set, prune_all = self.prune_violation(set, min, max, lower_bound)
+
+            if prune_all:
+                break
+
             set = self.split(set, **kwargs)
             set = self.region_prune(set, contain_func)
 
@@ -388,9 +400,9 @@ class SplittingNeuralSBFCertifier(nn.Module):
         keep = ~prune
 
         if torch.all(prune):
-            keep[max.argmax()] = True
+            return set, True
 
-        return Partitions((set.lower[keep], set.upper[keep]))
+        return Partitions((set.lower[keep], set.upper[keep])), False
 
     def split(self, set, **kwargs):
         kwargs.pop('method', None)
