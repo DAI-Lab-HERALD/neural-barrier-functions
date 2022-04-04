@@ -92,7 +92,7 @@ class Population(nn.Linear, StochasticDynamics):
         bottom_left, bottom_right, top_left, top_right = self.corners(x, eps)
 
         if self.safe_set_type == 'circle':
-            return bottom_left.norm(dim=-1) >= 2.0
+            return top_right.norm(dim=-1) >= 2.0
         elif self.safe_set_type == 'annulus':
             return (bottom_left.sum(dim=-1) <= 3.0) | (top_right.sum(dim=-1) >= 6.0)
         else:
