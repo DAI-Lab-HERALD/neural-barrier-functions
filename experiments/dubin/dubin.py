@@ -15,7 +15,7 @@ from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, DubinsFixedStrategy
 from .partitioning import dubins_car_partitioning
 from .plot import plot_bounds_2d
 
-from learned_cbf.certifier import NeuralSBFCertifier
+from learned_cbf.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifier
 from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.networks import FCNNBarrierNetwork
 from learned_cbf.dataset import StochasticSystemDataset
@@ -85,7 +85,7 @@ def train(learner, certifier, args, config):
             test(certifier, config['test'], kappa)
 
         scheduler.step()
-        kappa *= 0.95
+        kappa *= 0.97
 
     while not certifier.certify(method='ibp', batch_size=config['test']['ibp_batch_size']):
         logger.info(f'Current violation: {certifier.barrier_violation(method="ibp", batch_size=config["test"]["ibp_batch_size"])}')
@@ -107,7 +107,7 @@ def save(learner, args):
 
 def dubins_car_main(args, config):
     logger.info('Constructing model')
-    dynamics = DubinsCarStrategyComposition(config['dynamics'], DubinsCarNNStrategy()).to(args.device)
+    dynamics = DubinsCarStrategyComposition(config['dynamics'], DubinsCarNoActuation()).to(args.device)
 
     if config['experiment_type'] == 'barrier_function':
         factory = BoundModelFactory()
@@ -119,7 +119,7 @@ def dubins_car_main(args, config):
         barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
         partitioning = dubins_car_partitioning(config, dynamics).to(args.device)
         learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
-        certifier = NeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
+        certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
         # learner.load_state_dict(torch.load(args.save_path))
 
