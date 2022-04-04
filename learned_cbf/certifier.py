@@ -166,8 +166,8 @@ class NeuralSBFCertifier(nn.Module):
 
 class SplittingNeuralSBFCertifier(nn.Module):
     def __init__(self, barrier, dynamics, factory, partitioning, horizon,
-                 certification_threshold=1.0e-10, split_gap_stop_treshold=1e-10,
-                 max_set_size=10000, prune_epsilon=1e-8):
+                 certification_threshold=1.0e-10, split_gap_stop_treshold=1e-8,
+                 max_set_size=10000):
         super().__init__()
 
         self.barrier = factory.build(barrier)
@@ -185,7 +185,6 @@ class SplittingNeuralSBFCertifier(nn.Module):
         self.certification_threshold = certification_threshold
         self.split_gap_stop_treshold = split_gap_stop_treshold
         self.max_set_size = max_set_size
-        self.prune_epsilon = prune_epsilon
 
     @torch.no_grad()
     def beta(self, **kwargs):
@@ -295,8 +294,11 @@ class SplittingNeuralSBFCertifier(nn.Module):
     def prune_beta_gamma(self, set, min, max):
         largest_lower_bound = min.max()
 
-        prune = (max <= 0.0) | (max <= largest_lower_bound - self.prune_epsilon)
+        prune = (max <= 0.0) | (max <= largest_lower_bound)
         keep = ~prune
+
+        if torch.all(prune):
+            keep[max.argmax()] = True
 
         return Partitions((set.lower[keep], set.upper[keep]))
 
@@ -374,8 +376,11 @@ class SplittingNeuralSBFCertifier(nn.Module):
     def prune_violation(self, set, min, max, lower_bound):
         least_upper_bound = max.min()
 
-        prune = (min >= lower_bound) | (min >= least_upper_bound + self.prune_epsilon)
+        prune = (min >= lower_bound) | (min >= least_upper_bound)
         keep = ~prune
+
+        if torch.all(prune):
+            keep[max.argmax()] = True
 
         return Partitions((set.lower[keep], set.upper[keep]))
 
