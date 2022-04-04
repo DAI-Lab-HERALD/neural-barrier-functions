@@ -4,15 +4,15 @@
   "dynamics": {
     "sigma": 0.1,
     "fertility_rate": 0.2,
-    "survival_juvenile": 0.3,
-    "survival_adult": 0.8,
+    "survival_juvenile": 0.4,
+    "survival_adult": 0.9,
     "num_samples": 500,
     "horizon": 10,
     "safe_set": "circle"
   },
   "partitioning": {
     "method": "grid",
-    "num_slices": [160, 160]
+    "num_slices": [4, 4]
   },
   "model": {
     "type": "fcnn",
@@ -24,14 +24,14 @@
   "training": {
     "batch_size": 1000,
     "iter_per_epoch": 400,
-    "eps": 0.0375,
+    "eps": 0.01,
     "epochs": 150,
     "empirical_epochs": 20,
     "test_every": 5,
     "adjust_overlap": true
   },
   "test": {
-    "ibp_batch_size": 500,
+    "ibp_batch_size": 100,
     "crown_ibp_batch_size": 100
   }
 }

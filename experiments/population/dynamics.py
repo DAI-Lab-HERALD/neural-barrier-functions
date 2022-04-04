@@ -48,7 +48,7 @@ class Population(nn.Linear, StochasticDynamics):
         bottom_left, bottom_right, top_left, top_right = self.corners(x, eps)
 
         if self.safe_set_type == 'circle':
-            return bottom_left.norm(dim=-1) <= 1.0
+            return bottom_left.norm(dim=-1) <= 1.5
         elif self.safe_set_type == 'annulus':
             return (top_right.sum(dim=-1) >= 4.0) & (bottom_left.sum(dim=-1) <= 5.0)
         else:
@@ -57,7 +57,7 @@ class Population(nn.Linear, StochasticDynamics):
     def sample_initial(self, num_particles):
         if self.safe_set_type == 'circle':
             dist = distributions.Uniform(0, 1)
-            r = 1.0 * dist.sample((num_particles,)).sqrt()
+            r = 1.5 * dist.sample((num_particles,)).sqrt()
             theta = dist.sample((num_particles,)) * 2 * np.pi
 
             return torch.stack([r * theta.cos(), r * theta.sin()], dim=-1)

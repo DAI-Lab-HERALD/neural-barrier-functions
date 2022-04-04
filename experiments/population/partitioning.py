@@ -27,7 +27,7 @@ def plot_partitioning(partitioning, safe_set_type):
     ax.add_collection(PatchCollection(patch_collection, color='r', alpha=0.1, linewidth=1))
 
     if safe_set_type == 'circle':
-        circle_init = plt.Circle((0, 0), 1.0, color='g', fill=False)
+        circle_init = plt.Circle((0, 0), 1.5, color='g', fill=False)
         ax.add_patch(circle_init)
 
         circle_safe = plt.Circle((0, 0), 2.0, color='r', fill=False)
