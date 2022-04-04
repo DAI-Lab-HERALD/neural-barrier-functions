@@ -126,6 +126,6 @@ def polynomial_main(args, config):
 
         plot_bounds_2d(barrier, dynamics, args, config)
     elif config['experiment_type'] == 'monte_carlo':
-        monte_carlo_simulation(dynamics, config)
+        monte_carlo_simulation(args, dynamics, config)
     else:
         raise ValueError('Invalid experiment type')

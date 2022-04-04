@@ -6,17 +6,17 @@ import torch
 logger = logging.getLogger(__name__)
 
 
-def monte_carlo_simulation(dynamics, config):
+def monte_carlo_simulation(args, dynamics, config):
     assert config['experiment_type'] == 'monte_carlo'
 
     num_particles = config['num_particles']
     horizon = config['dynamics']['horizon']
 
-    x = dynamics.sample_initial(num_particles)
+    x = dynamics.sample_initial(num_particles).to(args.device)
     traj = [x]
 
-    unsafe = torch.full((num_particles,), False)
-    out_of_bounds = torch.full((num_particles,), False)
+    unsafe = torch.full((num_particles,), False, device=args.device)
+    out_of_bounds = torch.full((num_particles,), False, device=args.device)
 
     for _ in range(horizon):
         x = dynamics(x)
