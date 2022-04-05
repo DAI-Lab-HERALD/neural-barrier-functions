@@ -30,7 +30,7 @@ def step(learner, optimizer, partitioning, kappa, epoch):
     if isinstance(learner, EmpiricalNeuralSBF):
         loss = learner.loss(partitioning, kappa)
     else:
-        loss = learner.loss(partitioning, kappa, method='ibp', violation_normalization_factor=1.0)
+        loss = learner.loss(partitioning, kappa, method='combined', violation_normalization_factor=1.0)
 
     loss.backward()
     torch.nn.utils.clip_grad_norm_(learner.parameters(), 1.0)
