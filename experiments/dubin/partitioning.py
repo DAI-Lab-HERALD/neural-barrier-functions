@@ -70,10 +70,10 @@ def dubins_car_partitioning(config, dynamics):
     # lower_x, upper_x = cell_centers - cell_width, cell_centers + cell_width
 
     partitioning = Partitioning(
-        (torch.tensor([-0.1, -2.0, -np.pi / 6]), torch.tensor([0.1, -1.8, np.pi / 6])),
-        (torch.tensor([-2.0, -2.0, -np.pi / 2]), torch.tensor([2.0, 2.0, np.pi / 2])),
-        (torch.tensor([-0.2, -0.2, -np.pi / 2]), torch.tensor([0.2, 0.2, np.pi / 2])),
-        (torch.tensor([-2.0, -2.0, -np.pi / 2]), torch.tensor([2.0, 2.0, np.pi / 2])),
+        (torch.tensor([[-0.1, -2.0, -np.pi / 6]]), torch.tensor([[0.1, -1.8, np.pi / 6]])),
+        (torch.tensor([[-2.0, -2.0, -np.pi / 2]]), torch.tensor([[2.0, 2.0, np.pi / 2]])),
+        (torch.tensor([[-0.2, -0.2, -np.pi / 2]]), torch.tensor([[0.2, 0.2, np.pi / 2]])),
+        (torch.tensor([[-2.0, -2.0, -np.pi / 2]]), torch.tensor([[2.0, 2.0, np.pi / 2]])),
     )
 
     # initial_mask = dynamics.initial(cell_centers, cell_width)
