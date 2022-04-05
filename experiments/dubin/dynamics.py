@@ -21,7 +21,7 @@ class DubinsCarUpdate(nn.Module):
 
         self.velocity = dynamics_config['velocity']
 
-        dist = Normal(0.0, torch.tensor(dynamics_config['sigma']))
+        dist = Normal(torch.tensor(dynamics_config['mu']), torch.tensor(dynamics_config['sigma']))
         self.register_buffer('z', dist.sample((dynamics_config['num_samples'],)).view(-1, 1))
 
     def forward(self, x):

@@ -2,7 +2,8 @@
   "system": "dubin",
   "experiment_type": "barrier_function",
   "dynamics": {
-    "sigma": 0.01,
+    "mu": 0.4,
+    "sigma": 0.1,
     "num_samples": 200,
     "dt": 0.1,
     "velocity": 1.0,
