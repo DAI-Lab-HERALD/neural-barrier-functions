@@ -69,16 +69,23 @@ def dubins_car_partitioning(config, dynamics):
     cell_centers = torch.cartesian_prod(x1_slice_centers, x2_slice_centers, x3_slice_centers)
     lower_x, upper_x = cell_centers - cell_width, cell_centers + cell_width
 
-    initial_mask = dynamics.initial(cell_centers, cell_width)
-    safe_mask = dynamics.safe(cell_centers, cell_width)
-    unsafe_mask = dynamics.unsafe(cell_centers, cell_width)
-
     partitioning = Partitioning(
-        (lower_x[initial_mask], upper_x[initial_mask]),
-        (lower_x[safe_mask], upper_x[safe_mask]),
-        (lower_x[unsafe_mask], upper_x[unsafe_mask]),
+        (lower_x, upper_x),
+        (lower_x, upper_x),
+        (lower_x, upper_x),
         (lower_x, upper_x)
     )
+
+    # initial_mask = dynamics.initial(cell_centers, cell_width)
+    # safe_mask = dynamics.safe(cell_centers, cell_width)
+    # unsafe_mask = dynamics.unsafe(cell_centers, cell_width)
+    #
+    # partitioning = Partitioning(
+    #     (lower_x[initial_mask], upper_x[initial_mask]),
+    #     (lower_x[safe_mask], upper_x[safe_mask]),
+    #     (lower_x[unsafe_mask], upper_x[unsafe_mask]),
+    #     (lower_x, upper_x)
+    # )
 
     # plot_partitioning(partitioning)
 

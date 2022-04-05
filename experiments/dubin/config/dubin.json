@@ -6,11 +6,11 @@
     "num_samples": 200,
     "dt": 0.1,
     "velocity": 1.0,
-    "horizon": 2
+    "horizon": 20
   },
   "partitioning": {
     "method": "grid",
-    "num_slices": [80, 80, 45]
+    "num_slices": [1, 1, 1]
   },
   "model": {
     "type": "fcnn",
@@ -20,16 +20,16 @@
     "activation": "relu"
   },
   "training": {
-    "batch_size": 500,
+    "batch_size": 1000,
     "iter_per_epoch": 400,
-    "eps": [0.05, 0.05, 0.06981317007],
+    "eps": [0.01, 0.01, 0.01],
     "epochs": 150,
     "empirical_epochs": 20,
-    "test_every": 1,
+    "test_every": 5,
     "adjust_overlap": true
   },
   "test": {
-    "ibp_batch_size": 2000,
-    "crown_ibp_batch_size": 400
+    "ibp_batch_size": 100,
+    "crown_ibp_batch_size": 100
   }
 }

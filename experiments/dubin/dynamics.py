@@ -65,12 +65,15 @@ class BoundDubinsCarUpdate(BoundModule):
 
     def alpha_beta(self, preactivation):
         lower, upper = preactivation.lower[..., 2], preactivation.upper[..., 2]
-        n, p, np = regimes(lower, upper)
+        zero_width, n, p, np = regimes(lower, upper)
 
         zero = torch.zeros_like(lower.unsqueeze(-1).expand(*lower.size(), 2))
 
         self.alpha_lower, self.beta_lower = zero.detach().clone(), zero.detach().clone()
         self.alpha_upper, self.beta_upper = zero.detach().clone(), zero.detach().clone()
+
+        self.alpha_lower[zero_width], self.beta_lower[zero_width] = 0, self(preactivation.lower[zero_width])[0, :, :2]
+        self.alpha_upper[zero_width], self.beta_upper[zero_width] = 0, self(preactivation.upper[zero_width])[0, :, :2]
 
         lower_act, upper_act = self.func(lower), self.func(upper)
         lower_prime, upper_prime = self.derivative(lower), self.derivative(upper)
