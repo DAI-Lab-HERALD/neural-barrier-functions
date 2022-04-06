@@ -9,7 +9,7 @@
   },
   "partitioning": {
     "method": "grid",
-    "num_slices": [320, 320]
+    "num_slices": [80, 80]
   },
   "model": {
     "type": "fcnn",
@@ -19,13 +19,13 @@
     "activation": "relu"
   },
   "training": {
-    "batch_size": 500,
+    "batch_size": 1000,
     "iter_per_epoch": 400,
-    "eps": [0.0171875, 0.009375],
+    "eps": [0.01, 0.01],
     "epochs": 150,
     "empirical_epochs": 20,
     "test_every": 5,
-    "adjust_overlap": true
+    "adjust_overlap": false
   },
   "test": {
     "ibp_batch_size": 2000,
