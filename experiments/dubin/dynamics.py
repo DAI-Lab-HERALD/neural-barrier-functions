@@ -44,7 +44,17 @@ def crown_backward_dubin_jit(W_tilde: torch.Tensor, z: torch.Tensor, alpha: Tupl
     _delta = torch.where(W_tilde[..., :2] < 0, beta[0].unsqueeze(-2), beta[1].unsqueeze(-2))
 
     bias = torch.sum(W_tilde[..., :2] * _delta, dim=-1) + z.unsqueeze(-1) * W_tilde[..., 2]
-    W_tilde = torch.stack([torch.zeros_like(W_tilde[..., 0]), torch.zeros_like(W_tilde[..., 1]), torch.sum(W_tilde[..., :2] * _lambda, dim=-1), W_tilde[..., 2]], dim=-1)
+    W_tilde1 = torch.zeros_like(W_tilde[..., 0])
+    W_tilde2 = torch.zeros_like(W_tilde[..., 1])
+    W_tilde3 = torch.sum(W_tilde[..., :2] * _lambda, dim=-1)
+    W_tilde4 = W_tilde[..., 2]
+
+    if W_tilde1.dim() != W_tilde3.dim():
+        W_tilde1 = W_tilde1.unsqueeze(0).expand_as(W_tilde3)
+        W_tilde2 = W_tilde2.unsqueeze(0).expand_as(W_tilde3)
+        W_tilde4 = W_tilde4.unsqueeze(0).expand_as(W_tilde3)
+
+    W_tilde = torch.stack([W_tilde1, W_tilde2, W_tilde3, W_tilde4], dim=-1)
 
     return W_tilde, bias
 
@@ -204,7 +214,7 @@ class BoundDubinsCarUpdate(BoundModule):
         self.bounded = True
 
     def backward_relaxation(self, region):
-        linear_bounds = self.initial_linear_bounds(region, 2)
+        linear_bounds = self.initial_linear_bounds(region, 4)
         return linear_bounds, self
 
     def clear_relaxation(self):
