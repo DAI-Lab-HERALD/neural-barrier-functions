@@ -61,10 +61,13 @@ class BoundPolynomialUpdate(BoundModule):
 
     def alpha_beta(self, preactivation):
         lower, upper = preactivation.lower[..., 0], preactivation.upper[..., 0]
-        n, p, np = regimes(lower, upper)
+        zero_width, n, p, np = regimes(lower, upper)
 
         self.alpha_lower, self.beta_lower = torch.zeros_like(lower), torch.zeros_like(lower)
         self.alpha_upper, self.beta_upper = torch.zeros_like(lower), torch.zeros_like(lower)
+
+        self.alpha_lower[zero_width], self.beta_lower[zero_width] = 0, self.func(lower[zero_width])
+        self.alpha_upper[zero_width], self.beta_upper[zero_width] = 0, self.func(upper[zero_width])
 
         lower_act, upper_act = self.func(lower), self.func(upper)
         lower_prime, upper_prime = self.derivative(lower), self.derivative(upper)
