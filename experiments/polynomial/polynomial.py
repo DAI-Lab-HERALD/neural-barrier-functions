@@ -9,10 +9,11 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
+from dataset import StochasticSystemDataset
 from monte_carlo import monte_carlo_simulation
 from .dataset import PolynomialDataset
 from .dynamics import Polynomial, PolynomialUpdate, BoundPolynomialUpdate
-from .partitioning import polynomial_partitioning
+from .partitioning import polynomial_partitioning, plot_partitioning
 from .plot import plot_bounds_2d
 
 from learned_cbf.certifier import NeuralSBFCertifier
@@ -60,7 +61,7 @@ def train(learner, certifier, args, config):
     logger.info('Starting training')
     test(certifier, config['test'])
 
-    dataset = PolynomialDataset(config['training'], learner.dynamics)
+    dataset = StochasticSystemDataset(config['training'], learner.dynamics)
     dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
 
     empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
@@ -71,7 +72,7 @@ def train(learner, certifier, args, config):
 
     for epoch in trange(config['training']['epochs'], desc='Epoch', colour='red', position=0, leave=False):
         for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
-            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+            # plot_partitioning(partitioning)
 
             partitioning = partitioning.to(args.device)
 
@@ -89,7 +90,7 @@ def train(learner, certifier, args, config):
     while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
         logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
         for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
-            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+            # plot_partitioning(partitioning)
 
             partitioning = partitioning.to(args.device)
             step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])

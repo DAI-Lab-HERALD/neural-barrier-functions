@@ -1,11 +1,12 @@
 import math
 from typing import Tuple
 
+import numpy as np
 import torch
 from bound_propagation import BoundModule, IntervalBounds, LinearBounds, HyperRectangle, BoundModelFactory
 from bound_propagation.activation import assert_bound_order, regimes
 from matplotlib import pyplot as plt
-from torch import nn
+from torch import nn, distributions
 from torch.distributions import Normal
 
 from learned_cbf.discretization import Euler, RK4
@@ -217,14 +218,19 @@ class Polynomial(RK4, StochasticDynamics):
         else:
             lower_x, upper_x = x, x
 
-        cond1 = overlap_circle(lower_x, upper_x, torch.tensor([1.5, 0], device=x.device), math.sqrt(0.25))
+        cond1 = overlap_circle(lower_x, upper_x, torch.tensor([1.5, 0.0], device=x.device), math.sqrt(0.25))
         cond2 = overlap_rectangle(lower_x, upper_x, torch.tensor([-1.8, -0.1], device=x.device), torch.tensor([-1.2, 0.1], device=x.device))
         cond3 = overlap_rectangle(lower_x, upper_x, torch.tensor([-1.4, -0.5], device=x.device), torch.tensor([-1.2, 0.1], device=x.device))
 
         return cond1 | cond2 | cond3
 
     def sample_initial(self, num_particles):
-        raise NotImplementedError()
+        return self.sample_initial_unsafe(
+            num_particles,
+            (torch.tensor([-1.8, -0.1]), torch.tensor([-1.4, 0.1])),
+            (torch.tensor([-1.4, -0.5]), torch.tensor([-1.2, 0.1])),
+            (torch.tensor([1.5, 0.0]), math.sqrt(0.25))
+        )
 
     def safe(self, x, eps=None):
         if eps is not None:
@@ -239,7 +245,9 @@ class Polynomial(RK4, StochasticDynamics):
         return cond1 & cond2 & cond3
 
     def sample_safe(self, num_particles):
-        raise NotImplementedError()
+        samples = self.sample_state_space(2 * num_particles)
+        samples = samples[self.safe(samples)]
+        return samples[:num_particles]
 
     def unsafe(self, x, eps=None):
         if eps is not None:
@@ -254,7 +262,38 @@ class Polynomial(RK4, StochasticDynamics):
         return cond1 | cond2 | cond3
 
     def sample_unsafe(self, num_particles):
-        raise NotImplementedError()
+        return self.sample_initial_unsafe(
+            num_particles,
+            (torch.tensor([0.4, 0.3]), torch.tensor([0.6, 0.5])),
+            (torch.tensor([0.4, 0.1]), torch.tensor([0.8, 0.3])),
+            (torch.tensor([-1.0, -1.0]), math.sqrt(0.16))
+        )
+
+    def sample_initial_unsafe(self, num_particles, rect1, rect2, circle):
+        rect1_area = (rect1[1] - rect1[0]).prod()
+        rect2_area = (rect2[1] - rect2[0]).prod()
+        circle_area = circle[1] ** 2 * np.pi
+        total_area = rect1_area + rect2_area + circle_area
+
+        rect1_prob = rect1_area / total_area
+        rect2_prob = rect2_area / total_area
+        circle_prob = circle_area / total_area
+
+        dist = distributions.Multinomial(total_count=num_particles, probs=torch.tensor([rect1_prob, rect2_prob, circle_prob]))
+        count = dist.sample().int()
+
+        dist = distributions.Uniform(rect1[0], rect1[1])
+        rect1_samples = dist.sample((count[0],))
+
+        dist = distributions.Uniform(rect2[0], rect2[1])
+        rect2_samples = dist.sample((count[1],))
+
+        dist = distributions.Uniform(0, 1)
+        r = circle[1] * dist.sample((count[2],)).sqrt()
+        theta = dist.sample((count[2],)) * 2 * np.pi
+        circle_samples = circle[0] + torch.stack([r * theta.cos(), r * theta.sin()], dim=-1)
+
+        return torch.cat([rect1_samples, rect2_samples, circle_samples], dim=0)
 
     def state_space(self, x, eps=None):
         if eps is not None:
@@ -262,11 +301,12 @@ class Polynomial(RK4, StochasticDynamics):
         else:
             lower_x, upper_x = x, x
 
-        return (upper_x[..., 0] >= -3.5) & (lower_x[..., 0] <= 2.0) &\
+        return (upper_x[..., 0] >= -3.5) & (lower_x[..., 0] <= 2.0) & \
                (upper_x[..., 1] >= -2.0) & (lower_x[..., 1] <= 1.0)
 
     def sample_state_space(self, num_particles):
-        raise NotImplementedError()
+        dist = distributions.Uniform(torch.tensor([-3.5, -2]), torch.tensor([2.0, 1.0]))
+        return dist.sample((num_particles,))
 
     @property
     def volume(self):

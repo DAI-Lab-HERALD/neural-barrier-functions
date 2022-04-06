@@ -18,13 +18,13 @@ def plot_partitioning(partitioning):
 
     patch_collection = []
     for lower, width in zip(partitioning.safe.lower, partitioning.safe.width):
-        rect = plt.Rectangle(lower, width[0], width[1], color='b', alpha=0.1, linewidth=1)
+        rect = plt.Rectangle(lower, width[0], width[1])
         patch_collection.append(rect)
     ax.add_collection(PatchCollection(patch_collection, color='b', alpha=0.1, linewidth=1))
 
     patch_collection = []
     for lower, width in zip(partitioning.unsafe.lower, partitioning.unsafe.width):
-        rect = plt.Rectangle(lower, width[0], width[1], color='r', alpha=0.1, linewidth=1)
+        rect = plt.Rectangle(lower, width[0], width[1])
         patch_collection.append(rect)
     ax.add_collection(PatchCollection(patch_collection, color='r', alpha=0.1, linewidth=1))
 
