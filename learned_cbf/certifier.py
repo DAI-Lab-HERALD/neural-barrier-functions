@@ -57,10 +57,10 @@ class NeuralSBFCertifier(nn.Module):
             kwargs.pop('method')
 
             _, upper_ibp = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, method='ibp', reduce=reduce_mean, **kwargs)
-            _, upper_crown = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, method='crown_ibp_linear', reduce=reduce_mean, **kwargs)
+            _, upper_crown = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, method='crown_linear', reduce=reduce_mean, **kwargs)
 
             lower_ibp, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, method='ibp', **kwargs)
-            lower_crown, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, method='crown_ibp_linear', **kwargs)
+            lower_crown, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, method='crown_linear', **kwargs)
 
             beta_ibp_ibp = (upper_ibp - lower_ibp).partition_max().max().clamp(min=0)
             beta_ibp_crown = (upper_ibp - lower_crown).partition_max().max().clamp(min=0)
@@ -88,7 +88,7 @@ class NeuralSBFCertifier(nn.Module):
 
             _, upper_ibp = bounds(self.barrier, self.partitioning.initial, bound_lower=False, method='ibp', **kwargs)
             gamma_ibp = upper_ibp.partition_max().max().clamp(min=0)
-            _, upper_crown = bounds(self.barrier, self.partitioning.initial, bound_lower=False, method='crown_ibp_interval', **kwargs)
+            _, upper_crown = bounds(self.barrier, self.partitioning.initial, bound_lower=False, method='crown_interval', **kwargs)
             gamma_crown = upper_crown.partition_max().max().clamp(min=0)
 
             gamma = torch.min(gamma_ibp, gamma_crown)
@@ -133,7 +133,7 @@ class NeuralSBFCertifier(nn.Module):
             lower, _ = bounds(self.barrier, set, bound_upper=False, method='ibp', **kwargs)
             violation_ibp = (lower_bound - lower).partition_max().clamp(min=0)
 
-            lower, _ = bounds(self.barrier, set, bound_upper=False, method='crown_ibp_interval', **kwargs)
+            lower, _ = bounds(self.barrier, set, bound_upper=False, method='crown_interval', **kwargs)
             violation_crown = (lower_bound - lower).partition_max().clamp(min=0)
 
             violation = torch.min(violation_ibp, violation_crown)
@@ -206,6 +206,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
             set, prune_all = self.prune_beta_gamma(set, min, max)
 
             if prune_all:
+                logger.warning('Pruning all in beta')
                 break
 
             set = self.split_beta(set, **kwargs)
@@ -220,10 +221,10 @@ class SplittingNeuralSBFCertifier(nn.Module):
             kwargs.pop('method')
 
             expectation_lower_ibp, expectation_upper_ibp = bounds(self.barrier_dynamics, set, method='ibp', reduce=reduce_mean, **kwargs)
-            expectation_lower_crown, expectation_upper_crown = bounds(self.barrier_dynamics, set, method='crown_ibp_linear', reduce=reduce_mean, **kwargs)
+            expectation_lower_crown, expectation_upper_crown = bounds(self.barrier_dynamics, set, method='crown_linear', reduce=reduce_mean, **kwargs)
 
             lower_ibp, upper_ibp = bounds(self.barrier, set, method='ibp', **kwargs)
-            lower_crown, upper_crown = bounds(self.barrier, set, method='crown_ibp_linear', **kwargs)
+            lower_crown, upper_crown = bounds(self.barrier, set, method='crown_linear', **kwargs)
 
             beta_ibp_ibp = (expectation_upper_ibp - lower_ibp).partition_max()
             beta_ibp_crown = (expectation_upper_ibp - lower_crown).partition_max()
@@ -248,8 +249,8 @@ class SplittingNeuralSBFCertifier(nn.Module):
     def split_beta(self, set, **kwargs):
         kwargs.pop('method', None)
 
-        expectation_lower, expectation_upper = bounds(self.barrier_dynamics, set, method='crown_ibp_linear', reduce=reduce_mean, **kwargs)
-        lower, upper = bounds(self.barrier, set, method='crown_ibp_linear', **kwargs)
+        expectation_lower, expectation_upper = bounds(self.barrier_dynamics, set, method='crown_linear', reduce=reduce_mean, **kwargs)
+        lower, upper = bounds(self.barrier, set, method='crown_linear', **kwargs)
         upperA = expectation_upper.A - lower.A
         lowerA = expectation_lower.A - upper.A
 
@@ -297,6 +298,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
             set, prune_all = self.prune_beta_gamma(set, min, max)
 
             if prune_all:
+                logger.warning('Pruning all in gamma')
                 break
 
             set = self.split(set, **kwargs)
@@ -380,7 +382,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
             min_ibp = lower.partition_min()
             max_ibp = upper.partition_max()
 
-            lower, upper = bounds(self.barrier, set, method='crown_ibp_interval', **kwargs)
+            lower, upper = bounds(self.barrier, set, method='crown_interval', **kwargs)
             min_crown = lower.partition_min()
             max_crown = upper.partition_max()
 
@@ -400,6 +402,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         keep = ~prune
 
         if torch.all(prune):
+            logger.warning('Pruning all in violation')
             return set, True
 
         return Partitions((set.lower[keep], set.upper[keep])), False
@@ -407,7 +410,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
     def split(self, set, **kwargs):
         kwargs.pop('method', None)
 
-        lower, upper = bounds(self.barrier, set, method='crown_ibp_linear', **kwargs)
+        lower, upper = bounds(self.barrier, set, method='crown_linear', **kwargs)
 
         split_dim = ((upper.A.abs() + lower.A.abs())[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
