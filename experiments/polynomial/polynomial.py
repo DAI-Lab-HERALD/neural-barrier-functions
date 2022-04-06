@@ -19,7 +19,7 @@ from .plot import plot_bounds_2d
 from learned_cbf.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifier
 from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.networks import FCNNBarrierNetwork
-from learned_cbf.discretization import Euler, BoundEuler, BoundRK4, RK4
+from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ def polynomial_main(args, config):
     if config['experiment_type'] == 'barrier_function':
         factory = BoundModelFactory()
         factory.register(PolynomialUpdate, BoundPolynomialUpdate)
-        factory.register(RK4, BoundRK4)
+        factory.register(ButcherTableau, BoundButcherTableau)
 
         barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
         partitioning = polynomial_partitioning(config, dynamics).to(args.device)

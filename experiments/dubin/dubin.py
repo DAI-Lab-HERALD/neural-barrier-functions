@@ -19,7 +19,7 @@ from learned_cbf.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifie
 from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.networks import FCNNBarrierNetwork
 from learned_cbf.dataset import StochasticSystemDataset
-from learned_cbf.discretization import Euler, BoundEuler, BoundRK4, RK4
+from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ def dubins_car_main(args, config):
         factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
         factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
         factory.register(DubinsCarNoActuation, BoundDubinsCarNoActuation)
-        factory.register(RK4, BoundRK4)
+        factory.register(ButcherTableau, BoundButcherTableau)
 
         barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
         partitioning = dubins_car_partitioning(config, dynamics).to(args.device)
