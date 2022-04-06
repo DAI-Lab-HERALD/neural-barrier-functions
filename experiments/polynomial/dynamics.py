@@ -41,7 +41,13 @@ def crown_backward_polynomial_jit(W_tilde: torch.Tensor, z: torch.Tensor, alpha:
     _delta = torch.where(W_tilde[..., 1] < 0, beta[0].unsqueeze(-1), beta[1].unsqueeze(-1))
 
     bias = W_tilde[..., 1] * _delta + z.unsqueeze(-1) * W_tilde[..., 0]
-    W_tilde = torch.stack([W_tilde[..., 1] * _lambda - W_tilde[..., 1], W_tilde[..., 0] - W_tilde[..., 1]], dim=-1)
+
+    W_tilde1 = W_tilde[..., 1] * _lambda - W_tilde[..., 1]
+    W_tilde2 = W_tilde[..., 0] - W_tilde[..., 1]
+    if W_tilde1.dim() != W_tilde2.dim():
+        W_tilde2 = W_tilde2.unsqueeze(0).expand_as(W_tilde1)
+
+    W_tilde = torch.stack([W_tilde1, W_tilde2], dim=-1)
 
     return W_tilde, bias
 

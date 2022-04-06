@@ -64,7 +64,7 @@ class BoundButcherTableau(BoundModule):
                 lowerA = self.module.dt * self.module.a[len(network) - 1][i] * linear_bounds.lower[0]
                 for k, bounds in enumerate(network[i + 1:]):
                     j = i + k + 1
-                    lowerA += self.module.dt * self.module.a[j - 1][i] * update_bounds[j].lower[0]
+                    lowerA = lowerA + self.module.dt * self.module.a[j - 1][i] * update_bounds[j].lower[0]
                 lower = (lowerA, zero_bias)
 
             if linear_bounds.upper is None:
@@ -73,7 +73,7 @@ class BoundButcherTableau(BoundModule):
                 upperA = self.module.dt * self.module.a[len(network) - 1][i] * linear_bounds.upper[0]
                 for k, bounds in enumerate(network[i + 1:]):
                     j = i + k + 1
-                    upperA += self.module.dt * self.module.a[j - 1][i] * update_bounds[j].upper[0]
+                    upperA = upperA + self.module.dt * self.module.a[j - 1][i] * update_bounds[j].upper[0]
                 upper = (upperA, zero_bias)
 
             dt_bounds = LinearBounds(linear_bounds.region, lower, upper)
@@ -86,8 +86,8 @@ class BoundButcherTableau(BoundModule):
             lowerA = linear_bounds.lower[0]
             lower_bias = linear_bounds.lower[1]
             for bounds in update_bounds:
-                lowerA += bounds.lower[0]
-                lower_bias += bounds.lower[1]
+                lowerA = lowerA + bounds.lower[0]
+                lower_bias = lower_bias + bounds.lower[1]
             lower = (lowerA, lower_bias)
 
         if linear_bounds.upper is None:
@@ -96,8 +96,8 @@ class BoundButcherTableau(BoundModule):
             upperA = linear_bounds.upper[0]
             upper_bias = linear_bounds.upper[1]
             for bounds in update_bounds:
-                upperA += bounds.upper[0]
-                upper_bias += bounds.upper[1]
+                upperA = upperA + bounds.upper[0]
+                upper_bias = upper_bias + bounds.upper[1]
             upper = (upperA, upper_bias)
 
         return LinearBounds(linear_bounds.region, lower, upper), relaxation_module
@@ -114,7 +114,7 @@ class BoundButcherTableau(BoundModule):
                 for k, bounds in enumerate(self.bound_update[i + 1:]):
                     j = i + k + 1
                     if self.module.a[j - 1][i] > 0.0:
-                        lowerA += self.module.dt * self.module.a[j - 1][i] * update_bounds[j].lower[0]
+                        lowerA = lowerA + self.module.dt * self.module.a[j - 1][i] * update_bounds[j].lower[0]
                 lower = (lowerA, zero_bias)
 
             if linear_bounds.upper is None:
@@ -124,7 +124,7 @@ class BoundButcherTableau(BoundModule):
                 for k, bounds in enumerate(self.bound_update[i + 1:]):
                     j = i + k + 1
                     if self.module.a[j - 1][i] > 0.0:
-                        upperA += self.module.dt * self.module.a[j - 1][i] * update_bounds[j].upper[0]
+                        upperA = upperA + self.module.dt * self.module.a[j - 1][i] * update_bounds[j].upper[0]
                 upper = (upperA, zero_bias)
 
             dt_bounds = LinearBounds(linear_bounds.region, lower, upper)
@@ -137,8 +137,8 @@ class BoundButcherTableau(BoundModule):
             lowerA = linear_bounds.lower[0]
             lower_bias = linear_bounds.lower[1]
             for bounds in update_bounds:
-                lowerA += bounds.lower[0]
-                lower_bias += bounds.lower[1]
+                lowerA = lowerA + bounds.lower[0]
+                lower_bias = lower_bias + bounds.lower[1]
             lower = (lowerA, lower_bias)
 
         if linear_bounds.upper is None:
@@ -147,8 +147,8 @@ class BoundButcherTableau(BoundModule):
             upperA = linear_bounds.upper[0]
             upper_bias = linear_bounds.upper[1]
             for bounds in update_bounds:
-                upperA += bounds.upper[0]
-                upper_bias += bounds.upper[1]
+                upperA = upperA + bounds.upper[0]
+                upper_bias = upper_bias + bounds.upper[1]
             upper = (upperA, upper_bias)
 
         return LinearBounds(linear_bounds.region, lower, upper)
