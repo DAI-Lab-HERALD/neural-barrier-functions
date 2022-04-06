@@ -197,7 +197,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         set = self.initial_partitioning.safe
 
         min, max = self.min_max_beta(set, **kwargs)
-        last_gap = [torch.finfo(min.dtype).max for _ in range(5)]
+        last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
         while not self.should_stop_beta_gamma(set, min, max, last_gap):
             last_gap.append((max - min).max().item())
@@ -290,7 +290,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         set = self.initial_partitioning.initial
 
         min, max = self.min_max(set, **kwargs)
-        last_gap = [torch.finfo(min.dtype).max for _ in range(5)]
+        last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
         while not self.should_stop_beta_gamma(set, min, max, last_gap):
             last_gap.append((max - min).max().item())
@@ -360,7 +360,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
     @torch.no_grad()
     def violation(self, label, set, lower_bound, contain_func, **kwargs):
         min, max = self.min_max(set, **kwargs)
-        last_gap = [torch.finfo(min.dtype).max for _ in range(5)]
+        last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
         while not self.should_stop_violation(set, min, max, lower_bound, last_gap):
             last_gap.append((max - min).max().item())
