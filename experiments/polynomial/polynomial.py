@@ -11,7 +11,6 @@ from tqdm import trange, tqdm
 
 from dataset import StochasticSystemDataset
 from monte_carlo import monte_carlo_simulation
-from .dataset import PolynomialDataset
 from .dynamics import Polynomial, PolynomialUpdate, BoundPolynomialUpdate
 from .partitioning import polynomial_partitioning, plot_partitioning
 from .plot import plot_bounds_2d
