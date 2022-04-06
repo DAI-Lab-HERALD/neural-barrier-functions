@@ -197,16 +197,17 @@ class SplittingNeuralSBFCertifier(nn.Module):
         set = self.initial_partitioning.safe
 
         min, max = self.min_max_beta(set, **kwargs)
-        last_gap = torch.finfo(min.dtype).max
+        last_gap = [torch.finfo(min.dtype).max for _ in range(5)]
 
         while not self.should_stop_beta_gamma(set, min, max, last_gap):
-            last_gap = (max - min).max().item()
-            logger.debug(f'[BETA] Gap: {last_gap}, set size: {len(set)}, upper bound: {max.max().item()}')
+            last_gap.append((max - min).max().item())
+            last_gap.pop(0)
+            logger.debug(f'[BETA] Gap: {last_gap[-1]}, set size: {len(set)}, upper bound: {max.max().item()}')
 
             set, prune_all = self.prune_beta_gamma(set, min, max)
 
             if prune_all:
-                logger.warning('Pruning all in beta')
+                logger.warning(f'Pruning all in beta: {min}, {max}')
                 break
 
             set = self.split_beta(set, **kwargs)
@@ -289,16 +290,17 @@ class SplittingNeuralSBFCertifier(nn.Module):
         set = self.initial_partitioning.initial
 
         min, max = self.min_max(set, **kwargs)
-        last_gap = torch.finfo(min.dtype).max
+        last_gap = [torch.finfo(min.dtype).max for _ in range(5)]
 
         while not self.should_stop_beta_gamma(set, min, max, last_gap):
-            last_gap = (max - min).max().item()
-            logger.debug(f'[GAMMA] Gap: {last_gap}, set size: {len(set)}, upper bound: {max.max().item()}')
+            last_gap.append((max - min).max().item())
+            last_gap.pop(0)
+            logger.debug(f'[GAMMA] Gap: {last_gap[-1]}, set size: {len(set)}, upper bound: {max.max().item()}')
 
             set, prune_all = self.prune_beta_gamma(set, min, max)
 
             if prune_all:
-                logger.warning('Pruning all in gamma')
+                logger.warning(f'Pruning all in gamma: {min}, {max}')
                 break
 
             set = self.split(set, **kwargs)
@@ -322,10 +324,11 @@ class SplittingNeuralSBFCertifier(nn.Module):
     def should_stop_beta_gamma(self, set, min, max, last_gap):
         gap = (max - min).max().item()
         abs_max = max.max().item()
+
         return len(set) > self.max_set_size or \
                abs_max <= 0.0 or \
                gap <= self.split_gap_stop_treshold or \
-               gap >= last_gap - 1e-10
+               gap >= torch.tensor(last_gap).max()
 
     @torch.no_grad()
     def barrier_violation(self, **kwargs):
@@ -357,11 +360,12 @@ class SplittingNeuralSBFCertifier(nn.Module):
     @torch.no_grad()
     def violation(self, label, set, lower_bound, contain_func, **kwargs):
         min, max = self.min_max(set, **kwargs)
-        last_gap = torch.finfo(min.dtype).max
+        last_gap = [torch.finfo(min.dtype).max for _ in range(5)]
 
         while not self.should_stop_violation(set, min, max, lower_bound, last_gap):
-            last_gap = (max - min).max().item()
-            logger.debug(f'[{label}] Gap: {last_gap}, set size: {len(set)}, lower bound: {min.min().item()}')
+            last_gap.append((max - min).max().item())
+            last_gap.pop(0)
+            logger.debug(f'[{label}] Gap: {last_gap[-1]}, set size: {len(set)}, lower bound: {min.min().item()}')
 
             set, prune_all = self.prune_violation(set, min, max, lower_bound)
 
@@ -402,7 +406,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         keep = ~prune
 
         if torch.all(prune):
-            logger.warning('Pruning all in violation')
+            logger.warning(f'Pruning all in violation: {min}, {max}')
             return set, True
 
         return Partitions((set.lower[keep], set.upper[keep])), False
@@ -439,7 +443,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         return len(set) > self.max_set_size or \
                abs_min >= lower_bound or \
                gap <= self.split_gap_stop_treshold or \
-               gap >= last_gap - 1e-10
+               gap >= torch.tensor(last_gap).max()
 
     @torch.no_grad()
     def unsafety_prob(self, return_beta_gamma=False, **kwargs):
