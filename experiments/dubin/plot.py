@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
 
-from bounds import bounds, LearnedCBFBoundModelFactory
+from learned_cbf.bounds import bounds, LearnedCBFBoundModelFactory
 from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, BoundDubinsFixedStrategy, \
     DubinsFixedStrategy, DubinsCarNoActuation, BoundDubinsCarNoActuation

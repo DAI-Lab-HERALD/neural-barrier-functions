@@ -8,8 +8,6 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
-from bounds import LearnedCBFBoundModelFactory
-from monte_carlo import monte_carlo_simulation
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, DubinsFixedStrategy, BoundDubinsFixedStrategy, \
     DubinsCarNoActuation, BoundDubinsCarNoActuation, DubinsCarStrategyComposition, DubinsCarNNStrategy
 from .partitioning import dubins_car_partitioning
@@ -20,6 +18,8 @@ from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.networks import FCNNBarrierNetwork
 from learned_cbf.dataset import StochasticSystemDataset
 from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
+from learned_cbf.bounds import LearnedCBFBoundModelFactory
+from learned_cbf.monte_carlo import monte_carlo_simulation
 
 logger = logging.getLogger(__name__)
 

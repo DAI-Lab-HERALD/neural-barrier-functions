@@ -4,9 +4,11 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
 
-from bounds import bounds, LearnedCBFBoundModelFactory
+from learned_cbf.bounds import bounds, LearnedCBFBoundModelFactory
 from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
-from experiments.polynomial.dynamics import PolynomialUpdate, BoundPolynomialUpdate
+from learned_cbf.networks import BetaNetwork
+
+from .dynamics import PolynomialUpdate, BoundPolynomialUpdate
 
 
 def bound_propagation(model, lower_x, upper_x, config):

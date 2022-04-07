@@ -1,7 +1,7 @@
 from bound_propagation import Residual, Sub
 from torch import nn
 
-from bounds import Mean
+from .bounds import Mean
 
 
 class BetaNetwork(Sub):

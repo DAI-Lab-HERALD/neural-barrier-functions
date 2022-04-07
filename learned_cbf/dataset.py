@@ -2,7 +2,7 @@ import numpy as np
 import torch.distributions
 from torch.utils.data import Dataset
 
-from partitioning import Partitioning
+from .partitioning import Partitioning
 
 
 class StochasticSystemDataset(Dataset):

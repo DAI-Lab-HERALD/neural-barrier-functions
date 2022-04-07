@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
 
-from bounds import LearnedCBFBoundModelFactory
+from learned_cbf.bounds import LearnedCBFBoundModelFactory
 
 
 def bound_propagation(model, lower_x, upper_x):

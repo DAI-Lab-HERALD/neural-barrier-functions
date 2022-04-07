@@ -3,15 +3,11 @@ import logging
 import os.path
 
 import torch
-from bound_propagation import BoundModelFactory
 from torch import optim
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
-from bounds import LearnedCBFBoundModelFactory
-from dataset import StochasticSystemDataset
-from monte_carlo import monte_carlo_simulation
 from .dynamics import Polynomial, PolynomialUpdate, BoundPolynomialUpdate
 from .partitioning import polynomial_partitioning, plot_partitioning
 from .plot import plot_bounds_2d
@@ -20,6 +16,9 @@ from learned_cbf.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifie
 from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.networks import FCNNBarrierNetwork
 from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
+from learned_cbf.bounds import LearnedCBFBoundModelFactory
+from learned_cbf.dataset import StochasticSystemDataset
+from learned_cbf.monte_carlo import monte_carlo_simulation
 
 logger = logging.getLogger(__name__)
 
@@ -121,9 +120,9 @@ def polynomial_main(args, config):
 
         # learner.load_state_dict(torch.load(args.save_path))
 
-        train(learner, certifier, args, config)
-        save(learner, args)
-        test(certifier, config['test'])
+        # train(learner, certifier, args, config)
+        # save(learner, args)
+        # test(certifier, config['test'])
 
         plot_bounds_2d(barrier, dynamics, args, config)
     elif config['experiment_type'] == 'monte_carlo':
