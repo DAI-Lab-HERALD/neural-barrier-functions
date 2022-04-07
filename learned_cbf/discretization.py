@@ -103,7 +103,7 @@ class BoundButcherTableau(BoundModule):
         return LinearBounds(linear_bounds.region, lower, upper), relaxation_module
 
     def crown_backward(self, linear_bounds):
-        zero_bias = torch.zeros_like(linear_bounds.lower[1])
+        zero_bias = torch.zeros_like(linear_bounds.lower[1] if linear_bounds.lower is not None else linear_bounds.upper[1])
         update_bounds = [None for _ in self.bound_update]
 
         for i, bound_update in reversed(list(enumerate(self.bound_update))):
