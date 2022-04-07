@@ -182,7 +182,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
             set, prune_all = self.prune_beta_gamma(set, min, max)
 
             if prune_all:
-                logger.warning(f'Pruning all in beta: {min}, {max}')
+                logger.warning(f'Pruning all in beta: {min}, {max}, last gap: {last_gap[-1]}')
                 break
 
             set = self.split_beta(set, **kwargs)
@@ -263,7 +263,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
             set, prune_all = self.prune_beta_gamma(set, min, max)
 
             if prune_all:
-                logger.warning(f'Pruning all in gamma: {min}, {max}')
+                logger.warning(f'Pruning all in gamma: {min}, {max}, last gap: {last_gap[-1]}')
                 break
 
             set = self.split(set, **kwargs)
@@ -334,6 +334,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
             set, prune_all = self.prune_violation(set, min, max, lower_bound)
 
             if prune_all:
+                logger.warning(f'Pruning all in violation: {min}, {max}, last gap: {last_gap[-1]}')
                 break
 
             set = self.split(set, **kwargs)
