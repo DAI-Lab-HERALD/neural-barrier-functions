@@ -38,15 +38,15 @@ class NeuralSBFCertifier(nn.Module):
         if kwargs.get('method') == 'optimal':
             kwargs.pop('method')
 
-            _, upper_ibp = bounds(self.beta_network, self.partitioning.safe, bound_lower=False, method='ibp', **kwargs)
-            _, upper_crown = bounds(self.beta_network, self.partitioning.safe, bound_lower=False, method='crown_interval', **kwargs)
+            _, upper_ibp = bounds(self.beta_network, self.partitioning.safe, method='ibp', **kwargs)
+            _, upper_crown = bounds(self.beta_network, self.partitioning.safe, method='crown_interval', **kwargs)
 
             beta_ibp = upper_ibp.partition_max().max().clamp(min=0)
             beta_crown = upper_crown.partition_max().max().clamp(min=0)
 
             beta = torch.min(beta_ibp, beta_crown)
         else:
-            _, upper = bounds(self.beta_network, self.partitioning.safe, bound_lower=False, **kwargs)
+            _, upper = bounds(self.beta_network, self.partitioning.safe, **kwargs)
 
             beta = upper.partition_max().max().clamp(min=0)
 

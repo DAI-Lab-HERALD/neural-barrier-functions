@@ -41,7 +41,7 @@ class AdversarialNeuralSBF(nn.Module):
         #
         # _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
 
-        _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
+        _, upper = bounds(self.beta_network, partitioning.safe, **kwargs)
         beta = upper.partition_max().view(-1)
         T = 0.005
         return torch.dot(F.softmax(beta / T, dim=0), beta.clamp(min=0))

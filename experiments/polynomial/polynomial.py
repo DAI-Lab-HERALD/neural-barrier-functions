@@ -120,9 +120,9 @@ def polynomial_main(args, config):
 
         # learner.load_state_dict(torch.load(args.save_path))
 
-        # train(learner, certifier, args, config)
-        # save(learner, args)
-        # test(certifier, config['test'])
+        train(learner, certifier, args, config)
+        save(learner, args)
+        test(certifier, config['test'])
 
         plot_bounds_2d(barrier, dynamics, args, config)
     elif config['experiment_type'] == 'monte_carlo':
