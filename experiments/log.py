@@ -44,7 +44,7 @@ LOGGING_CONFIG = {
             'level': 'DEBUG',
             'propagate': False
         },
-        'monte_carlo': {  # monte_carlo logger
+        'learned_cbf.monte_carlo': {  # monte_carlo logger
             'handlers': ['default'],
             'level': 'DEBUG',
             'propagate': False
