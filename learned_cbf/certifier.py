@@ -371,7 +371,6 @@ class SplittingNeuralSBFCertifier(nn.Module):
         keep = ~prune
 
         if torch.all(prune):
-            logger.warning(f'Pruning all in violation: {min}, {max}')
             return set, True
 
         return Partitions((set.lower[keep], set.upper[keep])), False
