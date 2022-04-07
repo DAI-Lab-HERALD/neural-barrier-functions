@@ -3,12 +3,12 @@ import logging
 import os.path
 
 import torch
-from bound_propagation import BoundModelFactory
 from torch import optim
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
+from bounds import LearnedCBFBoundModelFactory
 from monte_carlo import monte_carlo_simulation
 from .dynamics import Population
 from .partitioning import population_partitioning, plot_partitioning
@@ -108,7 +108,7 @@ def population_main(args, config):
     dynamics = Population(config['dynamics']).to(args.device)
 
     if config['experiment_type'] == 'barrier_function':
-        factory = BoundModelFactory()
+        factory = LearnedCBFBoundModelFactory()
         barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
         partitioning = population_partitioning(config, dynamics).to(args.device)
         learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)

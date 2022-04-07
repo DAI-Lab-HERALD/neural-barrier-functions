@@ -1,10 +1,10 @@
 import torch
-from bound_propagation import HyperRectangle, BoundModelFactory
+from bound_propagation import HyperRectangle
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
 
-from bounds import bounds
+from bounds import bounds, LearnedCBFBoundModelFactory
 from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
 from experiments.polynomial.dynamics import PolynomialUpdate, BoundPolynomialUpdate
 
@@ -12,7 +12,7 @@ from experiments.polynomial.dynamics import PolynomialUpdate, BoundPolynomialUpd
 def bound_propagation(model, lower_x, upper_x, config):
     input_bounds = HyperRectangle(lower_x, upper_x)
 
-    factory = BoundModelFactory()
+    factory = LearnedCBFBoundModelFactory()
     factory.register(PolynomialUpdate, BoundPolynomialUpdate)
     factory.register(ButcherTableau, BoundButcherTableau)
     model = factory.build(model)

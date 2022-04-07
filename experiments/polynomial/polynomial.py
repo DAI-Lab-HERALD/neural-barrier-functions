@@ -9,6 +9,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
+from bounds import LearnedCBFBoundModelFactory
 from dataset import StochasticSystemDataset
 from monte_carlo import monte_carlo_simulation
 from .dynamics import Polynomial, PolynomialUpdate, BoundPolynomialUpdate
@@ -109,7 +110,7 @@ def polynomial_main(args, config):
     dynamics = Polynomial(config['dynamics']).to(args.device)
 
     if config['experiment_type'] == 'barrier_function':
-        factory = BoundModelFactory()
+        factory = LearnedCBFBoundModelFactory()
         factory.register(PolynomialUpdate, BoundPolynomialUpdate)
         factory.register(ButcherTableau, BoundButcherTableau)
 

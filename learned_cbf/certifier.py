@@ -1,31 +1,13 @@
 import logging
 
 import torch
-from bound_propagation import IntervalBounds, LinearBounds
 from torch import nn
 
-from bounds import bounds
-from learned_cbf.partitioning import Partitions
-
+from .bounds import bounds
+from .partitioning import Partitions
+from .networks import BetaNetwork
 
 logger = logging.getLogger(__name__)
-
-
-def reduce_mean(bounds):
-    if isinstance(bounds, IntervalBounds):
-        return IntervalBounds(
-            bounds.region,
-            bounds.lower.mean(dim=0) if bounds.lower is not None else None,
-            bounds.upper.mean(dim=0) if bounds.upper is not None else None
-        )
-    elif isinstance(bounds, LinearBounds):
-        return LinearBounds(
-            bounds.region,
-            (bounds.lower[0].mean(dim=0), bounds.lower[1].mean(dim=0)) if bounds.lower is not None else None,
-            (bounds.upper[0].mean(dim=0), bounds.upper[1].mean(dim=0)) if bounds.upper is not None else None
-        )
-    else:
-        raise ValueError('Bounds can only be linear or interval')
 
 
 class NeuralSBFCertifier(nn.Module):
@@ -33,7 +15,7 @@ class NeuralSBFCertifier(nn.Module):
         super().__init__()
 
         self.barrier = factory.build(barrier)
-        self.barrier_dynamics = factory.build(nn.Sequential(dynamics, barrier))
+        self.beta_network = factory.build(BetaNetwork(dynamics, barrier))
         self.dynamics = dynamics
 
         # Assumptions:
@@ -56,23 +38,17 @@ class NeuralSBFCertifier(nn.Module):
         if kwargs.get('method') == 'optimal':
             kwargs.pop('method')
 
-            _, upper_ibp = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, method='ibp', reduce=reduce_mean, **kwargs)
-            _, upper_crown = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, method='crown_linear', reduce=reduce_mean, **kwargs)
+            _, upper_ibp = bounds(self.beta_network, self.partitioning.safe, bound_lower=False, method='ibp', **kwargs)
+            _, upper_crown = bounds(self.beta_network, self.partitioning.safe, bound_lower=False, method='crown_interval', **kwargs)
 
-            lower_ibp, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, method='ibp', **kwargs)
-            lower_crown, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, method='crown_linear', **kwargs)
+            beta_ibp = upper_ibp.partition_max().max().clamp(min=0)
+            beta_crown = upper_crown.partition_max().max().clamp(min=0)
 
-            beta_ibp_ibp = (upper_ibp - lower_ibp).partition_max().max().clamp(min=0)
-            beta_ibp_crown = (upper_ibp - lower_crown).partition_max().max().clamp(min=0)
-            beta_crown_ibp = (upper_crown - lower_ibp).partition_max().max().clamp(min=0)
-            beta_crown_crown = (upper_crown - lower_crown).partition_max().max().clamp(min=0)
-
-            beta = torch.min(torch.stack([beta_ibp_ibp, beta_ibp_crown, beta_crown_ibp, beta_crown_crown]))
+            beta = torch.min(beta_ibp, beta_crown)
         else:
-            _, upper = bounds(self.barrier_dynamics, self.partitioning.safe, bound_lower=False, reduce=reduce_mean, **kwargs)
-            lower, _ = bounds(self.barrier, self.partitioning.safe, bound_upper=False, **kwargs)
+            _, upper = bounds(self.beta_network, self.partitioning.safe, bound_lower=False, **kwargs)
 
-            beta = (upper - lower).partition_max().max().clamp(min=0)
+            beta = upper.partition_max().max().clamp(min=0)
 
         return beta
 
@@ -176,7 +152,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         super().__init__()
 
         self.barrier = factory.build(barrier)
-        self.barrier_dynamics = factory.build(nn.Sequential(dynamics, barrier))
+        self.beta_network = factory.build(BetaNetwork(dynamics, barrier))
         self.dynamics = dynamics
 
         # Assumptions:
@@ -199,10 +175,9 @@ class SplittingNeuralSBFCertifier(nn.Module):
         min, max = self.min_max_beta(set, **kwargs)
         last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
-        while not self.should_stop_beta_gamma(set, min, max, last_gap):
+        while not self.should_stop_beta_gamma('BETA', set, min, max, last_gap):
             last_gap.append((max - min).max().item())
             last_gap.pop(0)
-            logger.debug(f'[BETA] Gap: {last_gap[-1]}, set size: {len(set)}, upper bound: {max.max().item()}')
 
             set, prune_all = self.prune_beta_gamma(set, min, max)
 
@@ -221,41 +196,30 @@ class SplittingNeuralSBFCertifier(nn.Module):
         if kwargs.get('method') == 'optimal':
             kwargs.pop('method')
 
-            expectation_lower_ibp, expectation_upper_ibp = bounds(self.barrier_dynamics, set, method='ibp', reduce=reduce_mean, **kwargs)
-            expectation_lower_crown, expectation_upper_crown = bounds(self.barrier_dynamics, set, method='crown_linear', reduce=reduce_mean, **kwargs)
+            lower_ibp, upper_ibp = bounds(self.beta_network, set, method='ibp', **kwargs)
+            lower_crown, upper_crown = bounds(self.beta_network, set, method='crown_interval', **kwargs)
 
-            lower_ibp, upper_ibp = bounds(self.barrier, set, method='ibp', **kwargs)
-            lower_crown, upper_crown = bounds(self.barrier, set, method='crown_linear', **kwargs)
+            beta_ibp = upper_ibp.partition_max()
+            beta_crown = upper_crown.partition_max()
+            max = torch.min(beta_ibp, beta_crown)
 
-            beta_ibp_ibp = (expectation_upper_ibp - lower_ibp).partition_max()
-            beta_ibp_crown = (expectation_upper_ibp - lower_crown).partition_max()
-            beta_crown_ibp = (expectation_upper_crown - lower_ibp).partition_max()
-            beta_crown_crown = (expectation_upper_crown - lower_crown).partition_max()
-            max = torch.stack([beta_ibp_ibp, beta_ibp_crown, beta_crown_ibp, beta_crown_crown]).min(dim=0).values
-
-            beta_ibp_ibp = (expectation_lower_ibp - upper_ibp).partition_min()
-            beta_ibp_crown = (expectation_lower_ibp - upper_crown).partition_min()
-            beta_crown_ibp = (expectation_lower_crown - upper_ibp).partition_min()
-            beta_crown_crown = (expectation_lower_crown - upper_crown).partition_min()
-            min = torch.stack([beta_ibp_ibp, beta_ibp_crown, beta_crown_ibp, beta_crown_crown]).max(dim=0).values
+            beta_ibp = lower_ibp.partition_min()
+            beta_crown = lower_crown.partition_min()
+            min = torch.max(beta_ibp, beta_crown)
         else:
-            expectation_lower, expectation_upper = bounds(self.barrier_dynamics, set, reduce=reduce_mean, **kwargs)
-            lower, upper = bounds(self.barrier, set, **kwargs)
+            lower, upper = bounds(self.beta_network, set, **kwargs)
 
-            max = (expectation_upper - lower).partition_max()
-            min = (expectation_lower - upper).partition_min()
+            max = upper.partition_max()
+            min = lower.partition_min()
 
         return min.view(-1), max.view(-1)
 
     def split_beta(self, set, **kwargs):
         kwargs.pop('method', None)
 
-        expectation_lower, expectation_upper = bounds(self.barrier_dynamics, set, method='crown_linear', reduce=reduce_mean, **kwargs)
-        lower, upper = bounds(self.barrier, set, method='crown_linear', **kwargs)
-        upperA = expectation_upper.A - lower.A
-        lowerA = expectation_lower.A - upper.A
+        lower, upper = bounds(self.beta_network, set, method='crown_linear', **kwargs)
 
-        split_dim = ((upperA.abs() + lowerA.abs())[:, 0] * set.width).argmax(dim=-1)
+        split_dim = ((upper.A.abs() + lower.A.abs())[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
         split_dim = (partition_indices, split_dim)
 
@@ -292,10 +256,9 @@ class SplittingNeuralSBFCertifier(nn.Module):
         min, max = self.min_max(set, **kwargs)
         last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
-        while not self.should_stop_beta_gamma(set, min, max, last_gap):
+        while not self.should_stop_beta_gamma('GAMMA', set, min, max, last_gap):
             last_gap.append((max - min).max().item())
             last_gap.pop(0)
-            logger.debug(f'[GAMMA] Gap: {last_gap[-1]}, set size: {len(set)}, upper bound: {max.max().item()}')
 
             set, prune_all = self.prune_beta_gamma(set, min, max)
 
@@ -321,9 +284,11 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
         return Partitions((set.lower[keep], set.upper[keep])), False
 
-    def should_stop_beta_gamma(self, set, min, max, last_gap):
+    def should_stop_beta_gamma(self, label, set, min, max, last_gap):
         gap = (max - min).max().item()
         abs_max = max.max().item()
+
+        logger.debug(f'[{label}] Gap: {gap}, set size: {len(set)}, upper bound: {max.max().item()}')
 
         return len(set) > self.max_set_size or \
                abs_max <= 0.0 or \
@@ -362,10 +327,9 @@ class SplittingNeuralSBFCertifier(nn.Module):
         min, max = self.min_max(set, **kwargs)
         last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
-        while not self.should_stop_violation(set, min, max, lower_bound, last_gap):
+        while not self.should_stop_violation(label, set, min, max, lower_bound, last_gap):
             last_gap.append((max - min).max().item())
             last_gap.pop(0)
-            logger.debug(f'[{label}] Gap: {last_gap[-1]}, set size: {len(set)}, lower bound: {min.min().item()}')
 
             set, prune_all = self.prune_violation(set, min, max, lower_bound)
 
@@ -437,9 +401,12 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
         return Partitions((lower, upper))
 
-    def should_stop_violation(self, set, min, max, lower_bound, last_gap):
+    def should_stop_violation(self, label, set, min, max, lower_bound, last_gap):
         gap = (max - min).max().item()
         abs_min = min.min().item()
+
+        logger.debug(f'[{label}] Gap: {gap}, set size: {len(set)}, lower bound: {min.min().item()}')
+
         return len(set) > self.max_set_size or \
                abs_min >= lower_bound or \
                gap <= self.split_gap_stop_treshold or \

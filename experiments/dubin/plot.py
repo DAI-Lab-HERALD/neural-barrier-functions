@@ -1,10 +1,10 @@
 import torch
-from bound_propagation import HyperRectangle, BoundModelFactory
+from bound_propagation import HyperRectangle
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
 
-from bounds import bounds
+from bounds import bounds, LearnedCBFBoundModelFactory
 from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, BoundDubinsFixedStrategy, \
     DubinsFixedStrategy, DubinsCarNoActuation, BoundDubinsCarNoActuation
@@ -16,7 +16,7 @@ def bound_propagation(model, lower_x, upper_x, config):
     # ibp_bounds = bounds(model, input_bounds, method='ibp', batch_size=config['test']['ibp_batch_size'])
     # crown_bounds = bounds(model, input_bounds, method='crown_ibp_linear', batch_size=config['test']['crown_ibp_batch_size'])
 
-    factory = BoundModelFactory()
+    factory = LearnedCBFBoundModelFactory()
     factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
     factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
     factory.register(DubinsCarNoActuation, BoundDubinsCarNoActuation)

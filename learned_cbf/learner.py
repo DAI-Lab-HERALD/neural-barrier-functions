@@ -2,8 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from bound_propagation import IntervalBounds, LinearBounds
-
+from .networks import BetaNetwork
 from .bounds import bounds
 
 
@@ -12,7 +11,7 @@ class AdversarialNeuralSBF(nn.Module):
         super().__init__()
 
         self.barrier = factory.build(barrier)
-        self.barrier_dynamics = factory.build(nn.Sequential(dynamics, barrier))
+        self.beta_network = factory.build(BetaNetwork(dynamics, barrier))
         self.dynamics = dynamics
 
         self.horizon = horizon
@@ -25,63 +24,25 @@ class AdversarialNeuralSBF(nn.Module):
         """
         assert partitioning.safe is not None
 
-        def reduce_mean(bounds):
-            if isinstance(bounds, IntervalBounds):
-                return IntervalBounds(
-                    bounds.region,
-                    bounds.lower.mean(dim=0) if bounds.lower is not None else None,
-                    bounds.upper.mean(dim=0) if bounds.upper is not None else None
-                )
-            elif isinstance(bounds, LinearBounds):
-                return LinearBounds(
-                    bounds.region,
-                    (bounds.lower[0].mean(dim=0), bounds.lower[1].mean(dim=0)) if bounds.lower is not None else None,
-                    (bounds.upper[0].mean(dim=0), bounds.upper[1].mean(dim=0)) if bounds.upper is not None else None
-                )
-            else:
-                raise ValueError('Bounds can only be linear or interval')
-
         if kwargs.get('method') == 'combined':
-            kwargs.pop('method')
-            # with torch.no_grad():
-            #     _, upper = bounds(self.barrier_dynamics, partitioning.safe, bound_lower=False, method='crown_ibp_interval', reduce=reduce_mean, **kwargs)
-            #     lower, _ = bounds(self.barrier, partitioning.safe, bound_upper=False, method='ibp', **kwargs)
-            #
-            #     expectation_no_beta = (upper.mean(dim=0) - lower).partition_max()
-            #     idx = expectation_no_beta.argmax()
-            #
-            #     beta_max_partition = partitioning.safe[idx]
-            #     beta_max_partition = Partitions((
-            #         beta_max_partition.lower.unsqueeze(0),
-            #         beta_max_partition.upper.unsqueeze(0)
-            #     ))
-            #
-            # _, upper = bounds(self.barrier_dynamics, beta_max_partition, bound_lower=False, method='crown_ibp_interval', reduce=reduce_mean, **kwargs)
-            # lower, _ = bounds(self.barrier, beta_max_partition, bound_upper=False, method='ibp', **kwargs)
+            kwargs['method'] = 'crown_ibp_interval'
 
-            _, upper = bounds(self.barrier_dynamics, partitioning.safe, bound_lower=False, method='crown_ibp_interval', reduce=reduce_mean, **kwargs)
-            lower, _ = bounds(self.barrier, partitioning.safe, bound_upper=False, method='ibp', **kwargs)
-        else:
-            # with torch.no_grad():
-            #     _, upper = bounds(self.barrier_dynamics, partitioning.safe, bound_lower=False, reduce=reduce_mean, **kwargs)
-            #     lower, _ = bounds(self.barrier, partitioning.safe, bound_upper=False, **kwargs)
-            #
-            #     expectation_no_beta = (upper - lower).partition_max()
-            #     idx = expectation_no_beta.argmax()
-            #
-            #     beta_max_partition = partitioning.safe[idx]
-            #     beta_max_partition = Partitions((
-            #         beta_max_partition.lower.unsqueeze(0),
-            #         beta_max_partition.upper.unsqueeze(0)
-            #     ))
-            #
-            # _, upper = bounds(self.barrier_dynamics, beta_max_partition, bound_lower=False, reduce=reduce_mean, **kwargs)
-            # lower, _ = bounds(self.barrier, beta_max_partition, bound_upper=False, **kwargs)
+        # with torch.no_grad():
+        #     _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
+        #
+        #     beta = upper.partition_max()
+        #     idx = beta.argmax()
+        #
+        #     beta_max_partition = partitioning.safe[idx]
+        #     beta_max_partition = Partitions((
+        #         beta_max_partition.lower.unsqueeze(0),
+        #         beta_max_partition.upper.unsqueeze(0)
+        #     ))
+        #
+        # _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
 
-            _, upper = bounds(self.barrier_dynamics, partitioning.safe, bound_lower=False, reduce=reduce_mean, **kwargs)
-            lower, _ = bounds(self.barrier, partitioning.safe, bound_upper=False, **kwargs)
-
-        beta = (upper - lower).partition_max().view(-1)
+        _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
+        beta = upper.partition_max().view(-1)
         T = 0.005
         return torch.dot(F.softmax(beta / T, dim=0), beta.clamp(min=0))
         # return beta.clamp(min=0).max()

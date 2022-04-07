@@ -1,7 +1,8 @@
 from functools import partial
 
 import torch
-from bound_propagation import HyperRectangle
+from bound_propagation import HyperRectangle, BoundModule, LinearBounds, IntervalBounds, BoundModelFactory
+from torch import nn
 
 
 class Affine:
@@ -144,3 +145,59 @@ def bounds(model, partitions, bound_lower=True, bound_upper=True, method='ibp', 
         raise NotImplementedError()
 
     return method(lower, upper, batch_size, bound_lower=bound_lower, bound_upper=bound_upper, **kwargs)
+
+
+class Mean(nn.Module):
+    def __init__(self, subnetwork):
+        super().__init__()
+
+        self.subnetwork = subnetwork
+
+    def forward(self, x):
+        return self.subnetwork(x).mean(dim=0)
+
+
+class BoundMean(BoundModule):
+    def __init__(self, module, factory, **kwargs):
+        super().__init__(module, factory, **kwargs)
+
+        self.subnetwork = factory.build(module.subnetwork)
+
+    @property
+    def need_relaxation(self):
+        return self.subnetwork.need_relaxation
+
+    def clear_relaxation(self):
+        self.subnetwork.clear_relaxation()
+
+    def backward_relaxation(self, region):
+        return self.subnetwork.backward_relaxation(region)
+
+    def crown_backward(self, linear_bounds):
+        subnetwork_bounds = self.subnetwork.crown_backward(linear_bounds)
+
+        if linear_bounds.lower is None:
+            lower = None
+        else:
+            lower = (subnetwork_bounds.lower[0].mean(dim=0), subnetwork_bounds.lower[1].mean(dim=0))
+
+        if linear_bounds.upper is None:
+            upper = None
+        else:
+            upper = (subnetwork_bounds.upper[0].mean(dim=0), subnetwork_bounds.upper[1].mean(dim=0))
+
+        return LinearBounds(linear_bounds.region, lower, upper)
+
+    def ibp_forward(self, bounds, save_relaxation=False):
+        subnetwork_bounds = self.subnetwork.ibp_forward(bounds, save_relaxation=save_relaxation)
+        return IntervalBounds(bounds.region, subnetwork_bounds.lower.mean(dim=0), subnetwork_bounds.upper.mean(dim=0))
+
+    def propagate_size(self, in_size):
+        return self.subnetwork.propagate_size(in_size)
+
+
+class LearnedCBFBoundModelFactory(BoundModelFactory):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.register(Mean, BoundMean)

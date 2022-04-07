@@ -3,12 +3,12 @@ import logging
 import os.path
 
 import torch
-from bound_propagation import BoundModelFactory
 from torch import optim
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
+from bounds import LearnedCBFBoundModelFactory
 from monte_carlo import monte_carlo_simulation
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, DubinsFixedStrategy, BoundDubinsFixedStrategy, \
     DubinsCarNoActuation, BoundDubinsCarNoActuation, DubinsCarStrategyComposition, DubinsCarNNStrategy
@@ -110,7 +110,7 @@ def dubins_car_main(args, config):
     dynamics = DubinsCarStrategyComposition(config['dynamics'], DubinsCarNoActuation()).to(args.device)
 
     if config['experiment_type'] == 'barrier_function':
-        factory = BoundModelFactory()
+        factory = LearnedCBFBoundModelFactory()
         factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
         factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
         factory.register(DubinsCarNoActuation, BoundDubinsCarNoActuation)

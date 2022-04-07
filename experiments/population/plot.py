@@ -1,10 +1,12 @@
 from typing import Tuple
 
 import torch
-from bound_propagation import BoundModelFactory, HyperRectangle
+from bound_propagation import HyperRectangle
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm import tqdm
+
+from bounds import LearnedCBFBoundModelFactory
 
 
 def bound_propagation(model, lower_x, upper_x):
@@ -88,7 +90,7 @@ def plot_partition(model, args, input_bounds, ibp_bounds, crown_bounds, initial,
 def plot_bounds_2d(model, dynamics, args, config):
     num_slices = 80
 
-    factory = BoundModelFactory()
+    factory = LearnedCBFBoundModelFactory()
     model = factory.build(model)
 
     if config['dynamics']['safe_set'] == 'circle':

@@ -1,5 +1,15 @@
-from bound_propagation import Residual
+from bound_propagation import Residual, Sub
 from torch import nn
+
+from bounds import Mean
+
+
+class BetaNetwork(Sub):
+    def __init__(self, dynamics, barrier):
+        super().__init__(
+            Mean(nn.Sequential(dynamics, barrier)),
+            barrier
+        )
 
 
 class FCNNBarrierNetwork(nn.Sequential):
