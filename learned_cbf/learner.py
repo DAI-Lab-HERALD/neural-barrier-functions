@@ -25,7 +25,8 @@ class AdversarialNeuralSBF(nn.Module):
         assert partitioning.safe is not None
 
         if kwargs.get('method') == 'combined':
-            kwargs['method'] = 'crown_ibp_interval'
+            # kwargs['method'] = 'crown_ibp_interval'
+            upper = self.beta_network.combined(partitioning.safe)
 
         # with torch.no_grad():
         #     _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
@@ -40,8 +41,8 @@ class AdversarialNeuralSBF(nn.Module):
         #     ))
         #
         # _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
-
-        _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
+        else:
+            _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
         beta = upper.partition_max().view(-1)
         T = 0.005
         return torch.dot(F.softmax(beta / T, dim=0), beta.clamp(min=0))
