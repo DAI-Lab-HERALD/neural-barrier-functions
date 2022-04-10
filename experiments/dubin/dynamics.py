@@ -82,9 +82,6 @@ class BoundDubinsCarUpdate(BoundModule):
         self.alpha_lower, self.beta_lower = zero.detach().clone(), zero.detach().clone()
         self.alpha_upper, self.beta_upper = zero.detach().clone(), zero.detach().clone()
 
-        self.alpha_lower[zero_width], self.beta_lower[zero_width] = 0, self(preactivation.lower[zero_width])[0, :, :2]
-        self.alpha_upper[zero_width], self.beta_upper[zero_width] = 0, self(preactivation.upper[zero_width])[0, :, :2]
-
         lower_act, upper_act = self.func(lower), self.func(upper)
         lower_prime, upper_prime = self.derivative(lower), self.derivative(upper)
 
@@ -100,6 +97,12 @@ class BoundDubinsCarUpdate(BoundModule):
 
             alpha[mask][..., order] = a
             beta[mask][..., order] = y[mask][..., order] - a * x[mask]
+
+        #######################
+        # (Almost) zero width #
+        #######################
+        self.alpha_lower[zero_width], self.beta_lower[zero_width] = 0, torch.min(lower_act[zero_width], upper_act[zero_width])
+        self.alpha_upper[zero_width], self.beta_upper[zero_width] = 0, torch.max(lower_act[zero_width], upper_act[zero_width])
 
         #########################
         # Negative regime - sin #
