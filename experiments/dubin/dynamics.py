@@ -895,6 +895,8 @@ class DubinsCarStrategyComposition(nn.Sequential, StochasticDynamics):
             DubinSelect()
         )
 
+        self.initial_set = dynamics_config['initial_set']
+
     def goal(self, x, eps=None):
         if eps is not None:
             lower_x, upper_x = x - eps, x + eps
@@ -911,12 +913,25 @@ class DubinsCarStrategyComposition(nn.Sequential, StochasticDynamics):
         else:
             lower_x, upper_x = x, x
 
-        return overlap_rectangle(lower_x, upper_x,
-                                 torch.tensor([-0.1, -2.0, -np.pi / 6.0], device=x.device),
-                                 torch.tensor([0.1, -1.8, np.pi / 6.0], device=x.device))
+        if self.initial_set == 'front':
+            return overlap_rectangle(lower_x, upper_x,
+                                     torch.tensor([-0.1, -2.0, -np.pi / 6.0], device=x.device),
+                                     torch.tensor([0.1, -1.8, np.pi / 6.0], device=x.device))
+        elif self.initial_set == 'right':
+            return overlap_rectangle(lower_x, upper_x,
+                                     torch.tensor([-0.1, -2.0, np.pi / 6.0], device=x.device),
+                                     torch.tensor([0.1, -1.8, np.pi / 4.0], device=x.device))
+        else:
+            raise ValueError('Invalid initial set')
 
     def sample_initial(self, num_particles):
-        dist = distributions.Uniform(torch.tensor([-0.1, -2.0, -np.pi / 6.0]), torch.tensor([0.1, -1.8, np.pi / 6.0]))
+        if self.initial_set == 'front':
+            dist = distributions.Uniform(torch.tensor([-0.1, -2.0, -np.pi / 6.0]), torch.tensor([0.1, -1.8, np.pi / 6.0]))
+        elif self.initial_set == 'right':
+            dist = distributions.Uniform(torch.tensor([-0.1, -2.0, np.pi / 6.0]), torch.tensor([0.1, -1.8, np.pi / 4.0]))
+        else:
+            raise ValueError('Invalid initial set')
+
         return dist.sample((num_particles,))
 
     def safe(self, x, eps=None):
