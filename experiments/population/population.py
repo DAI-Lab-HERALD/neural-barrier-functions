@@ -27,7 +27,7 @@ def step(learner, optimizer, partitioning, kappa, epoch):
     if isinstance(learner, EmpiricalNeuralSBF):
         loss = learner.loss(partitioning, kappa)
     else:
-        loss = learner.loss(partitioning, kappa, method='combined', violation_normalization_factor=1.0)
+        loss = learner.loss(partitioning, kappa, method='crown_ibp_interval', violation_normalization_factor=1.0)
 
     loss.backward()
     torch.nn.utils.clip_grad_norm_(learner.parameters(), 1.0)
@@ -63,7 +63,7 @@ def train(learner, certifier, args, config):
 
     empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
 
-    optimizer = optim.AdamW(learner.parameters(), lr=1e-3)
+    optimizer = optim.Adam(learner.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
     kappa = 1.0
 
@@ -80,6 +80,7 @@ def train(learner, certifier, args, config):
 
         if epoch % config['training']['test_every'] == config['training']['test_every'] - 1:
             test(certifier, config['test'], kappa)
+            save(learner, args, epoch)
 
         scheduler.step()
         kappa *= 0.97
@@ -95,11 +96,13 @@ def train(learner, certifier, args, config):
     logger.info('Training complete')
 
 
-def save(learner, args):
+def save(learner, args, state):
     folder = os.path.dirname(args.save_path)
     os.makedirs(folder, exist_ok=True)
 
-    torch.save(learner.state_dict(), args.save_path)
+    path = args.path.format(state=state)
+
+    torch.save(learner.state_dict(), path)
 
 
 def population_main(args, config):
@@ -116,7 +119,7 @@ def population_main(args, config):
         # learner.load_state_dict(torch.load(args.save_path))
 
         train(learner, certifier, args, config)
-        save(learner, args)
+        save(learner, args, 'final')
         test(certifier, config['test'])
 
         plot_bounds_2d(barrier, dynamics, args, config)
