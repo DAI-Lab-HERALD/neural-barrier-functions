@@ -131,14 +131,6 @@ class BoundBetaNetwork(BoundModule):
 
         return out_size1
 
-    def combined(self, set):
-        region = HyperRectangle(set.lower, set.upper)
-
-        expectation = self.bound_dynamics_barrier.crown_ibp(region, bound_lower=False).concretize()
-        barrier = self.bound_barrier.ibp(region)
-
-        return expectation.upper - barrier.lower
-
 
 class FCNNBarrierNetwork(nn.Sequential):
     activation_class_mapping = {

@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from partitioning import Partitions
 from .networks import BetaNetwork
 from .bounds import bounds
 
@@ -25,30 +26,25 @@ class AdversarialNeuralSBF(nn.Module):
         assert partitioning.safe is not None
 
         if kwargs.get('method') == 'combined':
-            # kwargs['method'] = 'crown_ibp_interval'
-            upper = self.beta_network.combined(partitioning.safe)
+            kwargs['method'] = 'crown_ibp_interval'
 
-        # with torch.no_grad():
-        #     _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
-        #
-        #     beta = upper.partition_max()
-        #     idx = beta.argmax()
-        #
-        #     beta_max_partition = partitioning.safe[idx]
-        #     beta_max_partition = Partitions((
-        #         beta_max_partition.lower.unsqueeze(0),
-        #         beta_max_partition.upper.unsqueeze(0)
-        #     ))
-        #
-        # _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
-        else:
+        with torch.no_grad():
             _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
-        beta = upper.partition_max().view(-1)
-        T = 0.005
-        return torch.dot(F.softmax(beta / T, dim=0), beta.clamp(min=0))
-        # return beta.clamp(min=0).max()
 
-        # return torch.dot(beta.clamp(min=0).view(-1), partitioning.safe.volumes) / partitioning.safe.volume
+            beta = upper.partition_max()
+            idx = beta.argmax()
+
+            beta_max_partition = partitioning.safe[idx]
+            beta_max_partition = Partitions((
+                beta_max_partition.lower.unsqueeze(0),
+                beta_max_partition.upper.unsqueeze(0)
+            ))
+
+        _, upper = bounds(self.beta_network, beta_max_partition, bound_lower=False, **kwargs)
+        upper = upper.partition_max()
+        beta = upper.view(-1)
+
+        return beta.clamp(min=0).max()
 
     def gamma(self, partitioning, **kwargs):
         """
@@ -59,24 +55,20 @@ class AdversarialNeuralSBF(nn.Module):
         if kwargs.get('method') == 'combined':
             kwargs['method'] = 'crown_ibp_interval'
 
-        # with torch.no_grad():
-        #     _, upper = bounds(self.barrier, partitioning.initial, bound_lower=False, **kwargs)
-        #     idx = upper.partition_max().argmax()
-        #
-        #     gamma_max_partition = partitioning.initial[idx]
-        #     gamma_max_partition = Partitions((
-        #         gamma_max_partition.lower.unsqueeze(0),
-        #         gamma_max_partition.upper.unsqueeze(0)
-        #     ))
-        #
-        # _, upper = bounds(self.barrier, gamma_max_partition, bound_lower=False, **kwargs)
-        _, upper = bounds(self.barrier, partitioning.initial, bound_lower=False, **kwargs)
-        gamma = upper.partition_max().view(-1)
-        T = 0.005
-        return torch.dot(F.softmax(gamma / T, dim=0), gamma.clamp(min=0))
-        # return gamma.clamp(min=0).max()
+        with torch.no_grad():
+            _, upper = bounds(self.barrier, partitioning.initial, bound_lower=False, **kwargs)
+            idx = upper.partition_max().argmax()
 
-        # return torch.dot(gamma.clamp(min=0).view(-1), partitioning.initial.volumes) / partitioning.initial.volume
+            gamma_max_partition = partitioning.initial[idx]
+            gamma_max_partition = Partitions((
+                gamma_max_partition.lower.unsqueeze(0),
+                gamma_max_partition.upper.unsqueeze(0)
+            ))
+
+        _, upper = bounds(self.barrier, gamma_max_partition, bound_lower=False, **kwargs)
+        gamma = upper.partition_max().view(-1)
+
+        return gamma.clamp(min=0).max()
 
     def loss(self, partitioning, safety_weight=0.5, **kwargs):
         if safety_weight == 1.0:
@@ -105,8 +97,6 @@ class AdversarialNeuralSBF(nn.Module):
 
         lower, _ = bounds(self.barrier, partitioning.unsafe, bound_upper=False, **kwargs)
         violation = (1 - lower).partition_max().clamp(min=0)
-        # return violation.max()
-        # return violation.sum()
 
         return torch.dot(violation.view(-1), partitioning.unsafe.volumes) / partitioning.unsafe.volume
 
@@ -122,8 +112,6 @@ class AdversarialNeuralSBF(nn.Module):
         if partitioning.state_space is not None:
             lower, _ = bounds(self.barrier, partitioning.state_space, bound_upper=False, **kwargs)
             violation = (0 - lower).partition_max().clamp(min=0)
-            # return violation.max()
-            # return violation.sum()
 
             return torch.dot(violation.view(-1), partitioning.state_space.volumes) / partitioning.unsafe.volume
         else:
@@ -164,9 +152,7 @@ class EmpiricalNeuralSBF(nn.Module):
         bx = self.barrier(x)
 
         beta = (expectation - bx).view(-1)
-        T = 0.005
-        return torch.dot(F.softmax(beta / T, dim=0), beta.clamp(min=0))
-        # return beta.clamp(min=0).max()
+        return beta.clamp(min=0).max()
 
     def gamma(self, partitioning):
         """
@@ -178,9 +164,7 @@ class EmpiricalNeuralSBF(nn.Module):
         x = partitioning.initial.center
 
         gamma = self.barrier(x).view(-1)
-        T = 0.005
-        return torch.dot(F.softmax(gamma / T, dim=0), gamma.clamp(min=0))
-        # return gamma.clamp(min=0).max()
+        return gamma.clamp(min=0).max()
 
     def loss(self, partitioning, safety_weight=0.5):
         if safety_weight == 1.0:
