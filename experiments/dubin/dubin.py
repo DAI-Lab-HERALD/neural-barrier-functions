@@ -128,15 +128,13 @@ def reinforcement_learning(strategy, dynamics, args, config):
     q_network1_target = copy.deepcopy(q_network1)
     q_network2_target = copy.deepcopy(q_network2)
 
-    strategy_target = copy.deepcopy(strategy)
-
-    optimA = optim.Adam(strategy.parameters(), lr=1e-4)
-    optimC1 = optim.Adam(q_network1.parameters(), lr=1e-4)
-    optimC2 = optim.Adam(q_network2.parameters(), lr=1e-4)
+    optimA = optim.Adam(strategy.parameters(), lr=1e-3)
+    optimC1 = optim.Adam(q_network1.parameters(), lr=1e-3)
+    optimC2 = optim.Adam(q_network2.parameters(), lr=1e-3)
 
     replay_memory_size = 10000
-    batch_size = 200
-    gamma = 0.97
+    batch_size = 1000
+    gamma = 0.99
 
     states = []
     actions = []
@@ -176,7 +174,7 @@ def reinforcement_learning(strategy, dynamics, args, config):
         batch_masks = torch.tensor(masks)[samples]
 
         with torch.no_grad():
-            next_action = strategy_target(batch_next_states)
+            next_action = strategy(batch_next_states)
             next_q_value = torch.min(
                 q_network1_target(torch.cat([batch_next_states, next_action], dim=-1)),
                 q_network2_target(torch.cat([batch_next_states, next_action], dim=-1))
@@ -207,9 +205,8 @@ def reinforcement_learning(strategy, dynamics, args, config):
         next_states = next_states[-replay_memory_size:]
         masks = masks[-replay_memory_size:]
 
-        soft_update(q_network1_target, q_network1, 0.01)
-        soft_update(q_network2_target, q_network2, 0.01)
-        soft_update(strategy_target, strategy, 0.01)
+        soft_update(q_network1_target, q_network1, 0.005)
+        soft_update(q_network2_target, q_network2, 0.005)
 
     save(strategy, args, 'rl-final')
 
