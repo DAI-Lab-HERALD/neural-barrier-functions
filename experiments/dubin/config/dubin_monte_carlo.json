@@ -1,6 +1,7 @@
 {
   "system": "dubin",
   "experiment_type": "monte_carlo",
+  "strategy": "no_actuation",
   "num_particles": 10000,
   "dynamics": {
     "mu": 0.4,

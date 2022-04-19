@@ -108,9 +108,21 @@ def save(learner, args, state):
     torch.save(learner.state_dict(), path)
 
 
+def build_strategy(args):
+    if args.strategy == 'no_actuation':
+        return DubinsCarNoActuation()
+    elif args.strategy == 'neural_network':
+        return DubinsCarNNStrategy()
+    elif args.strategy == 'fossil':
+        return DubinsFixedStrategy()
+    else:
+        raise ValueError('Strategy not supported')
+
+
 def dubins_car_main(args, config):
     logger.info('Constructing model')
-    dynamics = DubinsCarStrategyComposition(config['dynamics'], DubinsCarNoActuation()).to(args.device)
+    strategy = build_strategy(args)
+    dynamics = DubinsCarStrategyComposition(config['dynamics'], strategy).to(args.device)
 
     if config['experiment_type'] == 'barrier_function':
         factory = LearnedCBFBoundModelFactory()

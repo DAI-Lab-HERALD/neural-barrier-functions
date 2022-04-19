@@ -1,6 +1,7 @@
 {
   "system": "dubin",
   "experiment_type": "barrier_function",
+  "strategy": "no_actuation",
   "dynamics": {
     "mu": 0.4,
     "sigma": 0.1,
