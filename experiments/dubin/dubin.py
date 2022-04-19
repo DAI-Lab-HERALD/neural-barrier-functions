@@ -1,11 +1,13 @@
+import copy
 import logging
 
 import os.path
 
 import torch
-from torch import optim
+from torch import optim, nn
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 from tqdm import trange, tqdm
 
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, DubinsFixedStrategy, BoundDubinsFixedStrategy, \
@@ -100,13 +102,130 @@ def train(learner, certifier, args, config):
     logger.info('Training complete')
 
 
-def save(learner, args, state):
+def reinforcement_learning(strategy, dynamics, args, config):
+    assert isinstance(strategy, DubinsCarNNStrategy)
+
+    q_network1 = nn.Sequential(
+        nn.Linear(4, 128),
+        nn.Tanh(),
+        nn.Linear(128, 128),
+        nn.Tanh(),
+        nn.Linear(128, 128),
+        nn.Tanh(),
+        nn.Linear(128, 1)
+    )
+
+    q_network2 = nn.Sequential(
+        nn.Linear(4, 128),
+        nn.Tanh(),
+        nn.Linear(128, 128),
+        nn.Tanh(),
+        nn.Linear(128, 128),
+        nn.Tanh(),
+        nn.Linear(128, 1)
+    )
+
+    q_network1_target = copy.deepcopy(q_network1)
+    q_network2_target = copy.deepcopy(q_network2)
+
+    strategy_target = copy.deepcopy(strategy)
+
+    optimA = optim.Adam(strategy.parameters(), lr=1e-4)
+    optimC1 = optim.Adam(q_network1.parameters(), lr=1e-4)
+    optimC2 = optim.Adam(q_network2.parameters(), lr=1e-4)
+
+    replay_memory_size = 10000
+    batch_size = 200
+    gamma = 0.97
+
+    states = []
+    actions = []
+    rewards = []
+    next_states = []
+    masks = []
+
+    for epoch in trange(10000):
+        state = dynamics.sample_initial(1)
+
+        for iter in range(40):
+            with torch.no_grad():
+                next_state = dynamics(state)
+                next_state = next_state[torch.randint(next_state.size(0), (1,))][0].detach()
+                reward = dynamics.safe(next_state).float() + 10 * dynamics.goal(next_state).float() \
+                         - 10 * dynamics.unsafe(next_state).float() - 5 * (~dynamics.state_space(next_state)).float()
+                done = (dynamics.goal(next_state) | dynamics.unsafe(next_state) | ~dynamics.state_space(next_state)).item()
+
+                states.append(state)
+                actions.append(strategy(state))
+                rewards.append(reward)
+                next_states.append(next_state)
+                masks.append(1 - done)
+
+                state = next_state
+
+                if done:
+                    break
+
+        print('Epoch: {}, Iteration: {}, ({}/{}/{})'.format(epoch, iter, dynamics.goal(next_state).item(), dynamics.unsafe(next_state).item(), not dynamics.state_space(next_state).item()))
+
+        samples = torch.randint(len(states), (batch_size,))
+        batch_states = torch.cat(states)[samples]
+        batch_actions = torch.cat(actions)[samples]
+        batch_rewards = torch.cat(rewards)[samples]
+        batch_next_states = torch.cat(next_states)[samples]
+        batch_masks = torch.tensor(masks)[samples]
+
+        with torch.no_grad():
+            next_action = strategy_target(batch_next_states)
+            next_q_value = torch.min(
+                q_network1_target(torch.cat([batch_next_states, next_action], dim=-1)),
+                q_network2_target(torch.cat([batch_next_states, next_action], dim=-1))
+            )
+            q_target = batch_rewards.unsqueeze(-1) + batch_masks.unsqueeze(-1) * gamma * next_q_value
+
+        critic1_loss = F.mse_loss(q_network1(torch.cat([batch_states, batch_actions], dim=-1)), q_target)
+        critic2_loss = F.mse_loss(q_network2(torch.cat([batch_states, batch_actions], dim=-1)), q_target)
+
+        optimC1.zero_grad()
+        optimC2.zero_grad()
+        critic1_loss.backward()
+        critic2_loss.backward()
+        optimC1.step()
+        optimC2.step()
+
+        action = strategy(batch_states)
+        q_value = torch.min(q_network1(torch.cat([batch_states, action], dim=-1)), q_network2(torch.cat([batch_states, action], dim=-1)))
+        actor_loss = -q_value.mean()
+
+        optimA.zero_grad()
+        actor_loss.backward()
+        optimA.step()
+
+        states = states[-replay_memory_size:]
+        actions = actions[-replay_memory_size:]
+        rewards = rewards[-replay_memory_size:]
+        next_states = next_states[-replay_memory_size:]
+        masks = masks[-replay_memory_size:]
+
+        soft_update(q_network1_target, q_network1, 0.01)
+        soft_update(q_network2_target, q_network2, 0.01)
+        soft_update(strategy_target, strategy, 0.01)
+
+    save(strategy, args, 'rl-final')
+
+
+def soft_update(target, source, tau):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
+
+
+def save(model, args, state):
     folder = os.path.dirname(args.save_path)
     os.makedirs(folder, exist_ok=True)
 
     path = args.save_path.format(state=state)
 
-    torch.save(learner.state_dict(), path)
+    torch.save(model.state_dict(), path)
 
 
 def build_strategy(config):
@@ -144,6 +263,8 @@ def dubins_car_main(args, config):
         test(certifier, config['test'])
 
         # plot_bounds_2d(barrier, dynamics, args, config)
+    elif config['experiment_type'] == 'rl':
+        reinforcement_learning(strategy, dynamics, args, config)
     elif config['experiment_type'] == 'monte_carlo':
         monte_carlo_simulation(args, dynamics, config)
     else:

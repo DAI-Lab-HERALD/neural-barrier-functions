@@ -895,6 +895,16 @@ class DubinsCarStrategyComposition(nn.Sequential, StochasticDynamics):
             DubinSelect()
         )
 
+    def goal(self, x, eps=None):
+        if eps is not None:
+            lower_x, upper_x = x - eps, x + eps
+        else:
+            lower_x, upper_x = x, x
+
+        return overlap_rectangle(lower_x, upper_x,
+                                 torch.tensor([-2.0, 1.8, -np.pi / 2.0], device=x.device),
+                                 torch.tensor([2.0, 2.0, np.pi / 2.0], device=x.device))
+
     def initial(self, x, eps=None):
         if eps is not None:
             lower_x, upper_x = x - eps, x + eps
