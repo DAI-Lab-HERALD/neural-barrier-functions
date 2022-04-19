@@ -28,7 +28,7 @@
     "epochs": 150,
     "empirical_epochs": 20,
     "test_every": 5,
-    "adjust_overlap": true
+    "adjust_overlap": false
   },
   "test": {
     "ibp_batch_size": 500,
