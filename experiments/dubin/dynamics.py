@@ -34,7 +34,7 @@ class DubinsCarUpdate(nn.Module):
             x1 = x1.unsqueeze(0).expand_as(x3)
             x2 = x2.unsqueeze(0).expand_as(x3)
 
-        x = torch.stack([x1, x2, x3], dim=-1)
+        x = torch.stack([x1, x2, x3, torch.zeros_like(x3)], dim=-1)
         return x
 
 
@@ -77,7 +77,7 @@ class BoundDubinsCarUpdate(BoundModule):
         lower, upper = preactivation.lower[..., 2], preactivation.upper[..., 2]
         zero_width, n, p, np = regimes(lower, upper)
 
-        zero = torch.zeros_like(lower.unsqueeze(-1).expand(*lower.size(), 2))
+        zero = torch.zeros_like(lower).unsqueeze(-1).expand(*lower.size(), 2)
 
         self.alpha_lower, self.beta_lower = zero.detach().clone(), zero.detach().clone()
         self.alpha_upper, self.beta_upper = zero.detach().clone(), zero.detach().clone()
@@ -93,10 +93,10 @@ class BoundDubinsCarUpdate(BoundModule):
 
         def add_linear(alpha, beta, mask, order, a, x, y, a_mask=True):
             if a_mask:
-                a = a[mask][..., order]
+                a = a[mask, [order]]
 
-            alpha[mask][..., order] = a
-            beta[mask][..., order] = y[mask][..., order] - a * x[mask]
+            alpha[mask, [order]] = a
+            beta[mask, [order]] = y[mask, [order]] - a * x[mask]
 
         #######################
         # (Almost) zero width #
@@ -248,19 +248,18 @@ class BoundDubinsCarUpdate(BoundModule):
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
-    def ibp_x_sin_phi(self, bounds):
+    def ibp_sin_phi(self, bounds):
         x1_lower = self.module.velocity * bounds.lower[..., 2].sin()
         x1_upper = self.module.velocity * bounds.upper[..., 2].sin()
 
         return x1_lower, x1_upper
 
-    def ibp_y_cos_phi(self, bounds):
+    def ibp_cos_phi(self, bounds):
         x2_lower = self.module.velocity * torch.min(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos())
 
         across_center = (bounds.lower[..., 2] <= 0.0) & (bounds.upper[..., 2] >= 0.0)
-        center_max = across_center * torch.ones_like(bounds.upper[..., 1])
         boundary_max = torch.max(bounds.lower[..., 2].cos(), bounds.upper[..., 2].cos())
-        x2_upper = self.module.velocity * torch.max(boundary_max, center_max)
+        x2_upper = self.module.velocity * torch.max(boundary_max, across_center)
 
         return x2_lower, x2_upper
 
@@ -277,8 +276,8 @@ class BoundDubinsCarUpdate(BoundModule):
             self.alpha_beta(preactivation=bounds)
             self.bounded = True
 
-        x1_lower, x1_upper = self.ibp_x_sin_phi(bounds)
-        x2_lower, x2_upper = self.ibp_y_cos_phi(bounds)
+        x1_lower, x1_upper = self.ibp_sin_phi(bounds)
+        x2_lower, x2_upper = self.ibp_cos_phi(bounds)
         x3_lower, x3_upper = self.ibp_control(bounds)
 
         if x1_lower.dim() != x3_lower.dim():
@@ -287,18 +286,19 @@ class BoundDubinsCarUpdate(BoundModule):
             x2_lower = x2_lower.unsqueeze(0).expand_as(x3_lower)
             x2_upper = x2_upper.unsqueeze(0).expand_as(x3_upper)
 
-        lower = torch.stack([x1_lower, x2_lower, x3_lower], dim=-1)
-        upper = torch.stack([x1_upper, x2_upper, x3_upper], dim=-1)
+        lower = torch.stack([x1_lower, x2_lower, x3_lower, torch.zeros_like(x3_lower)], dim=-1)
+        upper = torch.stack([x1_upper, x2_upper, x3_upper, torch.zeros_like(x3_upper)], dim=-1)
         return IntervalBounds(bounds.region, lower, upper)
 
     def propagate_size(self, in_size):
         assert in_size == 4
 
-        return 3
+        return 4
 
 
 def plot_dubins_car():
     dynamics = DubinsCarUpdate({
+        'mu': 0.1,
         'sigma': 0.1,
         'num_samples': 500,
         'velocity': 1.0
@@ -321,7 +321,7 @@ def plot_dubins_car():
     cell_centers = torch.cartesian_prod(x_slice_centers, x_slice_centers, phi_slice_centers, u_slice_centers)
 
     ibp_bounds = bound.ibp(HyperRectangle.from_eps(cell_centers, cell_width))
-    crown_bounds = bound.crown_ibp(HyperRectangle.from_eps(cell_centers, cell_width))
+    crown_bounds = bound.crown(HyperRectangle.from_eps(cell_centers, cell_width))
     crown_interval = crown_bounds.concretize()
 
     for i in range(len(ibp_bounds)):
@@ -824,40 +824,12 @@ def plot_dubins_car_fixed_strategy_y_cos_phi():
         plt.show()
 
 
-class DubinsCarNoActuation(nn.Module):
-    def forward(self, x):
-        return torch.zeros_like(x[..., :1])
+class DubinsCarNoActuation(nn.Linear):
+    def __init__(self):
+        super().__init__(3, 1, bias=False)
 
-
-class BoundDubinsCarNoActuation(BoundModule):
-    @property
-    def need_relaxation(self):
-        return False
-
-    def __init__(self, module, factory, **kwargs):
-        super().__init__(module, factory, **kwargs)
-
-    def crown_backward(self, linear_bounds):
-        if linear_bounds.lower is None:
-            lower = None
-        else:
-            lower = (torch.zeros_like(linear_bounds.lower[0][..., :1]), torch.zeros_like(linear_bounds.lower[1]))
-
-        if linear_bounds.upper is None:
-            upper = None
-        else:
-            upper = (torch.zeros_like(linear_bounds.upper[0][..., :1]), torch.zeros_like(linear_bounds.upper[1]))
-
-        return LinearBounds(linear_bounds.region, lower, upper)
-
-    @assert_bound_order
-    def ibp_forward(self, bounds, save_relaxation=False):
-        return IntervalBounds(bounds.region, torch.zeros_like(bounds.lower[..., :1]), torch.zeros_like(bounds.upper[..., :1]))
-
-    def propagate_size(self, in_size):
-        assert in_size == 3
-
-        return 1
+        del self.weight
+        self.register_buffer('weight', torch.zeros(1, 3))
 
 
 class DubinsCarNNStrategy(nn.Sequential):
@@ -872,19 +844,55 @@ class DubinsCarNNStrategy(nn.Sequential):
         )
 
 
-class DubinsCarStrategyComposition(RK4, StochasticDynamics):
+class DubinSelect(nn.Module):
+    def forward(self, x):
+        return x[..., :3]
+
+
+class BoundDubinSelect(BoundModule):
+    @property
+    def need_relaxation(self):
+        return False
+
+    def crown_backward(self, linear_bounds):
+        if linear_bounds.lower is None:
+            lower = None
+        else:
+            lower = (
+                torch.cat([linear_bounds.lower[0], torch.zeros_like(linear_bounds.lower[0][..., :1])], dim=-1),
+                linear_bounds.lower[1]
+            )
+
+        if linear_bounds.upper is None:
+            upper = None
+        else:
+            upper = (
+                torch.cat([linear_bounds.upper[0], torch.zeros_like(linear_bounds.upper[0][..., :1])], dim=-1),
+                linear_bounds.upper[1]
+            )
+
+        return LinearBounds(linear_bounds.region, lower, upper)
+
+    def ibp_forward(self, bounds, save_relaxation=False):
+        return IntervalBounds(bounds.region, bounds.lower[..., :3], bounds.upper[..., :3])
+
+    def propagate_size(self, in_size):
+        assert in_size == 4
+
+        return 3
+
+
+class DubinsCarStrategyComposition(nn.Sequential, StochasticDynamics):
     def __init__(self, dynamics_config, strategy=None):
         StochasticDynamics.__init__(self, dynamics_config['num_samples'])
 
         if strategy is None:
             strategy = DubinsCarNoActuation()
 
-        RK4.__init__(self,
-            nn.Sequential(
-                Cat(strategy),
-                DubinsCarUpdate(dynamics_config)
-            ),
-           dynamics_config['dt']
+        nn.Sequential.__init__(self,
+            Cat(strategy),
+            RK4(DubinsCarUpdate(dynamics_config), dynamics_config['dt']),
+            DubinSelect()
         )
 
     def initial(self, x, eps=None):

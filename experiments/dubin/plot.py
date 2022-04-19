@@ -2,12 +2,13 @@ import torch
 from bound_propagation import HyperRectangle
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from torch import nn
 from tqdm import tqdm
 
 from learned_cbf.bounds import bounds, LearnedCBFBoundModelFactory
 from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, BoundDubinsFixedStrategy, \
-    DubinsFixedStrategy, DubinsCarNoActuation, BoundDubinsCarNoActuation
+    DubinsFixedStrategy, DubinSelect, BoundDubinSelect
 
 
 def bound_propagation(model, lower_x, upper_x, config):
@@ -19,12 +20,12 @@ def bound_propagation(model, lower_x, upper_x, config):
     factory = LearnedCBFBoundModelFactory()
     factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
     factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
-    factory.register(DubinsCarNoActuation, BoundDubinsCarNoActuation)
+    factory.register(DubinSelect, BoundDubinSelect)
     factory.register(ButcherTableau, BoundButcherTableau)
     model = factory.build(model)
 
     ibp_bounds = model.ibp(input_bounds).cpu()
-    crown_bounds = model.crown(input_bounds).cpu()
+    crown_bounds = model.crown_ibp(input_bounds).cpu()
 
     input_bounds = input_bounds.cpu()
 
@@ -101,9 +102,7 @@ def plot_partition(model, args, input_bounds, ibp_bounds, crown_bounds, initial,
 def plot_bounds_2d(model, dynamics, args, config):
     num_slices = 80
 
-    # factory = BoundModelFactory()
-    # factory.register(Polynomial, BoundPolynomial)
-    # model = factory.build(model)
+    model = nn.Sequential(nn.Linear(2, 3), model)
 
     x1_space = torch.linspace(-3.5, 2.0, num_slices + 1, device=args.device)
     x1_cell_width = (x1_space[1] - x1_space[0]) / 2
@@ -183,7 +182,7 @@ def plot_bounds_2d(model, dynamics, args, config):
         interval_crown = partition_crown.concretize()
 
         # if lower < 0 or unsafe and lower < 1:
-        if interval_crown.lower < partition_ibp.lower or interval_crown.upper > partition_ibp.upper:
-            print((interval_crown.lower, interval_crown.upper), (partition_ibp.lower, partition_ibp.upper))
-            print(initial, safe, unsafe)
-            plot_partition(model, args, partition_rect, partition_ibp, partition_crown, initial, safe, unsafe)
+        # if interval_crown.lower < partition_ibp.lower or interval_crown.upper > partition_ibp.upper:
+        print((interval_crown.lower, interval_crown.upper), (partition_ibp.lower, partition_ibp.upper))
+        print(initial, safe, unsafe)
+        plot_partition(model, args, partition_rect, partition_ibp, partition_crown, initial, safe, unsafe)

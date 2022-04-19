@@ -9,7 +9,8 @@ from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, DubinsFixedStrategy, BoundDubinsFixedStrategy, \
-    DubinsCarNoActuation, BoundDubinsCarNoActuation, DubinsCarStrategyComposition, DubinsCarNNStrategy
+    DubinsCarNoActuation, DubinsCarStrategyComposition, DubinsCarNNStrategy, \
+    BoundDubinSelect, DubinSelect
 from .partitioning import dubins_car_partitioning
 from .plot import plot_bounds_2d
 
@@ -108,12 +109,12 @@ def save(learner, args, state):
     torch.save(learner.state_dict(), path)
 
 
-def build_strategy(args):
-    if args.strategy == 'no_actuation':
+def build_strategy(config):
+    if config['strategy'] == 'no_actuation':
         return DubinsCarNoActuation()
-    elif args.strategy == 'neural_network':
+    elif config['strategy'] == 'neural_network':
         return DubinsCarNNStrategy()
-    elif args.strategy == 'fossil':
+    elif config['strategy'] == 'fossil':
         return DubinsFixedStrategy()
     else:
         raise ValueError('Strategy not supported')
@@ -121,14 +122,14 @@ def build_strategy(args):
 
 def dubins_car_main(args, config):
     logger.info('Constructing model')
-    strategy = build_strategy(args)
+    strategy = build_strategy(config)
     dynamics = DubinsCarStrategyComposition(config['dynamics'], strategy).to(args.device)
 
     if config['experiment_type'] == 'barrier_function':
         factory = LearnedCBFBoundModelFactory()
         factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
         factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
-        factory.register(DubinsCarNoActuation, BoundDubinsCarNoActuation)
+        factory.register(DubinSelect, BoundDubinSelect)
         factory.register(ButcherTableau, BoundButcherTableau)
 
         barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
