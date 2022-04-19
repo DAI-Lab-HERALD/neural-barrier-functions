@@ -102,7 +102,7 @@ def save(learner, args, state):
     folder = os.path.dirname(args.save_path)
     os.makedirs(folder, exist_ok=True)
 
-    path = args.path.format(state=state)
+    path = args.save_path.format(state=state)
 
     torch.save(learner.state_dict(), path)
 
