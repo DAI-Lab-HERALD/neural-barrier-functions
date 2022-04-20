@@ -176,7 +176,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
         while not self.should_stop_beta_gamma('BETA', set, min, max, last_gap):
-            last_gap.append((max - min).max().item())
+            last_gap.append((max.max() - min.max()).item())
             last_gap.pop(0)
 
             set, prune_all = self.prune_beta_gamma(set, min, max)
@@ -219,7 +219,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
         lower, upper = bounds(self.beta_network, set, method='crown_linear', **kwargs)
 
-        split_dim = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).argmax(dim=-1)
+        split_dim = ((upper.A - lower.A).abs()[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
         split_dim = (partition_indices, split_dim)
 
@@ -257,7 +257,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
         while not self.should_stop_beta_gamma('GAMMA', set, min, max, last_gap):
-            last_gap.append((max - min).max().item())
+            last_gap.append((max.max() - min.max()).item())
             last_gap.pop(0)
 
             set, prune_all = self.prune_beta_gamma(set, min, max)
@@ -285,7 +285,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         return Partitions((set.lower[keep], set.upper[keep])), False
 
     def should_stop_beta_gamma(self, label, set, min, max, last_gap):
-        gap = (max - min).max().item()
+        gap = (max.max() - min.max()).item()
         abs_max = max.max().item()
 
         logger.debug(f'[{label}] Gap: {gap}, set size: {len(set)}, upper bound: {max.max().item()}')
@@ -328,7 +328,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
         while not self.should_stop_violation(label, set, min, max, lower_bound, last_gap):
-            last_gap.append((max - min).max().item())
+            last_gap.append((max.min() - min.min()).item())
             last_gap.pop(0)
 
             set, prune_all = self.prune_violation(set, min, max, lower_bound)
@@ -380,7 +380,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
         lower, upper = bounds(self.barrier, set, method='crown_linear', **kwargs)
 
-        split_dim = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).argmax(dim=-1)
+        split_dim = ((upper.A - lower.A).abs()[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
         split_dim = (partition_indices, split_dim)
 
@@ -402,7 +402,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         return Partitions((lower, upper))
 
     def should_stop_violation(self, label, set, min, max, lower_bound, last_gap):
-        gap = (max - min).max().item()
+        gap = (max.min() - min.min()).item()
         abs_min = min.min().item()
 
         logger.debug(f'[{label}] Gap: {gap}, set size: {len(set)}, lower bound: {min.min().item()}')
