@@ -3,7 +3,7 @@
   "experiment_type": "barrier_function",
   "dynamics": {
     "sigma": 0.1,
-    "fertility_rate": 0.2,
+    "fertility_rate": 0.5,
     "survival_juvenile": 0.4,
     "survival_adult": 0.8,
     "num_samples": 500,
@@ -31,7 +31,7 @@
     "adjust_overlap": false
   },
   "test": {
-    "ibp_batch_size": 100,
-    "crown_ibp_batch_size": 100
+    "ibp_batch_size": 30,
+    "crown_ibp_batch_size": 30
   }
 }
