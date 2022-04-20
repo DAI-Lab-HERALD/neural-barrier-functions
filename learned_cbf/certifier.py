@@ -148,7 +148,7 @@ class NeuralSBFCertifier(nn.Module):
 class SplittingNeuralSBFCertifier(nn.Module):
     def __init__(self, barrier, dynamics, factory, partitioning, horizon,
                  certification_threshold=1.0e-10, split_gap_stop_treshold=1e-6,
-                 max_set_size=10000):
+                 max_set_size=20000):
         super().__init__()
 
         self.barrier = factory.build(barrier)
