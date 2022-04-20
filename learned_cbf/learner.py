@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from partitioning import Partitions
+from .partitioning import Partitions
 from .networks import BetaNetwork
 from .bounds import bounds
 
