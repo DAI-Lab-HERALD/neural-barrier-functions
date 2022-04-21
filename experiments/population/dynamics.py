@@ -47,7 +47,7 @@ class Population(nn.Linear, StochasticDynamics):
 
         if self.safe_set_type == 'circle':
             return near.norm(dim=-1) <= 1.5
-        elif self.safe_set_type == 'annulus':
+        elif self.safe_set_type == 'stripe':
             return (far.sum(dim=-1) >= 4.25) & (near.sum(dim=-1) <= 4.75) & (far[..., 0] >= 2.0) & (far[..., 1] >= 2.0) & (near[..., 1] <= 2.75) & (near[..., 0] <= 2.75)
         else:
             raise ValueError('Invalid safe set for population')
@@ -59,7 +59,7 @@ class Population(nn.Linear, StochasticDynamics):
             theta = dist.sample((num_particles,)) * 2 * np.pi
 
             return torch.stack([r * theta.cos(), r * theta.sin()], dim=-1)
-        elif self.safe_set_type == 'annulus':
+        elif self.safe_set_type == 'stripe':
             dist = torch.distributions.Uniform(torch.tensor([2.0, 2.0]), torch.tensor([2.75, 2.75]))
             x = dist.sample((num_particles * 4,))
             x = x[self.initial(x)]
@@ -73,7 +73,7 @@ class Population(nn.Linear, StochasticDynamics):
 
         if self.safe_set_type == 'circle':
             return near.norm(dim=-1) <= 2.0
-        elif self.safe_set_type == 'annulus':
+        elif self.safe_set_type == 'stripe':
             return (far.sum(dim=-1) >= 2.0) & (near.sum(dim=-1) <= 7.0)
         else:
             raise ValueError('Invalid safe set for population')
@@ -85,7 +85,7 @@ class Population(nn.Linear, StochasticDynamics):
             theta = dist.sample((num_particles,)) * 2 * np.pi
 
             return torch.stack([r * theta.cos(), r * theta.sin()], dim=-1)
-        elif self.safe_set_type == 'annulus':
+        elif self.safe_set_type == 'stripe':
             x = self.sample_state_space(num_particles * 4)
             x = x[self.safe(x)]
 
@@ -98,7 +98,7 @@ class Population(nn.Linear, StochasticDynamics):
 
         if self.safe_set_type == 'circle':
             return far.norm(dim=-1) >= 2.0
-        elif self.safe_set_type == 'annulus':
+        elif self.safe_set_type == 'stripe':
             return (near.sum(dim=-1) <= 2.0) | (far.sum(dim=-1) >= 7.0)
         else:
             raise ValueError('Invalid safe set for population')
@@ -117,7 +117,7 @@ class Population(nn.Linear, StochasticDynamics):
 
         if self.safe_set_type == 'circle':
             return (upper_x[..., 0] >= -3.0) & (lower_x[..., 0] <= 3.0) & (upper_x[..., 1] >= -3.0) & (lower_x[..., 1] <= 3.0)
-        elif self.safe_set_type == 'annulus':
+        elif self.safe_set_type == 'stripe':
             return (upper_x[..., 0] >= 0) & (lower_x[..., 0] <= 8.0) & (upper_x[..., 1] >= 0) & (lower_x[..., 1] <= 8.0)
         else:
             raise ValueError('Invalid safe set for population')
@@ -125,7 +125,7 @@ class Population(nn.Linear, StochasticDynamics):
     def sample_state_space(self, num_particles):
         if self.safe_set_type == 'circle':
             dist = torch.distributions.Uniform(torch.tensor([-3.0, -3.0]), torch.tensor([3.0, 3.0]))
-        elif self.safe_set_type == 'annulus':
+        elif self.safe_set_type == 'stripe':
             dist = torch.distributions.Uniform(torch.tensor([0.0, 0.0]), torch.tensor([8.0, 8.0]))
         else:
             raise ValueError('Invalid safe set for population')
@@ -136,7 +136,7 @@ class Population(nn.Linear, StochasticDynamics):
     def volume(self):
         if self.safe_set_type == 'circle':
             return 6.0 ** 2
-        elif self.safe_set_type == 'annulus':
+        elif self.safe_set_type == 'stripe':
             return 8.0 ** 2
         else:
             raise ValueError('Invalid safe set for population')

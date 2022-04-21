@@ -4,11 +4,11 @@
   "num_particles": 10000,
   "dynamics": {
     "sigma": 0.1,
-    "fertility_rate": 0.625,
-    "survival_juvenile": 0.8,
-    "survival_adult": 0.5,
+    "fertility_rate": 0.4,
+    "survival_juvenile": 0.5,
+    "survival_adult": 0.8,
     "num_samples": 500,
-    "horizon": 2,
-    "safe_set": "annulus"
+    "horizon": 5,
+    "safe_set": "stripe"
   }
 }

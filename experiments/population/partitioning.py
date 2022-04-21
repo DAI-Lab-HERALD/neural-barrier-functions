@@ -35,7 +35,7 @@ def plot_partitioning(partitioning, safe_set_type):
 
         plt.xlim(-3, 3)
         plt.ylim(-3, 3)
-    elif safe_set_type == 'annulus':
+    elif safe_set_type == 'stripe':
         plt.plot([2.25, 2.0], [2.0, 2.25], color='g')
         plt.plot([2.75, 2.0], [2.0, 2.75], color='g')
         plt.plot([2.25, 2.75], [2.0, 2.0], color='g')
@@ -61,7 +61,7 @@ def population_partitioning(config, dynamics):
 
     if safe_set_type == 'circle':
         x_lower, x_upper = -3.0, 3.0
-    elif safe_set_type == 'annulus':
+    elif safe_set_type == 'stripe':
         x_lower, x_upper = 0.0, 8.0
     else:
         raise ValueError('Invalid safe set for population')
