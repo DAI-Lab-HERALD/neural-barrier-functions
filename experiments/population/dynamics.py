@@ -31,26 +31,24 @@ class Population(nn.Linear, StochasticDynamics):
     def forward(self, input: Tensor) -> Tensor:
         return input.matmul(self.weight.transpose(-1, 1)) + self.bias
 
-    def corners(self, x, eps):
+    def near_far(self, x, eps):
         if eps is not None:
             lower_x, upper_x = x - eps, x + eps
 
-            bottom_left = torch.min(lower_x.abs(), upper_x.abs())
-            bottom_right = torch.stack([torch.max(lower_x[..., 0].abs(), upper_x[..., 0].abs()), torch.min(lower_x[..., 1].abs(), upper_x[..., 1].abs())], dim=-1)
-            top_left = torch.stack([torch.min(lower_x[..., 0].abs(), upper_x[..., 0].abs()), torch.max(lower_x[..., 1].abs(), upper_x[..., 1].abs())], dim=-1)
-            top_right = torch.max(lower_x.abs(), upper_x.abs())
+            near = torch.min(lower_x.abs(), upper_x.abs())
+            far = torch.max(lower_x.abs(), upper_x.abs())
         else:
-            bottom_left, bottom_right, top_left, top_right = x, x, x, x
+            near, far = x, x
 
-        return bottom_left, bottom_right, top_left, top_right
+        return near, far
 
     def initial(self, x, eps=None):
-        bottom_left, bottom_right, top_left, top_right = self.corners(x, eps)
+        near, far = self.near_far(x, eps)
 
         if self.safe_set_type == 'circle':
-            return bottom_left.norm(dim=-1) <= 1.5
+            return near.norm(dim=-1) <= 1.5
         elif self.safe_set_type == 'annulus':
-            return (top_right.sum(dim=-1) >= 4.0) & (bottom_left.sum(dim=-1) <= 5.0)
+            return (far.sum(dim=-1) >= 4.25) & (near.sum(dim=-1) <= 4.75) & (far[..., 0] >= 2.0) & (far[..., 1] >= 2.0) & (near[..., 1] <= 2.75) & (near[..., 0] <= 2.75)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -62,17 +60,21 @@ class Population(nn.Linear, StochasticDynamics):
 
             return torch.stack([r * theta.cos(), r * theta.sin()], dim=-1)
         elif self.safe_set_type == 'annulus':
-            raise NotImplementedError()
+            dist = torch.distributions.Uniform(torch.tensor([2.0, 2.0]), torch.tensor([2.75, 2.75]))
+            x = dist.sample((num_particles * 4,))
+            x = x[self.initial(x)]
+
+            return x[:num_particles]
         else:
             raise ValueError('Invalid safe set for population')
 
     def safe(self, x, eps=None):
-        bottom_left, bottom_right, top_left, top_right = self.corners(x, eps)
+        near, far = self.near_far(x, eps)
 
         if self.safe_set_type == 'circle':
-            return bottom_left.norm(dim=-1) <= 2.0
+            return near.norm(dim=-1) <= 2.0
         elif self.safe_set_type == 'annulus':
-            return (top_right.sum(dim=-1) >= 3.0) & (bottom_left.sum(dim=-1) <= 6.0)
+            return (far.sum(dim=-1) >= 2.0) & (near.sum(dim=-1) <= 7.0)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -84,17 +86,20 @@ class Population(nn.Linear, StochasticDynamics):
 
             return torch.stack([r * theta.cos(), r * theta.sin()], dim=-1)
         elif self.safe_set_type == 'annulus':
-            raise NotImplementedError()
+            x = self.sample_state_space(num_particles * 4)
+            x = x[self.safe(x)]
+
+            return x[:num_particles]
         else:
             raise ValueError('Invalid safe set for population')
 
     def unsafe(self, x, eps=None):
-        bottom_left, bottom_right, top_left, top_right = self.corners(x, eps)
+        near, far = self.near_far(x, eps)
 
         if self.safe_set_type == 'circle':
-            return top_right.norm(dim=-1) >= 2.0
+            return far.norm(dim=-1) >= 2.0
         elif self.safe_set_type == 'annulus':
-            return (bottom_left.sum(dim=-1) <= 3.0) | (top_right.sum(dim=-1) >= 6.0)
+            return (near.sum(dim=-1) <= 2.0) | (far.sum(dim=-1) >= 7.0)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -132,6 +137,6 @@ class Population(nn.Linear, StochasticDynamics):
         if self.safe_set_type == 'circle':
             return 6.0 ** 2
         elif self.safe_set_type == 'annulus':
-            return 4.5 ** 2
+            return 8.0 ** 2
         else:
             raise ValueError('Invalid safe set for population')

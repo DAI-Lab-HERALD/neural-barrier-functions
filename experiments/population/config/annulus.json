@@ -7,12 +7,12 @@
     "survival_juvenile": 0.5,
     "survival_adult": 0.8,
     "num_samples": 500,
-    "horizon": 2,
+    "horizon": 5,
     "safe_set": "annulus"
   },
   "partitioning": {
     "method": "grid",
-    "num_slices": [320, 320]
+    "num_slices": [4, 4]
   },
   "model": {
     "type": "fcnn",

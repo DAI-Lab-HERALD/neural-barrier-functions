@@ -36,11 +36,13 @@ def plot_partitioning(partitioning, safe_set_type):
         plt.xlim(-3, 3)
         plt.ylim(-3, 3)
     elif safe_set_type == 'annulus':
-        plt.plot([4.0, 0.0], [0.0, 4.0], color='g')
-        plt.plot([5.0, 0.0], [0.0, 5.0], color='g')
+        plt.plot([2.25, 2.0], [2.0, 2.25], color='g')
+        plt.plot([2.75, 2.0], [2.0, 2.75], color='g')
+        plt.plot([2.25, 2.75], [2.0, 2.0], color='g')
+        plt.plot([2.0, 2.0], [2.25, 2.75], color='g')
 
-        plt.plot([6.0, 0.0], [0.0, 6.0], color='r')
-        plt.plot([3.0, 0.0], [0.0, 3.0], color='r')
+        plt.plot([7.0, 0.0], [0.0, 7.0], color='r')
+        plt.plot([2.0, 0.0], [0.0, 2.0], color='r')
 
         plt.xlim(0.0, 8.0)
         plt.ylim(0.0, 8.0)
