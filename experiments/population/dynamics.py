@@ -48,7 +48,7 @@ class Population(nn.Linear, StochasticDynamics):
         if self.safe_set_type == 'circle':
             return near.norm(dim=-1) <= 1.5
         elif self.safe_set_type == 'stripe':
-            return (far.sum(dim=-1) >= 4.25) & (near.sum(dim=-1) <= 4.75) & (far[..., 0] >= 2.0) & (far[..., 1] >= 2.0) & (near[..., 1] <= 2.75) & (near[..., 0] <= 2.75)
+            return (far.sum(dim=-1) >= 4.24999) & (near.sum(dim=-1) <= 4.75001) & (far[..., 0] >= 1.99999) & (far[..., 1] >= 1.99999) & (near[..., 1] <= 2.75001) & (near[..., 0] <= 2.75001)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -74,7 +74,7 @@ class Population(nn.Linear, StochasticDynamics):
         if self.safe_set_type == 'circle':
             return near.norm(dim=-1) <= 2.0
         elif self.safe_set_type == 'stripe':
-            return (far.sum(dim=-1) >= 2.0) & (near.sum(dim=-1) <= 7.0)
+            return (far.sum(dim=-1) >= 1.99999) & (near.sum(dim=-1) <= 7.00001)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -99,7 +99,7 @@ class Population(nn.Linear, StochasticDynamics):
         if self.safe_set_type == 'circle':
             return far.norm(dim=-1) >= 2.0
         elif self.safe_set_type == 'stripe':
-            return (near.sum(dim=-1) <= 2.0) | (far.sum(dim=-1) >= 7.0)
+            return (near.sum(dim=-1) <= 2.00001) | (far.sum(dim=-1) >= 6.99999)
         else:
             raise ValueError('Invalid safe set for population')
 
