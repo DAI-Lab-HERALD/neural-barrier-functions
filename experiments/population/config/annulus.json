@@ -3,9 +3,9 @@
   "experiment_type": "barrier_function",
   "dynamics": {
     "sigma": 0.1,
-    "fertility_rate": 0.625,
-    "survival_juvenile": 0.8,
-    "survival_adult": 0.5,
+    "fertility_rate": 0.4,
+    "survival_juvenile": 0.5,
+    "survival_adult": 0.8,
     "num_samples": 500,
     "horizon": 2,
     "safe_set": "annulus"
@@ -24,14 +24,14 @@
   "training": {
     "batch_size": 1000,
     "iter_per_epoch": 400,
-    "eps": 0.001,
+    "eps": 0.005,
     "epochs": 150,
     "empirical_epochs": 20,
     "test_every": 5,
     "adjust_overlap": false
   },
   "test": {
-    "ibp_batch_size": 500,
-    "crown_ibp_batch_size": 100
+    "ibp_batch_size": 15,
+    "crown_ibp_batch_size": 15
   }
 }
