@@ -217,9 +217,9 @@ class SplittingNeuralSBFCertifier(nn.Module):
     def split_beta(self, set, **kwargs):
         kwargs.pop('method', None)
 
-        _, upper = bounds(self.beta_network, set, method='crown_linear', bound_lower=False, **kwargs)
+        lower, upper = bounds(self.beta_network, set, method='crown_linear', **kwargs)
 
-        split_dim = (upper.A.abs()[:, 0] * set.width).argmax(dim=-1)
+        split_dim = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
         split_dim = (partition_indices, split_dim)
 
@@ -266,38 +266,12 @@ class SplittingNeuralSBFCertifier(nn.Module):
                 logger.warning(f'Pruning all in gamma: {min}, {max}, last gap: {last_gap[-1]}')
                 break
 
-            set = self.split_gamma(set, **kwargs)
+            set = self.split(set, **kwargs)
             set = self.region_prune(set, self.dynamics.initial)
 
             min, max = self.min_max(set, **kwargs)
 
         return max.max().clamp(min=0)
-
-    def split_gamma(self, set, **kwargs):
-        kwargs.pop('method', None)
-
-        _, upper = bounds(self.barrier, set, method='crown_linear', bound_lower=False, **kwargs)
-
-        split_dim = (upper.A.abs()[:, 0] * set.width).argmax(dim=-1)
-        partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
-        split_dim = (partition_indices, split_dim)
-
-        lower, upper = set.lower, set.upper
-        mid = set.center
-
-        p1_lower = lower.clone()
-        p1_upper = upper.clone()
-        p1_upper[split_dim] = mid[split_dim]
-
-        p2_lower = lower.clone()
-        p2_upper = upper.clone()
-        p2_lower[split_dim] = mid[split_dim]
-
-        lower, upper = torch.cat([p1_lower, p2_lower]), torch.cat([p1_upper, p2_upper])
-
-        assert torch.all(lower <= upper + 1e-8)
-
-        return Partitions((lower, upper))
 
     def prune_beta_gamma(self, set, min, max):
         largest_lower_bound = min.max()
@@ -404,9 +378,9 @@ class SplittingNeuralSBFCertifier(nn.Module):
     def split(self, set, **kwargs):
         kwargs.pop('method', None)
 
-        lower, _ = bounds(self.barrier, set, method='crown_linear', bound_upper=False, **kwargs)
+        lower, upper = bounds(self.barrier, set, method='crown_linear', **kwargs)
 
-        split_dim = (lower.A.abs()[:, 0] * set.width).argmax(dim=-1)
+        split_dim = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
         split_dim = (partition_indices, split_dim)
 
