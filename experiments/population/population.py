@@ -25,7 +25,7 @@ def step(learner, optimizer, partitioning, kappa, epoch):
     optimizer.zero_grad(set_to_none=True)
 
     if isinstance(learner, EmpiricalNeuralSBF):
-        loss = learner.loss(partitioning, kappa)
+        loss = learner.loss(partitioning, kappa, violation_normalization_factor=1.0)
     else:
         loss = learner.loss(partitioning, kappa, method='crown_ibp_interval', violation_normalization_factor=1.0)
 
@@ -63,7 +63,7 @@ def train(learner, certifier, args, config):
 
     empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
 
-    optimizer = optim.Adam(learner.parameters(), lr=1e-3)
+    optimizer = optim.Adam(learner.barrier.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
     kappa = 1.0
 
@@ -88,7 +88,7 @@ def train(learner, certifier, args, config):
     while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
         logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
         for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
-            plot_partitioning(partitioning, config['dynamics']['safe_set'])
+            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
 
             partitioning = partitioning.to(args.device)
             step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])

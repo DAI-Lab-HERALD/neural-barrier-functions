@@ -65,7 +65,7 @@ def train(learner, certifier, args, config):
 
     empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
 
-    optimizer = optim.Adam(learner.parameters(), lr=1e-3)
+    optimizer = optim.Adam(learner.barrier.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
     kappa = 1.0
 

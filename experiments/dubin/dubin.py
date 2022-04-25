@@ -69,7 +69,7 @@ def train(learner, certifier, args, config):
 
     empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
 
-    optimizer = optim.Adam(learner.parameters(), lr=1e-3)
+    optimizer = optim.Adam(learner.barrier.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
     kappa = 1.0
 
@@ -113,7 +113,7 @@ def reinforcement_learning(strategy, dynamics, args, config):
         nn.Linear(128, 128),
         nn.Tanh(),
         nn.Linear(128, 1)
-    )
+    ).to(args.device)
 
     q_network2 = nn.Sequential(
         nn.Linear(4, 128),
@@ -123,7 +123,7 @@ def reinforcement_learning(strategy, dynamics, args, config):
         nn.Linear(128, 128),
         nn.Tanh(),
         nn.Linear(128, 1)
-    )
+    ).to(args.device)
 
     q_network1_target = copy.deepcopy(q_network1)
     q_network2_target = copy.deepcopy(q_network2)
@@ -143,13 +143,13 @@ def reinforcement_learning(strategy, dynamics, args, config):
     masks = []
 
     for epoch in trange(10000):
-        state = dynamics.sample_initial(1)
+        state = dynamics.sample_initial(1).to(args.device)
 
         for iter in range(40):
             with torch.no_grad():
                 next_state = dynamics(state)
                 next_state = next_state[torch.randint(next_state.size(0), (1,))][0].detach()
-                reward = dynamics.safe(next_state).float() + 10 * dynamics.goal(next_state).float() \
+                reward = dynamics.safe(next_state).float() + 20 * dynamics.goal(next_state).float() \
                          - 10 * dynamics.unsafe(next_state).float() - 5 * (~dynamics.state_space(next_state)).float()
                 done = (dynamics.goal(next_state) | dynamics.unsafe(next_state) | ~dynamics.state_space(next_state)).item()
 
@@ -171,7 +171,7 @@ def reinforcement_learning(strategy, dynamics, args, config):
         batch_actions = torch.cat(actions)[samples]
         batch_rewards = torch.cat(rewards)[samples]
         batch_next_states = torch.cat(next_states)[samples]
-        batch_masks = torch.tensor(masks)[samples]
+        batch_masks = torch.tensor(masks)[samples].to(args.device)
 
         with torch.no_grad():
             next_action = strategy(batch_next_states)
@@ -221,8 +221,12 @@ def save(model, args, state):
     os.makedirs(folder, exist_ok=True)
 
     path = args.save_path.format(state=state)
-
     torch.save(model.state_dict(), path)
+
+
+def load(model, args, state):
+    path = args.save_path.format(state=state)
+    model.load_state_dict(torch.load(path))
 
 
 def build_strategy(config):
@@ -254,6 +258,9 @@ def dubins_car_main(args, config):
         certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
         # learner.load_state_dict(torch.load(args.save_path))
+
+        if isinstance(strategy, DubinsCarNNStrategy):
+            load(strategy, args, 'rl-final')
 
         train(learner, certifier, args, config)
         save(learner, args, 'final')

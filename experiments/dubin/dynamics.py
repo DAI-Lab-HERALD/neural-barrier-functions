@@ -840,7 +840,7 @@ class DubinsCarNNStrategy(nn.Sequential):
             nn.Linear(32, 32),
             nn.Tanh(),
             nn.Linear(32, 1),
-            Clamp(min=-3.0, max=3.0)
+            Clamp(min=-2.0, max=2.0)
         )
 
 

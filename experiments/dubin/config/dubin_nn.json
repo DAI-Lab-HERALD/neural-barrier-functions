@@ -1,15 +1,15 @@
 {
   "system": "dubin",
   "experiment_type": "barrier_function",
-  "strategy": "no_actuation",
+  "strategy": "neural_network",
   "dynamics": {
     "mu": 0.0,
     "sigma": 0.1,
-    "num_samples": 200,
+    "num_samples": 500,
     "dt": 0.1,
     "velocity": 1.0,
-    "horizon": 20,
-    "initial_set": "right"
+    "horizon": 40,
+    "initial_set": "front"
   },
   "partitioning": {
     "method": "grid",
@@ -28,11 +28,11 @@
     "eps": [0.005, 0.005, 0.005],
     "epochs": 150,
     "empirical_epochs": 20,
-    "test_every": 5,
+    "test_every": 25,
     "adjust_overlap": false
   },
   "test": {
-    "ibp_batch_size": 15,
-    "crown_ibp_batch_size": 15
+    "ibp_batch_size": 20,
+    "crown_ibp_batch_size": 20
   }
 }
