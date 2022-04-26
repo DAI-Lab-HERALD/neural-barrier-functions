@@ -25,14 +25,14 @@
   "training": {
     "batch_size": 1000,
     "iter_per_epoch": 400,
-    "eps": [0.01, 0.01, 0.01],
+    "eps": [0.005, 0.005, 0.005],
     "epochs": 150,
     "empirical_epochs": 20,
     "test_every": 5,
     "adjust_overlap": false
   },
   "test": {
-    "ibp_batch_size": 100,
-    "crown_ibp_batch_size": 100
+    "ibp_batch_size": 15,
+    "crown_ibp_batch_size": 15
   }
 }

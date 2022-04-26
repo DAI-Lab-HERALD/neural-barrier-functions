@@ -4,7 +4,9 @@ import logging
 import os.path
 
 import torch
+from bound_propagation import BoundModelFactory, HyperRectangle
 from torch import optim, nn
+from torch.distributions import Normal
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
@@ -69,7 +71,7 @@ def train(learner, certifier, args, config):
 
     empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
 
-    optimizer = optim.Adam(learner.parameters(), lr=1e-3)
+    optimizer = optim.Adam(learner.barrier.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
     kappa = 1.0
 
@@ -113,7 +115,10 @@ def reinforcement_learning(strategy, dynamics, args, config):
         nn.Linear(128, 128),
         nn.Tanh(),
         nn.Linear(128, 1)
-    )
+    ).to(args.device)
+
+    # factory = BoundModelFactory()
+    # q_network1 = factory.build(q_network1)
 
     q_network2 = nn.Sequential(
         nn.Linear(4, 128),
@@ -123,7 +128,7 @@ def reinforcement_learning(strategy, dynamics, args, config):
         nn.Linear(128, 128),
         nn.Tanh(),
         nn.Linear(128, 1)
-    )
+    ).to(args.device)
 
     q_network1_target = copy.deepcopy(q_network1)
     q_network2_target = copy.deepcopy(q_network2)
@@ -133,7 +138,7 @@ def reinforcement_learning(strategy, dynamics, args, config):
     optimC2 = optim.Adam(q_network2.parameters(), lr=1e-3)
 
     replay_memory_size = 10000
-    batch_size = 1000
+    batch_size = 250
     gamma = 0.99
 
     states = []
@@ -142,19 +147,20 @@ def reinforcement_learning(strategy, dynamics, args, config):
     next_states = []
     masks = []
 
-    for epoch in trange(10000):
-        state = dynamics.sample_initial(1)
+    for epoch in trange(2000):
+        state = dynamics.sample_initial(1).to(args.device)
 
         for iter in range(40):
             with torch.no_grad():
-                next_state = dynamics(state)
+                action = Normal(strategy(state), 0.01).sample().clamp(min=-1.0, max=1.0)
+                next_state = dynamics[1:](torch.cat([state, action], dim=-1))
                 next_state = next_state[torch.randint(next_state.size(0), (1,))][0].detach()
-                reward = dynamics.safe(next_state).float() + 10 * dynamics.goal(next_state).float() \
-                         - 10 * dynamics.unsafe(next_state).float() - 5 * (~dynamics.state_space(next_state)).float()
+                reward = 8 * dynamics.goal(next_state).float() - 2 * dynamics.unsafe(next_state).float() \
+                         - (~dynamics.state_space(next_state)).float() - (2.0 - next_state[..., 1]) + 2.0
                 done = (dynamics.goal(next_state) | dynamics.unsafe(next_state) | ~dynamics.state_space(next_state)).item()
 
                 states.append(state)
-                actions.append(strategy(state))
+                actions.append(action)
                 rewards.append(reward)
                 next_states.append(next_state)
                 masks.append(1 - done)
@@ -171,10 +177,10 @@ def reinforcement_learning(strategy, dynamics, args, config):
         batch_actions = torch.cat(actions)[samples]
         batch_rewards = torch.cat(rewards)[samples]
         batch_next_states = torch.cat(next_states)[samples]
-        batch_masks = torch.tensor(masks)[samples]
+        batch_masks = torch.tensor(masks)[samples].to(args.device)
 
         with torch.no_grad():
-            next_action = strategy(batch_next_states)
+            next_action = Normal(strategy(batch_next_states), 0.01).sample().clamp(min=-1.0, max=1.0)
             next_q_value = torch.min(
                 q_network1_target(torch.cat([batch_next_states, next_action], dim=-1)),
                 q_network2_target(torch.cat([batch_next_states, next_action], dim=-1))
@@ -191,9 +197,10 @@ def reinforcement_learning(strategy, dynamics, args, config):
         optimC1.step()
         optimC2.step()
 
-        action = strategy(batch_states)
+        action_dist = Normal(strategy(batch_states), 0.01)
+        action = action_dist.rsample().clamp(min=-1.0, max=1.0)
         q_value = torch.min(q_network1(torch.cat([batch_states, action], dim=-1)), q_network2(torch.cat([batch_states, action], dim=-1)))
-        actor_loss = -q_value.mean()
+        actor_loss = (0.2 * action_dist.log_prob(action) - q_value).mean()
 
         optimA.zero_grad()
         actor_loss.backward()
@@ -221,8 +228,12 @@ def save(model, args, state):
     os.makedirs(folder, exist_ok=True)
 
     path = args.save_path.format(state=state)
-
     torch.save(model.state_dict(), path)
+
+
+def load(model, args, state):
+    path = args.save_path.format(state=state)
+    model.load_state_dict(torch.load(path))
 
 
 def build_strategy(config):
@@ -254,6 +265,9 @@ def dubins_car_main(args, config):
         certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
         # learner.load_state_dict(torch.load(args.save_path))
+
+        if isinstance(strategy, DubinsCarNNStrategy):
+            load(strategy, args, 'rl-final')
 
         train(learner, certifier, args, config)
         save(learner, args, 'final')

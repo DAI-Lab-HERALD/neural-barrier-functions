@@ -48,7 +48,7 @@ class Population(nn.Linear, StochasticDynamics):
         if self.safe_set_type == 'circle':
             return near.norm(dim=-1) <= 1.5
         elif self.safe_set_type == 'stripe':
-            return (far.sum(dim=-1) >= 4.24999) & (near.sum(dim=-1) <= 4.75001) & (far[..., 0] >= 1.99999) & (far[..., 1] >= 1.99999) & (near[..., 1] <= 2.75001) & (near[..., 0] <= 2.75001)
+            return (far.sum(dim=-1) >= 4.24999) & (near.sum(dim=-1) <= 4.75001) & (far[..., 0] >= 2.24999) & (far[..., 1] >= 2.24999) & (near[..., 0] <= 2.50001) & (near[..., 1] <= 2.50001)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -74,7 +74,7 @@ class Population(nn.Linear, StochasticDynamics):
         if self.safe_set_type == 'circle':
             return near.norm(dim=-1) <= 2.0
         elif self.safe_set_type == 'stripe':
-            return (far.sum(dim=-1) >= 1.99999) & (near.sum(dim=-1) <= 7.00001)
+            return (far.sum(dim=-1) >= 0.99999) & (near.sum(dim=-1) <= 8.00001) & (far[..., 0] >= 0.49999) & (far[..., 1] >= 0.49999) & (near[..., 0] <= 7.50001) & (near[..., 1] <= 7.50001)
         else:
             raise ValueError('Invalid safe set for population')
 
@@ -87,6 +87,8 @@ class Population(nn.Linear, StochasticDynamics):
             return torch.stack([r * theta.cos(), r * theta.sin()], dim=-1)
         elif self.safe_set_type == 'stripe':
             x = self.sample_state_space(num_particles * 4)
+            dist = torch.distributions.Uniform(torch.tensor([1.5, 1.5]), torch.tensor([4.5, 4.5]))
+            x = dist.sample((num_particles * 4,))
             x = x[self.safe(x)]
 
             return x[:num_particles]
@@ -99,7 +101,7 @@ class Population(nn.Linear, StochasticDynamics):
         if self.safe_set_type == 'circle':
             return far.norm(dim=-1) >= 2.0
         elif self.safe_set_type == 'stripe':
-            return (near.sum(dim=-1) <= 2.00001) | (far.sum(dim=-1) >= 6.99999)
+            return (near.sum(dim=-1) <= 1.00001) | (far.sum(dim=-1) >= 7.99999) | (near[..., 0] <= 0.50001) | (near[..., 1] <= 0.50001) | (far[..., 0] >= 7.49999) | (far[..., 1] >= 7.49999)
         else:
             raise ValueError('Invalid safe set for population')
 

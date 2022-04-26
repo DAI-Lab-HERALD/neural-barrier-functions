@@ -1,4 +1,5 @@
 import math
+from collections import OrderedDict
 from typing import Tuple
 
 import numpy as np
@@ -10,7 +11,7 @@ from matplotlib import pyplot as plt
 from torch import nn, distributions
 from torch.distributions import Normal
 
-from learned_cbf.discretization import Euler, RK4
+from learned_cbf.discretization import Euler, RK4, Heun
 from learned_cbf.dynamics import StochasticDynamics
 from learned_cbf.utils import overlap_circle, overlap_rectangle, overlap_outside_circle
 
@@ -836,11 +837,11 @@ class DubinsCarNNStrategy(nn.Sequential):
     def __init__(self):
         super().__init__(
             nn.Linear(3, 32),
-            nn.Tanh(),
+            nn.ReLU(),
             nn.Linear(32, 32),
-            nn.Tanh(),
+            nn.ReLU(),
             nn.Linear(32, 1),
-            Clamp(min=-3.0, max=3.0)
+            Clamp(min=-1.0, max=1.0)
         )
 
 
@@ -891,11 +892,17 @@ class DubinsCarStrategyComposition(nn.Sequential, StochasticDynamics):
 
         nn.Sequential.__init__(self,
             Cat(strategy),
-            RK4(DubinsCarUpdate(dynamics_config), dynamics_config['dt']),
+            Heun(DubinsCarUpdate(dynamics_config), dynamics_config['dt']),
             DubinSelect()
         )
 
         self.initial_set = dynamics_config['initial_set']
+
+    def __getitem__(self, idx):
+        if isinstance(idx, slice):
+            return nn.Sequential(OrderedDict(list(self._modules.items())[idx]))
+        else:
+            return self._get_item_by_idx(self._modules.values(), idx)
 
     def goal(self, x, eps=None):
         if eps is not None:

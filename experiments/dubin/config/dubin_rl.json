@@ -8,31 +8,7 @@
     "num_samples": 200,
     "dt": 0.1,
     "velocity": 1.0,
-    "horizon": 20,
+    "horizon": 40,
     "initial_set": "front"
-  },
-  "partitioning": {
-    "method": "grid",
-    "num_slices": [1, 1, 1]
-  },
-  "model": {
-    "type": "fcnn",
-    "input_dim": 3,
-    "hidden_nodes": 128,
-    "hidden_layers": 3,
-    "activation": "relu"
-  },
-  "training": {
-    "batch_size": 1000,
-    "iter_per_epoch": 400,
-    "eps": [0.01, 0.01, 0.01],
-    "epochs": 150,
-    "empirical_epochs": 20,
-    "test_every": 5,
-    "adjust_overlap": false
-  },
-  "test": {
-    "ibp_batch_size": 100,
-    "crown_ibp_batch_size": 100
   }
 }

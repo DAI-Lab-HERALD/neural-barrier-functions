@@ -60,8 +60,6 @@ def train(robust_learner, empirical_learner, certifier, args, config):
     dataset = StochasticSystemDataset(config['training'], robust_learner.dynamics)
     dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
 
-    # empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
-
     optimizer = optim.Adam(robust_learner.barrier.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
     kappa = 1.0
@@ -72,9 +70,6 @@ def train(robust_learner, empirical_learner, certifier, args, config):
 
             partitioning = partitioning.to(args.device)
 
-            # if epoch < config['training']['empirical_epochs']:
-            #     step(empirical_learner, optimizer, partitioning, kappa, epoch)
-            # else:
             step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoch)
 
         if epoch % config['training']['test_every'] == config['training']['test_every'] - 1:

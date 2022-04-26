@@ -166,20 +166,20 @@ class EmpiricalNeuralSBF(nn.Module):
         gamma = self.barrier(x).view(-1)
         return gamma.max().clamp(min=0)
 
-    def loss(self, partitioning, safety_weight=0.5):
+    def loss(self, partitioning, safety_weight=0.5, **kwargs):
         if safety_weight == 1.0:
             return self.loss_safety_prob(partitioning)
         elif safety_weight == 0.0:
-            return self.loss_barrier(partitioning)
+            return self.loss_barrier(partitioning, **kwargs)
 
-        loss_barrier = self.loss_barrier(partitioning)
+        loss_barrier = self.loss_barrier(partitioning, **kwargs)
         loss_safety_prob = self.loss_safety_prob(partitioning)
 
         return (1.0 - safety_weight) * loss_barrier + safety_weight * loss_safety_prob
 
-    def loss_barrier(self, partitioning):
+    def loss_barrier(self, partitioning, violation_normalization_factor=1.0, **kwargs):
         loss = self.loss_state_space(partitioning) + self.loss_unsafe(partitioning)
-        return loss
+        return loss * violation_normalization_factor
 
     def loss_unsafe(self, partitioning):
         """
