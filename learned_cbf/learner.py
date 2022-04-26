@@ -152,7 +152,7 @@ class EmpiricalNeuralSBF(nn.Module):
         bx = self.barrier(x)
 
         beta = (expectation - bx).view(-1)
-        return beta.clamp(min=0).max()
+        return beta.max().clamp(min=0)
 
     def gamma(self, partitioning):
         """
@@ -164,7 +164,7 @@ class EmpiricalNeuralSBF(nn.Module):
         x = partitioning.initial.center
 
         gamma = self.barrier(x).view(-1)
-        return gamma.clamp(min=0).max()
+        return gamma.max().clamp(min=0)
 
     def loss(self, partitioning, safety_weight=0.5):
         if safety_weight == 1.0:

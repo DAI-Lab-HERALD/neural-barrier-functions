@@ -213,10 +213,10 @@ class BoundPolynomialUpdate(BoundModule):
         return 2
 
 
-class Polynomial(RK4, StochasticDynamics):
+class Polynomial(Euler, StochasticDynamics):
     def __init__(self, dynamics_config):
         StochasticDynamics.__init__(self, dynamics_config['num_samples'])
-        RK4.__init__(self, PolynomialUpdate(dynamics_config), dynamics_config['dt'])
+        Euler.__init__(self, PolynomialUpdate(dynamics_config), dynamics_config['dt'])
 
     def initial(self, x, eps=None):
         if eps is not None:

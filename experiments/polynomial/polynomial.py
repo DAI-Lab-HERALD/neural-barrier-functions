@@ -23,16 +23,13 @@ from learned_cbf.monte_carlo import monte_carlo_simulation
 logger = logging.getLogger(__name__)
 
 
-def step(learner, optimizer, partitioning, kappa, epoch):
+def step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoch):
     optimizer.zero_grad(set_to_none=True)
 
-    if isinstance(learner, EmpiricalNeuralSBF):
-        loss = learner.loss(partitioning, kappa)
-    else:
-        loss = learner.loss(partitioning, kappa, method='crown_ibp_interval', violation_normalization_factor=1.0)
+    loss = 0.5 * empirical_learner.loss(partitioning, kappa) + 0.5 * robust_learner.loss(partitioning, kappa, method='crown_ibp_interval')
 
     loss.backward()
-    torch.nn.utils.clip_grad_norm_(learner.parameters(), 1.0)
+    torch.nn.utils.clip_grad_norm_(robust_learner.parameters(), 1.0)
     optimizer.step()
 
 
@@ -56,16 +53,16 @@ def test(certifier, test_config, kappa=None):
     test_method(certifier, method='optimal', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
 
 
-def train(learner, certifier, args, config):
+def train(robust_learner, empirical_learner, certifier, args, config):
     logger.info('Starting training')
     test(certifier, config['test'])
 
-    dataset = StochasticSystemDataset(config['training'], learner.dynamics)
+    dataset = StochasticSystemDataset(config['training'], robust_learner.dynamics)
     dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
 
-    empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
+    # empirical_learner = EmpiricalNeuralSBF(learner.barrier, learner.dynamics, learner.horizon)
 
-    optimizer = optim.Adam(learner.parameters(), lr=1e-3)
+    optimizer = optim.Adam(robust_learner.barrier.parameters(), lr=1e-3)
     scheduler = ExponentialLR(optimizer, gamma=0.97)
     kappa = 1.0
 
@@ -75,14 +72,14 @@ def train(learner, certifier, args, config):
 
             partitioning = partitioning.to(args.device)
 
-            if epoch < config['training']['empirical_epochs']:
-                step(empirical_learner, optimizer, partitioning, kappa, epoch)
-            else:
-                step(learner, optimizer, partitioning, kappa, epoch)
+            # if epoch < config['training']['empirical_epochs']:
+            #     step(empirical_learner, optimizer, partitioning, kappa, epoch)
+            # else:
+            step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoch)
 
         if epoch % config['training']['test_every'] == config['training']['test_every'] - 1:
             test(certifier, config['test'], kappa)
-            save(learner, args, epoch)
+            save(robust_learner, args, epoch)
 
         scheduler.step()
         kappa *= 0.95
@@ -118,13 +115,14 @@ def polynomial_main(args, config):
 
         barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
         partitioning = polynomial_partitioning(config, dynamics).to(args.device)
-        learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
+        robust_learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
+        empirical_learner = EmpiricalNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
         certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
         # learner.load_state_dict(torch.load(args.save_path))
 
-        train(learner, certifier, args, config)
-        save(learner, args, 'final')
+        train(robust_learner, empirical_learner, certifier, args, config)
+        save(robust_learner, args, 'final')
         test(certifier, config['test'])
 
         plot_bounds_2d(barrier, dynamics, args, config)
