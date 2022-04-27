@@ -892,7 +892,7 @@ class DubinsCarStrategyComposition(nn.Sequential, StochasticDynamics):
 
         nn.Sequential.__init__(self,
             Cat(strategy),
-            Heun(DubinsCarUpdate(dynamics_config), dynamics_config['dt']),
+            Euler(DubinsCarUpdate(dynamics_config), dynamics_config['dt']),
             DubinSelect()
         )
 

@@ -69,7 +69,6 @@ def train(robust_learner, empirical_learner, certifier, args, config):
             # plot_partitioning(partitioning)
 
             partitioning = partitioning.to(args.device)
-
             step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoch)
 
         if epoch % config['training']['test_every'] == config['training']['test_every'] - 1:
@@ -85,7 +84,7 @@ def train(robust_learner, empirical_learner, certifier, args, config):
             # plot_partitioning(partitioning)
 
             partitioning = partitioning.to(args.device)
-            step(learner, optimizer, partitioning, 0.0, config['training']['epochs'])
+            step(robust_learner, empirical_learner, optimizer, partitioning, 0.0, config['training']['epochs'])
 
     logger.info('Training complete')
 
