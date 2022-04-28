@@ -1,6 +1,7 @@
 import logging
 
 import torch
+from bound_propagation import Clamp
 from torch import nn
 
 from .bounds import bounds
@@ -13,6 +14,8 @@ logger = logging.getLogger(__name__)
 class NeuralSBFCertifier(nn.Module):
     def __init__(self, barrier, dynamics, factory, partitioning, horizon, certification_threshold=1.0e-10):
         super().__init__()
+
+        barrier = nn.Sequential(barrier, Clamp(max=1.0 + 1e-6))
 
         self.barrier = factory.build(barrier)
         self.beta_network = factory.build(BetaNetwork(dynamics, barrier))
@@ -150,6 +153,8 @@ class SplittingNeuralSBFCertifier(nn.Module):
                  certification_threshold=1.0e-10, split_gap_stop_treshold=1e-6,
                  max_set_size=20000):
         super().__init__()
+
+        barrier = nn.Sequential(barrier, Clamp(max=1.0 + 1e-6))
 
         self.barrier = factory.build(barrier)
         self.beta_network = factory.build(BetaNetwork(dynamics, barrier))
