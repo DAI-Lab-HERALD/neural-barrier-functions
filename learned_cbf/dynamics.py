@@ -42,3 +42,9 @@ class StochasticDynamics(abc.ABC):
     @abc.abstractmethod
     def volume(self):
         raise NotImplementedError()
+
+
+class AdditiveGaussianDynamics(StochasticDynamics, abc.ABC):
+    @abc.abstractmethod
+    def nominal_system(self, x):
+        raise NotImplementedError()
