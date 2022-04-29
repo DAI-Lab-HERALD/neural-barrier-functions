@@ -1,5 +1,7 @@
 import abc
 
+from torch import distributions
+
 
 class StochasticDynamics(abc.ABC):
     def __init__(self, num_samples=None):
@@ -45,6 +47,23 @@ class StochasticDynamics(abc.ABC):
 
 
 class AdditiveGaussianDynamics(StochasticDynamics, abc.ABC):
+    @property
     @abc.abstractmethod
-    def nominal_system(self, x):
+    def nominal_system(self):
         raise NotImplementedError()
+
+    @property
+    @abc.abstractmethod
+    def G(self):
+        raise NotImplementedError()
+
+    @property
+    @abc.abstractmethod
+    def v(self):
+        raise NotImplementedError()
+
+    def prob_v(self, rect):
+        v = self.v
+        assert isinstance(v, distributions.Normal)
+
+        return None
