@@ -6,9 +6,8 @@ from tqdm import tqdm
 
 from learned_cbf.bounds import bounds, LearnedCBFBoundModelFactory
 from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
-from learned_cbf.networks import BetaNetwork
 
-from .dynamics import PolynomialUpdate, BoundPolynomialUpdate
+from .dynamics import PolynomialUpdate, BoundPolynomialUpdate, NominalPolynomialUpdate, BoundNominalPolynomialUpdate
 
 
 def bound_propagation(model, lower_x, upper_x, config):
@@ -16,6 +15,7 @@ def bound_propagation(model, lower_x, upper_x, config):
 
     factory = LearnedCBFBoundModelFactory()
     factory.register(PolynomialUpdate, BoundPolynomialUpdate)
+    factory.register(NominalPolynomialUpdate, BoundNominalPolynomialUpdate)
     factory.register(ButcherTableau, BoundButcherTableau)
     model = factory.build(model)
 

@@ -483,8 +483,10 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         dynamics_lower_interval = dynamics_lower.partition_min()
         dynamics_upper_interval = dynamics_upper.partition_max()
 
-        q_prime = torch.linalg.solve(self.dynamics.G, self.beta_partitioning.state_space.lower - dynamics_upper_interval.unsqueee(1)),\
-                  torch.linalg.solve(self.dynamics.G, self.beta_partitioning.state_space.upper - dynamics_lower_interval.unsqueee(1))
+        G = self.dynamics.G.to(dynamics_lower.device)
+
+        q_prime = torch.linalg.solve(G, self.beta_partitioning.state_space.lower - dynamics_upper_interval.unsqueee(1)),\
+                  torch.linalg.solve(G, self.beta_partitioning.state_space.upper - dynamics_lower_interval.unsqueee(1))
 
         P_v_in_q_prime = self.dynamics.prob_v(q_prime)
 

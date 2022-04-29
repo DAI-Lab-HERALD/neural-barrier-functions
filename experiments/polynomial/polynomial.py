@@ -8,7 +8,8 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
-from .dynamics import Polynomial, PolynomialUpdate, BoundPolynomialUpdate
+from .dynamics import Polynomial, PolynomialUpdate, BoundPolynomialUpdate, NominalPolynomialUpdate, \
+    BoundNominalPolynomialUpdate
 from .partitioning import polynomial_partitioning, plot_partitioning
 from .plot import plot_bounds_2d
 
@@ -105,6 +106,7 @@ def polynomial_main(args, config):
     if config['experiment_type'] == 'barrier_function':
         factory = LearnedCBFBoundModelFactory()
         factory.register(PolynomialUpdate, BoundPolynomialUpdate)
+        factory.register(NominalPolynomialUpdate, BoundNominalPolynomialUpdate)
         factory.register(ButcherTableau, BoundButcherTableau)
 
         barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)

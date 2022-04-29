@@ -65,5 +65,9 @@ class AdditiveGaussianDynamics(StochasticDynamics, abc.ABC):
     def prob_v(self, rect):
         v = self.v
         assert isinstance(v, distributions.Normal)
+        v = distributions.Normal(v.loc.to(rect[0].device), v.scale.to(rect[0].device))
 
-        return None
+        prob_upper = v.cdf(rect[1])
+        prob_lower = v.cdf(rect[0])
+
+        return prob_upper - prob_lower
