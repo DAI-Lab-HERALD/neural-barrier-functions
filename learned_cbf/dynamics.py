@@ -73,7 +73,7 @@ class AdditiveGaussianDynamics(StochasticDynamics, abc.ABC):
 
         assert torch.all(scale >= 0.0)
 
-        zero = (rect[0][..., scale == 0.0] > loc[scale == 0.0]) | (rect[1][..., scale == 0.0] < loc[scale == 0.0])
+        zero = torch.any((rect[0][..., scale == 0.0] > loc[scale == 0.0]) | (rect[1][..., scale == 0.0] < loc[scale == 0.0]), dim=-1)
 
         rect = (rect[0][..., scale > 0.0], rect[1][..., scale > 0.0])
         loc = loc[scale > 0]
@@ -84,7 +84,7 @@ class AdditiveGaussianDynamics(StochasticDynamics, abc.ABC):
         cdf_upper = v.cdf(rect[1])
         cdf_lower = v.cdf(rect[0])
 
-        prob = cdf_upper - cdf_lower
+        prob = (cdf_upper - cdf_lower).prod(dim=-1)
         prob[zero] = 0.0
 
         return prob
