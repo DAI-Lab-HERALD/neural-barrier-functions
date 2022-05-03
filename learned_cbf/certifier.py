@@ -618,7 +618,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
             last_gap.append((max.max() - min.max()).item())
             last_gap.pop(0)
 
-            set, _, prune_all = self.prune_beta_gamma(set, min, max)
+            set, prune_all = self.prune_beta_gamma(set, min, max)
 
             if prune_all:
                 logger.warning(f'Pruning all in gamma: {min}, {max}, last gap: {last_gap[-1]}')
