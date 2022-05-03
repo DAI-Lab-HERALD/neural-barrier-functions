@@ -412,7 +412,7 @@ class Polynomial(Euler, AdditiveGaussianDynamics):
 
     @property
     def G(self):
-        return torch.Tensor([self.dynamics_config['dt'], 0.0])
+        return torch.Tensor([[self.dynamics_config['dt']], [0.0]])
 
     @property
     def v(self):

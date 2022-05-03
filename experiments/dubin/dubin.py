@@ -251,10 +251,10 @@ def dubins_car_main(args, config):
         factory.register(ButcherTableau, BoundButcherTableau)
 
         barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
-        partitioning = dubins_car_partitioning(config, dynamics).to(args.device)
+        initial_partitioning, beta_partitioning = dubins_car_partitioning(config, dynamics).to(args.device)
         robust_learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
         empirical_learner = EmpiricalNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
-        certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
+        certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
         # learner.load_state_dict(torch.load(args.save_path))
 

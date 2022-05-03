@@ -13,13 +13,15 @@ from .dynamics import Polynomial, PolynomialUpdate, BoundPolynomialUpdate, Nomin
 from .partitioning import polynomial_partitioning, plot_partitioning
 from .plot import plot_bounds_2d
 
-from learned_cbf.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifier
+from learned_cbf.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifier, \
+    AdditiveGaussianSplittingNeuralSBFCertifier
 from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.networks import FCNNBarrierNetwork
 from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
 from learned_cbf.bounds import LearnedCBFBoundModelFactory
 from learned_cbf.dataset import StochasticSystemDataset
 from learned_cbf.monte_carlo import monte_carlo_simulation
+
 
 logger = logging.getLogger(__name__)
 
@@ -110,10 +112,11 @@ def polynomial_main(args, config):
         factory.register(ButcherTableau, BoundButcherTableau)
 
         barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
-        partitioning = polynomial_partitioning(config, dynamics).to(args.device)
+        initial_partitioning, beta_partitioning = polynomial_partitioning(config, dynamics)
+        initial_partitioning, beta_partitioning = initial_partitioning.to(args.device), beta_partitioning.to(args.device)
         robust_learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
         empirical_learner = EmpiricalNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
-        certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
+        certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, beta_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
         # learner.load_state_dict(torch.load(args.save_path))
 

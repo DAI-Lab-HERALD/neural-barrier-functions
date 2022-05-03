@@ -4,7 +4,7 @@ import torch
 from bound_propagation import Clamp
 from torch import nn
 
-from dynamics import AdditiveGaussianDynamics
+from .dynamics import AdditiveGaussianDynamics
 from .bounds import bounds, Affine
 from .partitioning import Partitions
 from .networks import BetaNetwork
@@ -453,8 +453,6 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         assert isinstance(dynamics, AdditiveGaussianDynamics)
 
         self.barrier = factory.build(barrier)
-
-        self.capped_barrier = factory.build(nn.Sequential(barrier, Clamp(max=1.0 + 1e-6)))
         self.nominal_dynamics = factory.build(dynamics.nominal_system)
         self.dynamics = dynamics
 
@@ -476,33 +474,29 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         assert self.beta_partitioning.safe is not None
         assert self.beta_partitioning.state_space is not None
 
-        _, state_space_upper = bounds(self.capped_barrier, self.beta_partitioning.state_space, method='crown_linear', bound_lower=False, **kwargs)
-        safe_lower, _ = bounds(self.capped_barrier, self.beta_partitioning.safe, method='crown_linear', bound_upper=False, **kwargs)
+        _ = kwargs.pop('method')
+
+        _, state_space_upper = bounds(self.barrier, self.beta_partitioning.state_space, method='crown_linear', bound_lower=False, **kwargs)
+        safe_lower, _ = bounds(self.barrier, self.beta_partitioning.safe, method='crown_linear', bound_upper=False, **kwargs)
         dynamics_lower, dynamics_upper = bounds(self.nominal_dynamics, self.beta_partitioning.safe, method='crown_linear', **kwargs)
 
-        dynamics_lower_interval = dynamics_lower.partition_min()
-        dynamics_upper_interval = dynamics_upper.partition_max()
+        Gv_bounds = self.Gv_bounds(dynamics_lower, dynamics_upper)
+        P_v_in_q_prime = self.dynamics.prob_v(Gv_bounds)
 
-        G = self.dynamics.G.to(dynamics_lower.device)
-
-        q_prime = torch.linalg.solve(G, self.beta_partitioning.state_space.lower - dynamics_upper_interval.unsqueee(1)),\
-                  torch.linalg.solve(G, self.beta_partitioning.state_space.upper - dynamics_lower_interval.unsqueee(1))
-
-        P_v_in_q_prime = self.dynamics.prob_v(q_prime)
-
-        PA_top = P_v_in_q_prime * state_space_upper.A
+        PA_top = P_v_in_q_prime.unsqueeze(-2) * state_space_upper.A
         PA_top_sum = PA_top.sum(dim=1)
 
         first_term_A_lower = PA_top_sum.matmul(dynamics_lower.A)
-        first_term_b_lower = PA_top_sum.matmul(dynamics_lower.b)
+        first_term_b_lower = PA_top_sum.matmul(dynamics_lower.b.unsqueeze(-1)).squeeze(-1)
 
         first_term_A_upper = PA_top_sum.matmul(dynamics_upper.A)
-        first_term_b_upper = PA_top_sum.matmul(dynamics_upper.b)
+        first_term_b_upper = PA_top_sum.matmul(dynamics_upper.b.unsqueeze(-1)).squeeze(-1)
 
         second_term_b = (P_v_in_q_prime * state_space_upper.b).sum(dim=1)
 
-        third_term_diff = self.beta_partitioning.state_space.upper - dynamics_lower_interval.unsqueeze(1)
-        third_term_b = PA_top.matmul(third_term_diff).sum(dim=1)
+        Gv_mid = (Gv_bounds[0] + Gv_bounds[1]).unsqueeze(-1) / 2
+        Gv_diff = (Gv_bounds[1] - Gv_bounds[0]).unsqueeze(-1) / 2
+        third_term_b = (PA_top.matmul(Gv_mid) + PA_top.abs().matmul(Gv_diff)).sum(dim=1).squeeze(-1)
 
         upper_BFx_for_F_lower = \
             Affine(first_term_A_lower - safe_lower.A, first_term_b_lower + second_term_b + third_term_b - safe_lower.b,
@@ -513,6 +507,12 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
                       self.beta_partitioning.safe.lower, self.beta_partitioning.safe.upper)
 
         return torch.max(torch.cat([upper_BFx_for_F_lower.partition_max(), upper_BFx_for_F_upper.partition_max()]))
+
+    def Gv_bounds(self, dynamics_lower, dynamics_upper):
+        Gv_bounds = self.beta_partitioning.state_space.lower - dynamics_upper.partition_max().unsqueeze(1), \
+                    self.beta_partitioning.state_space.upper - dynamics_lower.partition_min().unsqueeze(1)
+
+        return Gv_bounds
 
     def region_prune(self, set, contain_func):
         center = set.center

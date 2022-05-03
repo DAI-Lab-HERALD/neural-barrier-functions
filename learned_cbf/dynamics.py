@@ -1,5 +1,6 @@
 import abc
 
+import torch
 from torch import distributions
 
 
@@ -65,9 +66,25 @@ class AdditiveGaussianDynamics(StochasticDynamics, abc.ABC):
     def prob_v(self, rect):
         v = self.v
         assert isinstance(v, distributions.Normal)
-        v = distributions.Normal(v.loc.to(rect[0].device), v.scale.to(rect[0].device))
 
-        prob_upper = v.cdf(rect[1])
-        prob_lower = v.cdf(rect[0])
+        G = self.G.to(rect[0].device)
+        loc = G @ v.loc.to(rect[0].device)
+        scale = G @ v.scale.to(rect[0].device)
 
-        return prob_upper - prob_lower
+        assert torch.all(scale >= 0.0)
+
+        zero = (rect[0][..., scale == 0.0] > loc[scale == 0.0]) | (rect[1][..., scale == 0.0] < loc[scale == 0.0])
+
+        rect = (rect[0][..., scale > 0.0], rect[1][..., scale > 0.0])
+        loc = loc[scale > 0]
+        scale = scale[scale > 0]
+
+        v = distributions.Normal(loc, scale)
+
+        cdf_upper = v.cdf(rect[1])
+        cdf_lower = v.cdf(rect[0])
+
+        prob = cdf_upper - cdf_lower
+        prob[zero] = 0.0
+
+        return prob
