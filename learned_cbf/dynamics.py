@@ -84,7 +84,7 @@ class AdditiveGaussianDynamics(StochasticDynamics, abc.ABC):
         cdf_upper = v.cdf(rect[1])
         cdf_lower = v.cdf(rect[0])
 
-        prob = (cdf_upper - cdf_lower).prod(dim=-1)
+        prob = (cdf_upper - cdf_lower).prod(dim=-1, keepdim=True)
         prob[zero] = 0.0
 
         return prob
