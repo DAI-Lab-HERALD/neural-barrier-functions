@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -126,6 +128,10 @@ class AdversarialNeuralSBF(nn.Module):
         """
         loss = self.gamma(partitioning, **kwargs) + self.beta(partitioning, **kwargs) * self.horizon
         return loss
+
+    def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]', strict: bool = True):
+        self.barrier.load_state_dict(OrderedDict([(key.replace('barrier.', ''), value) for key, value in state_dict.items() if key.startswith('barrier.')]))
+        self.beta_network.load_state_dict(OrderedDict([(key.replace('beta_network.', ''), value) for key, value in state_dict.items() if key.startswith('beta_network.')]))
 
 
 class EmpiricalNeuralSBF(nn.Module):
