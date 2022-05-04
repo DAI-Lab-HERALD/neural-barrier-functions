@@ -476,10 +476,10 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
         _ = kwargs.pop('method')
 
-        state_space_lower, state_space_upper = bounds(self.barrier, self.beta_partitioning.state_space, method='crown_linear', **kwargs)
+        _, state_space_upper = bounds(self.barrier, self.beta_partitioning.state_space, method='crown_linear', bound_lower=False, **kwargs)
         set = self.initial_partitioning.safe
 
-        min, max = self.min_max_beta(set, state_space_lower, state_space_upper, **kwargs)
+        min, max = self.min_max_beta(set, state_space_upper, **kwargs)
         last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
         while not self.should_stop_beta_gamma('BETA', set, min, max, last_gap):
@@ -492,7 +492,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
                 logger.warning(f'Pruning all in beta: {min}, {max}, last gap: {last_gap[-1]}')
                 break
 
-            batch_size = 500
+            batch_size = 100
 
             new_sets = []
             new_mins = []
@@ -503,7 +503,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
                 new_set = self.region_prune(new_set, self.dynamics.safe)
                 new_sets.append(new_set)
 
-                new_min, new_max = self.min_max_beta(new_set, state_space_lower, state_space_upper, **kwargs)
+                new_min, new_max = self.min_max_beta(new_set, state_space_upper, **kwargs)
                 new_mins.append(new_min)
                 new_maxs.append(new_max)
 
@@ -514,21 +514,21 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
         return max.max().clamp(min=0)
 
-    def min_max_beta(self, set, state_space_lower, state_space_upper, **kwargs):
+    def min_max_beta(self, set, state_space_upper, **kwargs):
         safe_lower, safe_upper = bounds(self.barrier, set, method='crown_linear', **kwargs)
         dynamics_lower, dynamics_upper = bounds(self.nominal_dynamics, set, method='crown_linear', **kwargs)
 
         Gv_bounds_lower, Gv_bounds_upper = self.Gv_bounds(dynamics_lower, dynamics_upper)
 
-        min = self.beta_min_max_oneside(Gv_bounds_lower, state_space_lower, dynamics_lower, dynamics_upper, safe_upper)
+        min = self.beta_min_max_oneside(Gv_bounds_lower, state_space_upper, dynamics_lower, dynamics_upper, safe_upper)
         max = self.beta_min_max_oneside(Gv_bounds_upper, state_space_upper, dynamics_lower, dynamics_upper, safe_lower, min=False)
 
         return min, max
 
-    def beta_min_max_oneside(self, Gv_bounds, state_space_bounds, dynamics_lower, dynamics_upper, safe, min=True):
+    def beta_min_max_oneside(self, Gv_bounds, state_space_upper, dynamics_lower, dynamics_upper, safe, min=True):
         P_v_in_q = self.dynamics.prob_v(Gv_bounds)
 
-        PA_top = P_v_in_q.unsqueeze(-2) * state_space_bounds.A
+        PA_top = P_v_in_q.unsqueeze(-2) * state_space_upper.A
         PA_top_sum = PA_top.sum(dim=1)
 
         first_term_A_lower = PA_top_sum.matmul(dynamics_lower.A)
@@ -537,7 +537,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         first_term_A_upper = PA_top_sum.matmul(dynamics_upper.A)
         first_term_b_upper = PA_top_sum.matmul(dynamics_upper.b.unsqueeze(-1)).squeeze(-1)
 
-        second_term_b = (P_v_in_q * state_space_bounds.b).sum(dim=1)
+        second_term_b = (P_v_in_q * state_space_upper.b).sum(dim=1)
 
         Gv_mid = (Gv_bounds[0] + Gv_bounds[1]).unsqueeze(-1) / 2
         Gv_diff = (Gv_bounds[1] - Gv_bounds[0]).unsqueeze(-1) / 2
@@ -577,7 +577,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         lower_dynamics, upper_dynamics = bounds(self.nominal_dynamics, set, method='crown_linear', **kwargs)
         lower_barrier, upper_barrier = bounds(self.barrier, set, method='crown_linear', **kwargs)
 
-        split_dim = ((lower_dynamics.A.abs() + upper_dynamics.A.abs() + lower_barrier.A.abs() + upper_barrier.A.abs())[:, 0] * set.width).argmax(dim=-1)
+        split_dim = ((lower_dynamics.A.sum(dim=-1, keepdim=True).abs() + upper_dynamics.A.sum(dim=-1, keepdim=True).abs() + lower_barrier.A.abs() + upper_barrier.A.abs())[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
         split_dim = (partition_indices, split_dim)
 
