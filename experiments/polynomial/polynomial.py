@@ -101,6 +101,11 @@ def save(learner, args, state):
     torch.save(learner.state_dict(), path)
 
 
+def load(model, args, state):
+    path = args.save_path.format(state=state)
+    model.load_state_dict(torch.load(path, map_location=args.device))
+
+
 def polynomial_main(args, config):
     logger.info('Constructing model')
     dynamics = Polynomial(config['dynamics']).to(args.device)
@@ -118,7 +123,7 @@ def polynomial_main(args, config):
         empirical_learner = EmpiricalNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
         certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, beta_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
-        # learner.load_state_dict(torch.load(args.save_path))
+        #load(robust_learner, args, 'final')
 
         train(robust_learner, empirical_learner, certifier, args, config)
         save(robust_learner, args, 'final')
