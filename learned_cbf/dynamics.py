@@ -87,4 +87,4 @@ class AdditiveGaussianDynamics(StochasticDynamics, abc.ABC):
         prob = (cdf_upper - cdf_lower).prod(dim=-1, keepdim=True)
         prob[zero] = 0.0
 
-        return prob
+        return prob.clamp(min=0)
