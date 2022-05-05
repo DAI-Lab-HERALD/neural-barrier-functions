@@ -447,7 +447,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
 class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
     def __init__(self, barrier: nn.Module, dynamics: AdditiveGaussianDynamics, factory, initial_partitioning, beta_partitioning, horizon,
                  certification_threshold=1.0e-10, split_gap_stop_treshold=1e-6,
-                 max_set_size=20000):
+                 max_set_size=1000000):
         super().__init__()
 
         assert isinstance(dynamics, AdditiveGaussianDynamics)
@@ -476,10 +476,10 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
         _ = kwargs.pop('method')
 
-        _, state_space_upper = bounds(self.barrier, self.beta_partitioning.state_space, method='crown_linear', bound_lower=False, **kwargs)
-        set = self.initial_partitioning.safe
+        state_space_lower, state_space_upper = bounds(self.barrier, self.beta_partitioning.state_space, method='crown_linear', **kwargs)
+        set = self.beta_partitioning.safe
 
-        min, max = self.min_max_beta(set, state_space_upper, **kwargs)
+        min, max = self.min_max_beta(set, state_space_lower, state_space_upper, **kwargs)
         last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
         while not self.should_stop_beta_gamma('BETA', set, min, max, last_gap):
@@ -503,7 +503,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
                 new_set = self.region_prune(new_set, self.dynamics.safe)
                 new_sets.append(new_set)
 
-                new_min, new_max = self.min_max_beta(new_set, state_space_upper, **kwargs)
+                new_min, new_max = self.min_max_beta(new_set, state_space_lower, state_space_upper, **kwargs)
                 new_mins.append(new_min)
                 new_maxs.append(new_max)
 
@@ -514,13 +514,13 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
         return max.max().clamp(min=0)
 
-    def min_max_beta(self, set, state_space_upper, **kwargs):
+    def min_max_beta(self, set, state_space_lower, state_space_upper, **kwargs):
         safe_lower, safe_upper = bounds(self.barrier, set, method='crown_linear', **kwargs)
         dynamics_lower, dynamics_upper = bounds(self.nominal_dynamics, set, method='crown_linear', **kwargs)
 
         Gv_bounds_lower, Gv_bounds_upper = self.Gv_bounds(dynamics_lower, dynamics_upper)
 
-        min = self.beta_min_max_oneside(Gv_bounds_lower, state_space_upper, dynamics_lower, dynamics_upper, safe_upper)
+        min = self.beta_min_max_oneside(Gv_bounds_lower, state_space_lower, dynamics_lower, dynamics_upper, safe_upper)
         max = self.beta_min_max_oneside(Gv_bounds_upper, state_space_upper, dynamics_lower, dynamics_upper, safe_lower, min=False)
 
         return min, max
@@ -542,7 +542,9 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         Gv_mid = (Gv_bounds[0] + Gv_bounds[1]).unsqueeze(-1) / 2
         Gv_diff = (Gv_bounds[1] - Gv_bounds[0]).unsqueeze(-1) / 2
         if min:
-            third_term_b = (PA_top.matmul(Gv_mid) - PA_top.abs().matmul(Gv_diff)).sum(dim=1).squeeze(-1)
+            third_term_b = PA_top.matmul(Gv_mid) - PA_top.abs().matmul(Gv_diff)
+            third_term_b[torch.any(Gv_diff < 0.0, dim=-2)[..., 0]] = 0.0
+            third_term_b = third_term_b.sum(dim=1).squeeze(-1)
         else:
             third_term_b = (PA_top.matmul(Gv_mid) + PA_top.abs().matmul(Gv_diff)).sum(dim=1).squeeze(-1)
 
