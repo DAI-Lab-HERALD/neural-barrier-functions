@@ -642,7 +642,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         lower = (q_upper_erf[0] - q_lower_erf[1]) / 2.0
         upper = (q_upper_erf[1] - q_lower_erf[0]) / 2.0
 
-        return lower.prod(dim=-1, keepdim=True), upper.prod(dim=-1, keepdim=True)
+        return lower.prod(dim=-1, keepdim=True).clamp(min=0.0, max=1.0), upper.prod(dim=-1, keepdim=True).clamp(min=0.0, max=1.0)
 
     def split_beta(self, set, **kwargs):
         kwargs.pop('method', None)
