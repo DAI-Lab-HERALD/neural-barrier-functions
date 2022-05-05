@@ -64,12 +64,7 @@ class AdditiveGaussianDynamics(StochasticDynamics, abc.ABC):
         raise NotImplementedError()
 
     def prob_v(self, rect):
-        v = self.v
-        assert isinstance(v, distributions.Normal)
-
-        G = self.G.to(rect[0].device)
-        loc = G @ v.loc.to(rect[0].device)
-        scale = G @ v.scale.to(rect[0].device)
+        loc, scale = self.v
 
         assert torch.all(scale >= 0.0)
 

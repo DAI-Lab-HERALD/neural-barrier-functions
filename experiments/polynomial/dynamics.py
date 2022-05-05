@@ -411,14 +411,10 @@ class Polynomial(Euler, AdditiveGaussianDynamics):
         return Euler(NominalPolynomialUpdate(self.dynamics_config), self.dynamics_config['dt'])
 
     @property
-    def G(self):
-        return torch.Tensor([[self.dynamics_config['dt']], [0.0]])
-
-    @property
     def v(self):
-        return distributions.Normal(
+        return (
             torch.tensor([0.0]),
-            torch.tensor([self.dynamics_config['sigma']])
+            torch.tensor([self.dynamics_config['dt'] * self.dynamics_config['sigma']])
         )
 
     def initial(self, x, eps=None):

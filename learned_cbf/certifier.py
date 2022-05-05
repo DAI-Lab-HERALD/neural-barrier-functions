@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 from bound_propagation import Clamp
@@ -518,17 +519,17 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         safe_lower, safe_upper = bounds(self.barrier, set, method='crown_linear', **kwargs)
         dynamics_lower, dynamics_upper = bounds(self.nominal_dynamics, set, method='crown_linear', **kwargs)
 
-        Gv_bounds_lower, Gv_bounds_upper = self.Gv_bounds(dynamics_lower, dynamics_upper)
+        v_bounds_lower, v_bounds_upper = self.v_bounds(dynamics_lower, dynamics_upper)
 
-        min = self.beta_min_max_oneside(Gv_bounds_lower, state_space_lower, dynamics_lower, dynamics_upper, safe_upper)
-        max = self.beta_min_max_oneside(Gv_bounds_upper, state_space_upper, dynamics_lower, dynamics_upper, safe_lower, min=False)
+        min = self.beta_min_max_oneside(v_bounds_lower, state_space_lower, dynamics_lower, dynamics_upper, safe_upper)
+        max = self.beta_min_max_oneside(v_bounds_upper, state_space_upper, dynamics_lower, dynamics_upper, safe_lower, min=False)
 
         return min, max
 
-    def beta_min_max_oneside(self, Gv_bounds, state_space_upper, dynamics_lower, dynamics_upper, safe, min=True):
-        P_v_in_q = self.dynamics.prob_v(Gv_bounds)
+    def beta_min_max_oneside(self, v_bounds, state_space_bounds, dynamics_lower, dynamics_upper, safe, min=True):
+        P_v_in_q = self.dynamics.prob_v(v_bounds)
 
-        PA_top = P_v_in_q.unsqueeze(-2) * state_space_upper.A
+        PA_top = P_v_in_q.unsqueeze(-2) * state_space_bounds.A
         PA_top_sum = PA_top.sum(dim=1)
 
         first_term_A_lower = PA_top_sum.matmul(dynamics_lower.A)
@@ -537,16 +538,18 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         first_term_A_upper = PA_top_sum.matmul(dynamics_upper.A)
         first_term_b_upper = PA_top_sum.matmul(dynamics_upper.b.unsqueeze(-1)).squeeze(-1)
 
-        second_term_b = (P_v_in_q * state_space_upper.b).sum(dim=1)
+        second_term_b = (P_v_in_q * state_space_bounds.b).sum(dim=1)
 
-        Gv_mid = (Gv_bounds[0] + Gv_bounds[1]).unsqueeze(-1) / 2
-        Gv_diff = (Gv_bounds[1] - Gv_bounds[0]).unsqueeze(-1) / 2
+        third_term_test = self.barrier_noise(state_space_bounds, dynamics_lower, dynamics_upper)
+
+        v_mid = (v_bounds[0] + v_bounds[1]).unsqueeze(-1) / 2
+        v_diff = (v_bounds[1] - v_bounds[0]).unsqueeze(-1) / 2
         if min:
-            third_term_b = PA_top.matmul(Gv_mid) - PA_top.abs().matmul(Gv_diff)
-            third_term_b[torch.any(Gv_diff < 0.0, dim=-2)[..., 0]] = 0.0
+            third_term_b = PA_top.matmul(v_mid) - PA_top.abs().matmul(v_diff)
+            third_term_b[torch.any(v_diff < 0.0, dim=-2)[..., 0]] = 0.0
             third_term_b = third_term_b.sum(dim=1).squeeze(-1)
         else:
-            third_term_b = (PA_top.matmul(Gv_mid) + PA_top.abs().matmul(Gv_diff)).sum(dim=1).squeeze(-1)
+            third_term_b = (PA_top.matmul(v_mid) + PA_top.abs().matmul(v_diff)).sum(dim=1).squeeze(-1)
 
         BFx_for_F_lower = \
             Affine(first_term_A_lower - safe.A, first_term_b_lower + second_term_b + third_term_b - safe.b,
@@ -561,17 +564,64 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         else:
             return torch.max(BFx_for_F_lower.partition_max(), BFx_for_F_upper.partition_max()).view(-1)
 
-    def Gv_bounds(self, dynamics_lower, dynamics_upper):
+    def v_bounds(self, dynamics_lower, dynamics_upper):
         dynamics_lower_interval = dynamics_lower.partition_min().unsqueeze(1)
         dynamics_upper_interval = dynamics_upper.partition_max().unsqueeze(1)
 
-        Gv_bounds_lower = self.beta_partitioning.state_space.lower - dynamics_lower_interval, \
+        v_bounds_lower = self.beta_partitioning.state_space.lower - dynamics_lower_interval, \
                           self.beta_partitioning.state_space.upper - dynamics_upper_interval
 
-        Gv_bounds_upper = self.beta_partitioning.state_space.lower - dynamics_upper_interval, \
+        v_bounds_upper = self.beta_partitioning.state_space.lower - dynamics_upper_interval, \
                           self.beta_partitioning.state_space.upper - dynamics_lower_interval
 
-        return Gv_bounds_lower, Gv_bounds_upper
+        return v_bounds_lower, v_bounds_upper
+
+    def barrier_noise(self, state_space_bounds, dynamics_lower, dynamics_upper):
+        _, scale = self.dynamics.v
+        prefix_factor = scale / math.sqrt(2 * math.pi)
+
+        q_bounds = self.beta_partitioning.state_space.lower, self.beta_partitioning.state_space.upper
+
+        dynamics_lower_interval = dynamics_lower.partition_min() / (2 * scale)
+        dynamics_upper_interval = dynamics_upper.partition_max() / (2 * scale)
+        q_bounds = q_bounds[0] / (2 * scale), q_bounds[1] / (2 * scale)
+
+        dynamics_bounds_cross_zero = (dynamics_lower < 0.0) & (0.0 < dynamics_upper)
+        # dynamics_squared_bounds = (~dynamics_bounds_cross_zero) * torch.min(dynamics_lower ** 2, dynamics_upper ** 2, dim=-1).values, torch.max(dynamics_lower ** 2, dynamics_upper ** 2, dim=-1).values
+        # v_squared_bounds = v_bounds[0] ** 2, v_bounds[1] ** 2
+        # v_lower_dynamics_bounds = torch.min(-2 * v_bounds[0] * dynamics_lower, dim=-1).values, torch.max(-2 * v_bounds[0] * dynamics_lower, dim=-1).values
+        # v_upper_dynamics_bounds = torch.min(-2 * v_bounds[1] * dynamics_lower, dim=-1).values, torch.max(-2 * v_bounds[1] * dynamics_lower, dim=-1).values
+
+        v_lower_minus_dynamics_bounds = q_bounds[0] - dynamics_lower_interval, q_bounds[0] - dynamics_upper_interval
+        v_upper_minus_dynamics_bounds = q_bounds[1] - dynamics_lower_interval, q_bounds[1] - dynamics_upper_interval
+
+        v_lower_minus_dynamics_bounds_cross_zero = (v_lower_minus_dynamics_bounds[0] < 0.0) & (0.0 < v_lower_minus_dynamics_bounds[1])
+        v_lower_squared_bounds = (~v_lower_minus_dynamics_bounds_cross_zero) * \
+                                 torch.min(v_lower_minus_dynamics_bounds[0] ** 2, v_lower_minus_dynamics_bounds[1] ** 2, dim=-1).values, \
+                                 torch.max(v_lower_minus_dynamics_bounds[0] ** 2, v_lower_minus_dynamics_bounds[1] ** 2, dim=-1).values
+
+        v_upper_minus_dynamics_bounds_cross_zero = (v_upper_minus_dynamics_bounds[0] < 0.0) & (0.0 < v_upper_minus_dynamics_bounds[1])
+        v_upper_squared_bounds = (~v_upper_minus_dynamics_bounds_cross_zero) * \
+                                 torch.min(v_upper_minus_dynamics_bounds[0] ** 2, v_upper_minus_dynamics_bounds[1] ** 2, dim=-1).values, \
+                                 torch.max(v_upper_minus_dynamics_bounds[0] ** 2, v_upper_minus_dynamics_bounds[1] ** 2, dim=-1).values
+
+        first_exponent_bounds = -2 * v_lower_squared_bounds[1], -2 * v_lower_squared_bounds[0]
+        second_exponent_second = -2 * v_upper_squared_bounds[1], -2 * v_upper_squared_bounds[0]
+
+        first_exponential_bounds = 1 / first_exponent_bounds[0], 1 / first_exponent_bounds[1]
+        second_exponential_bounds = 1 / second_exponent_second[0], 1 / second_exponent_second[1]
+
+        combined_bounds = prefix_factor * (first_exponential_bounds[0] - second_exponential_bounds[1]),\
+                          prefix_factor * (first_exponential_bounds[1] - second_exponential_bounds[0])
+
+        mid = (combined_bounds[0] + combined_bounds[1]) / 2
+        diff = (combined_bounds[1] - combined_bounds[0]) / 2
+
+        lower = state_space_bounds.A.matmul(mid.unsqueeze(-1)) - state_space_bounds.A.abs().matmul(diff.unsqueeze(-1))
+        upper = state_space_bounds.A.matmul(mid.unsqueeze(-1)) + state_space_bounds.A.abs().matmul(diff.unsqueeze(-1))
+
+        return lower, upper
+
 
     def split_beta(self, set, **kwargs):
         kwargs.pop('method', None)
