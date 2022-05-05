@@ -55,11 +55,6 @@ class AdditiveGaussianDynamics(StochasticDynamics, abc.ABC):
 
     @property
     @abc.abstractmethod
-    def G(self):
-        raise NotImplementedError()
-
-    @property
-    @abc.abstractmethod
     def v(self):
         raise NotImplementedError()
 
