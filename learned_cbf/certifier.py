@@ -558,9 +558,9 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         else:
             return torch.max(BFx_for_F_lower.partition_max(), BFx_for_F_upper.partition_max()).view(-1)
 
-    def v_bounds(self, dynamics_lower, dynamics_upper):
-        dynamics_lower_interval = dynamics_lower.partition_min().unsqueeze(1)
-        dynamics_upper_interval = dynamics_upper.partition_max().unsqueeze(1)
+    def v_bounds(self, dynamics_lower_interval, dynamics_upper_interval):
+        dynamics_lower_interval = dynamics_lower_interval.unsqueeze(1)
+        dynamics_upper_interval = dynamics_upper_interval.unsqueeze(1)
 
         v_bounds_lower = self.beta_partitioning.state_space.lower - dynamics_lower_interval, \
                           self.beta_partitioning.state_space.upper - dynamics_upper_interval
@@ -621,19 +621,26 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
     def P_v_in_q(self, dynamics_lower, dynamics_upper):
         loc, scale = self.dynamics.v
         nonzero_scale = (scale > 0.0)
+        zero_scale = (scale == 0.0)
 
-        q_bounds = self.beta_partitioning.state_space.lower[..., nonzero_scale], self.beta_partitioning.state_space.upper[..., nonzero_scale]
+        q_bounds = self.beta_partitioning.state_space.lower, self.beta_partitioning.state_space.upper
 
+        zero_scale_loc = loc[zero_scale]
         loc, scale = loc[nonzero_scale], scale[nonzero_scale]
 
-        dynamics_lower_interval = dynamics_lower.partition_min()[..., nonzero_scale].unsqueeze(1)
-        dynamics_upper_interval = dynamics_upper.partition_max()[..., nonzero_scale].unsqueeze(1)
+        dynamics_lower_interval = dynamics_lower.partition_min()
+        dynamics_upper_interval = dynamics_upper.partition_max()
 
-        q_lower = (q_bounds[0] - dynamics_upper_interval - loc) / (scale * math.sqrt(2.0)), \
-                  (q_bounds[0] - dynamics_lower_interval - loc) / (scale * math.sqrt(2.0))
+        v_bounds_lower, v_bounds_upper = self.v_bounds(dynamics_lower_interval, dynamics_upper_interval)
 
-        q_upper = (q_bounds[0] - dynamics_upper_interval - loc) / (scale * math.sqrt(2.0)), \
-                  (q_bounds[0] - dynamics_lower_interval - loc) / (scale * math.sqrt(2.0))
+        dynamics_lower_interval = dynamics_lower_interval[..., nonzero_scale].unsqueeze(1)
+        dynamics_upper_interval = dynamics_upper_interval[..., nonzero_scale].unsqueeze(1)
+
+        q_lower = (q_bounds[0][..., nonzero_scale] - dynamics_upper_interval - loc) / (scale * math.sqrt(2.0)), \
+                  (q_bounds[0][..., nonzero_scale] - dynamics_lower_interval - loc) / (scale * math.sqrt(2.0))
+
+        q_upper = (q_bounds[1][..., nonzero_scale] - dynamics_upper_interval - loc) / (scale * math.sqrt(2.0)), \
+                  (q_bounds[1][..., nonzero_scale] - dynamics_lower_interval - loc) / (scale * math.sqrt(2.0))
 
         # We can do this because erf is monotonously increasing function
         q_lower_erf = torch.erf(q_lower[0]), torch.erf(q_lower[1])
@@ -642,7 +649,16 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         lower = (q_upper_erf[0] - q_lower_erf[1]) / 2.0
         upper = (q_upper_erf[1] - q_lower_erf[0]) / 2.0
 
-        return lower.prod(dim=-1, keepdim=True).clamp(min=0.0, max=1.0), upper.prod(dim=-1, keepdim=True).clamp(min=0.0, max=1.0)
+        lower = lower.prod(dim=-1, keepdim=True).clamp(min=0.0, max=1.0)
+        upper = upper.prod(dim=-1, keepdim=True).clamp(min=0.0, max=1.0)
+
+        zero = torch.any((v_bounds_lower[0][..., zero_scale] > zero_scale_loc) | (v_bounds_lower[1][..., zero_scale] < zero_scale_loc) | (v_bounds_lower[0][..., zero_scale] > v_bounds_lower[1][..., zero_scale]), dim=-1)
+        lower[zero] = 0.0
+
+        zero = torch.any((v_bounds_upper[0][..., zero_scale] > zero_scale_loc) | (v_bounds_upper[1][..., zero_scale] < zero_scale_loc) | (v_bounds_upper[0][..., zero_scale] > v_bounds_upper[1][..., zero_scale]), dim=-1)
+        upper[zero] = 0.0
+
+        return lower, upper
 
     def split_beta(self, set, **kwargs):
         kwargs.pop('method', None)
