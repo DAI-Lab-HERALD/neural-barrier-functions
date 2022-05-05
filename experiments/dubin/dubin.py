@@ -84,13 +84,13 @@ def train(robust_learner, empirical_learner, certifier, args, config):
         scheduler.step()
         kappa *= 0.97
 
-    while not certifier.certify(method='ibp', batch_size=config['test']['ibp_batch_size']):
-        logger.info(f'Current violation: {certifier.barrier_violation(method="ibp", batch_size=config["test"]["ibp_batch_size"])}')
-        for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
-            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
-
-            partitioning = partitioning.to(args.device)
-            step(robust_learner, empirical_learner, optimizer, partitioning, 0.0, config['training']['epochs'])
+    # while not certifier.certify(method='ibp', batch_size=config['test']['ibp_batch_size']):
+    #     logger.info(f'Current violation: {certifier.barrier_violation(method="ibp", batch_size=config["test"]["ibp_batch_size"])}')
+    #     for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
+    #         # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+    #
+    #         partitioning = partitioning.to(args.device)
+    #         step(robust_learner, empirical_learner, optimizer, partitioning, 0.0, config['training']['epochs'])
 
     logger.info('Training complete')
 
@@ -251,12 +251,13 @@ def dubins_car_main(args, config):
         factory.register(ButcherTableau, BoundButcherTableau)
 
         barrier = FCNNBarrierNetwork(network_config=config['model']).to(args.device)
-        initial_partitioning, beta_partitioning = dubins_car_partitioning(config, dynamics).to(args.device)
+        initial_partitioning, beta_partitioning = dubins_car_partitioning(config, dynamics)
+        initial_partitioning, beta_partitioning = initial_partitioning.to(args.device), beta_partitioning.to(args.device)
         robust_learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
         empirical_learner = EmpiricalNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
         certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
-        # learner.load_state_dict(torch.load(args.save_path))
+        # load(robust_learner, args, 'final')
 
         if isinstance(strategy, DubinsCarNNStrategy):
             load(strategy, args, 'rl-final')
