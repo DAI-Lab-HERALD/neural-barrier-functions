@@ -52,8 +52,8 @@ def test_method(certifier, method, batch_size, kappa=None):
 @torch.no_grad()
 def test(certifier, test_config, kappa=None):
     # test_method(certifier, method='ibp', batch_size=test_config['ibp_batch_size'], kappa=kappa)
-    # test_method(certifier, method='crown_ibp_crown_ibp_interval', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
-    test_method(certifier, method='optimal', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
+    test_method(certifier, method='crown_interval', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
+    # test_method(certifier, method='optimal', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
 
 
 def train(robust_learner, empirical_learner, certifier, args, config):
@@ -123,13 +123,13 @@ def polynomial_main(args, config):
         empirical_learner = EmpiricalNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
         certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, beta_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
-        #load(robust_learner, args, 'final')
+        load(robust_learner, args, 'final')
 
-        train(robust_learner, empirical_learner, certifier, args, config)
-        save(robust_learner, args, 'final')
+        # train(robust_learner, empirical_learner, certifier, args, config)
+        # save(robust_learner, args, 'final')
         test(certifier, config['test'])
 
-        plot_bounds_2d(barrier, dynamics, args, config)
+        # plot_bounds_2d(barrier, dynamics, args, config)
     elif config['experiment_type'] == 'monte_carlo':
         monte_carlo_simulation(args, dynamics, config)
     else:

@@ -32,6 +32,10 @@ class Affine:
     def width(self):
         return self.upper - self.lower
 
+    @property
+    def volume(self):
+        return self.width.prod(dim=-1)
+
     def partition_max(self):
         if isinstance(self.A, float):
             assert self.A == 0.0
