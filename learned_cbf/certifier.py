@@ -582,6 +582,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
     def barrier_noise(self, set, state_space_bounds, dynamics_lower, dynamics_upper):
         _, scale = self.dynamics.v
+        scale = scale.to(dynamics_lower.A.device)
         nonzero_scale = (scale > 0.0)
 
         q_bounds = set.lower[..., nonzero_scale], set.upper[..., nonzero_scale]
@@ -630,6 +631,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
     def P_v_in_q(self, set, dynamics_lower, dynamics_upper):
         loc, scale = self.dynamics.v
+        loc, scale = loc.to(dynamics_lower.A.device), scale.to(dynamics_lower.A.device)
         nonzero_scale = (scale > 0.0)
         zero_scale = (scale == 0.0)
 
@@ -705,7 +707,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         lower, upper = bounds(self.barrier, set, method='crown_linear', **{key: value for key, value in kwargs.items() if key != 'method'})
         last_gap = [torch.finfo(min.dtype).max for _ in range(199)] + [(upper - lower).partition_max().max().item()]
 
-        while not self.should_stop_beta_gamma('BETA_STATE_SPACE', set, min, max, last_gap, max_set_size=5000):
+        while not self.should_stop_beta_gamma('BETA_STATE_SPACE', set, min, max, last_gap, max_set_size=100000):
             batch_size = 100
             k = torch.min(torch.tensor([batch_size, len(set)])).item()
 

@@ -285,7 +285,7 @@ def plot_dynamics(model, dynamics, args, config):
     input = partitions(model, num_slices, args, config, input_bounds_only=True).center
     nominal_next = dynamics.nominal_system(input)
     diff = nominal_next - input
-    input, diff = input.numpy(), diff.numpy()
+    input, diff = input.cpu().numpy(), diff.cpu().numpy()
 
     plt.quiver(input[..., 0], input[..., 1], diff[..., 0], diff[..., 1], angles='xy', color=sns.color_palette('deep')[0])
 
