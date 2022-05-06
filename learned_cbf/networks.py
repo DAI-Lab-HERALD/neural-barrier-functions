@@ -175,7 +175,8 @@ class BoundConstant(BoundModule):
         neg = self.module.constant < 0.0
         if torch.any(neg):
             assert lower is not None and upper is not None, 'bound_lower=False and bound_upper=False cannot be used with a negative constant'
-            lower, upper = torch.where(neg, upper, lower), torch.where(neg, lower, upper)
+            lower = torch.where(neg, upper[0], lower[0]), torch.where(neg, upper[1], lower[1])
+            upper = torch.where(neg, lower[0], upper[0]), torch.where(neg, lower[1], upper[1])
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
