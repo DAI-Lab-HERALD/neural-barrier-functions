@@ -531,14 +531,24 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         return min, max
 
     def beta_min_max_oneside(self, state_space_set, P_v_in_q, state_space_bounds, dynamics_lower, dynamics_upper, safe, min=True):
-        PA_top = P_v_in_q.unsqueeze(-2) * state_space_bounds.A
-        PA_top_sum = PA_top.sum(dim=1)
+        nonzero_prob = P_v_in_q.squeeze(-1).nonzero(as_tuple=True)
+        PA_sum = torch.zeros((P_v_in_q.size(0), 1, state_space_bounds.A.size(-1)), device=P_v_in_q.device)
+        index = torch.arange(P_v_in_q.size(0), device=P_v_in_q.device).view(-1, 1).expand(-1, state_space_bounds.A.size(0))
+        index = index[nonzero_prob]
 
-        first_term_A_lower = PA_top_sum.matmul(dynamics_lower.A)
-        first_term_b_lower = PA_top_sum.matmul(dynamics_lower.b.unsqueeze(-1)).squeeze(-1)
+        A = state_space_bounds.A.unsqueeze(0).expand(P_v_in_q.size(0), -1, -1, -1)
+        PA = P_v_in_q[nonzero_prob].unsqueeze(-1) * A[nonzero_prob]
 
-        first_term_A_upper = PA_top_sum.matmul(dynamics_upper.A)
-        first_term_b_upper = PA_top_sum.matmul(dynamics_upper.b.unsqueeze(-1)).squeeze(-1)
+        PA_sum.scatter_add_(0, index.view(-1, 1, 1).expand(-1, 1, A.size(-1)), PA)
+
+        # PA = P_v_in_q.unsqueeze(-2) * state_space_bounds.A
+        # PA_sum = PA_top.sum(dim=1)
+
+        first_term_A_lower = PA_sum.matmul(dynamics_lower.A)
+        first_term_b_lower = PA_sum.matmul(dynamics_lower.b.unsqueeze(-1)).squeeze(-1)
+
+        first_term_A_upper = PA_sum.matmul(dynamics_upper.A)
+        first_term_b_upper = PA_sum.matmul(dynamics_upper.b.unsqueeze(-1)).squeeze(-1)
 
         second_term_b = (P_v_in_q * state_space_bounds.b).sum(dim=1)
 
@@ -695,7 +705,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         lower, upper = bounds(self.barrier, set, method='crown_linear', **{key: value for key, value in kwargs.items() if key != 'method'})
         last_gap = [torch.finfo(min.dtype).max for _ in range(199)] + [(upper - lower).partition_max().max().item()]
 
-        while not self.should_stop_beta_gamma('BETA_STATE_SPACE', set, min, max, last_gap, max_set_size=50000):
+        while not self.should_stop_beta_gamma('BETA_STATE_SPACE', set, min, max, last_gap, max_set_size=5000):
             batch_size = 100
             k = torch.min(torch.tensor([batch_size, len(set)])).item()
 
