@@ -1,6 +1,8 @@
+import math
+
 import torch
-from bound_propagation import Residual, BoundModule, LinearBounds, IntervalBounds, HyperRectangle
-from torch import nn
+from bound_propagation import Residual, BoundModule, LinearBounds, IntervalBounds, HyperRectangle, Sub
+from torch import nn, Tensor
 
 
 class Mean(nn.Module):
@@ -130,6 +132,110 @@ class BoundBetaNetwork(BoundModule):
         assert out_size1 == out_size2
 
         return out_size1
+
+
+class AqiNetwork(nn.Linear):
+    def __init__(self, A_qi):
+        super().__init__(A_qi.size(-1), A_qi.size(-2), bias=False)
+
+        del self.weight
+        self.register_buffer('weight', A_qi)
+
+    def forward(self, input: Tensor) -> Tensor:
+        return input.matmul(self.weight.transpose(-1, -2))
+
+
+class Constant(nn.Module):
+    def __init__(self, constant):
+        super().__init__()
+        self.constant = constant
+
+    def forward(self, x):
+        return self.constant * x
+
+
+class BoundConstant(BoundModule):
+
+    @property
+    def need_relaxation(self):
+        return False
+
+    def crown_backward(self, linear_bounds):
+        if linear_bounds.lower is None:
+            lower = None
+        else:
+            lower = (self.module.constant * linear_bounds.lower[0], linear_bounds.lower[1])
+
+        if linear_bounds.upper is None:
+            upper = None
+        else:
+            upper = (self.module.constant * linear_bounds.upper[0], linear_bounds.upper[1])
+
+        neg = self.module.constant < 0.0
+        if torch.any(neg):
+            assert lower is not None and upper is not None, 'bound_lower=False and bound_upper=False cannot be used with a negative constant'
+            lower, upper = torch.where(neg, upper, lower), torch.where(neg, lower, upper)
+
+        return LinearBounds(linear_bounds.region, lower, upper)
+
+    def ibp_forward(self, bounds, save_relaxation=False):
+        return IntervalBounds(bounds.region, self.module.constant * bounds.lower, self.module.constant * bounds.upper)
+
+    def propagate_size(self, in_size):
+        return in_size
+
+
+class Exp(nn.Module):
+    def forward(self, x):
+        return x.exp()
+
+
+class BoundExp(BoundModule):
+    # TODO: Implement
+    pass
+
+
+class QBound(nn.Module):
+    # TODO: Implement
+    pass
+
+
+class BoundQBound(BoundModule):
+    # TODO: Implement
+    pass
+
+
+class Square(nn.Module):
+    # TODO: Implement
+    pass
+
+
+class BoundSquare(BoundModule):
+    # TODO: Implement
+    pass
+
+
+class TruncatedGaussianExpectation(nn.Sequential):
+    def __init__(self, dynamics_network, A_qi, scale, q_bounds):
+        super().__init__(
+            dynamics_network,
+            Sub(
+                nn.Sequential(
+                    QBound(q_bounds[0], scale),
+                    Square(),
+                    Constant(torch.full_like(scale, -2)),
+                    Exp()
+                ),
+                nn.Sequential(
+                    QBound(q_bounds[1], scale),
+                    Square(),
+                    Constant(torch.full_like(scale, -2)),
+                    Exp()
+                ),
+            ),
+            Constant(scale / math.sqrt(2 * math.pi)),
+            AqiNetwork(A_qi)
+        )
 
 
 class FCNNBarrierNetwork(nn.Sequential):

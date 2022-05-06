@@ -4,7 +4,7 @@ import torch
 from bound_propagation import HyperRectangle, BoundModule, LinearBounds, IntervalBounds, BoundModelFactory
 from torch import nn
 
-from .networks import BoundBetaNetwork, BetaNetwork, Mean, BoundMean
+from .networks import BoundBetaNetwork, BetaNetwork, Mean, BoundMean, Constant, BoundConstant
 
 
 class Affine:
@@ -134,4 +134,5 @@ class LearnedCBFBoundModelFactory(BoundModelFactory):
         super().__init__(**kwargs)
 
         self.register(Mean, BoundMean)
+        self.register(Constant, BoundConstant)
         self.register(BetaNetwork, BoundBetaNetwork)

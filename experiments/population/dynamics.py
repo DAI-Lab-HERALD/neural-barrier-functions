@@ -29,7 +29,7 @@ class Population(nn.Linear, StochasticDynamics):
         self.safe_set_type = dynamics_config['safe_set']
 
     def forward(self, input: Tensor) -> Tensor:
-        return input.matmul(self.weight.transpose(-1, 1)) + self.bias
+        return input.matmul(self.weight.transpose(-1, -2)) + self.bias
 
     def near_far(self, x, eps):
         if eps is not None:
