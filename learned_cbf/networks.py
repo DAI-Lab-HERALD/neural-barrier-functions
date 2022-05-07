@@ -1,8 +1,10 @@
 import math
 
 import torch
-from bound_propagation import Residual, BoundModule, LinearBounds, IntervalBounds, HyperRectangle, Sub, BoundActivation
+from bound_propagation import Residual, BoundModule, LinearBounds, IntervalBounds, HyperRectangle, Sub, BoundActivation, \
+    Clamp
 from bound_propagation.activation import assert_bound_order, BoundSigmoid
+from bound_propagation.linear import crown_backward_linear_jit
 from torch import nn, Tensor
 
 
@@ -135,15 +137,55 @@ class BoundBetaNetwork(BoundModule):
         return out_size1
 
 
-class AqiNetwork(nn.Linear):
+class AqiNetwork(nn.Module):
     def __init__(self, A_qi):
-        super().__init__(A_qi.size(-1), A_qi.size(-2), bias=False)
+        super().__init__()
 
-        del self.weight
-        self.register_buffer('weight', A_qi.unsqueeze(1))
+        self.register_buffer('A_qi_bot', A_qi[0].unsqueeze(1))
+        self.register_buffer('A_qi_top', A_qi[1].unsqueeze(1))
 
     def forward(self, input: Tensor) -> Tensor:
-        return input.matmul(self.weight.transpose(-1, -2))
+        return input.matmul(self.A_qi_bot.transpose(-1, -2))
+    
+
+class BoundAqiNetwork(BoundModule):
+    @property
+    def need_relaxation(self):
+        return False
+
+    def crown_backward(self, linear_bounds):
+        if linear_bounds.lower is None:
+            lower = None
+        else:
+            lower = crown_backward_linear_jit(self.module.A_qi_bot, None, linear_bounds.lower[0])
+            lower = (lower[0], lower[1] + linear_bounds.lower[1])
+
+        if linear_bounds.upper is None:
+            upper = None
+        else:
+            upper = crown_backward_linear_jit(self.module.A_qi_top, None, linear_bounds.upper[0])
+            upper = (upper[0], upper[1] + linear_bounds.upper[1])
+
+        return LinearBounds(linear_bounds.region, lower, upper)
+
+    @assert_bound_order
+    def ibp_forward(self, bounds, save_relaxation=False):
+        center, diff = bounds.center, bounds.width / 2
+
+        center, diff = center.unsqueeze(-2), diff.unsqueeze(-2)
+
+        A_qi_bot = self.module.A_qi_bot.transpose(-1, -2)
+        # + (bias.unsqueeze(-2) if bias is not None else torch.tensor(0.0, device=weight.device))
+        lower = (center.matmul(A_qi_bot) - diff.matmul(A_qi_bot.abs())).squeeze(-2)
+
+        A_qi_top = self.module.A_qi_top.transpose(-1, -2)
+        # + (bias.unsqueeze(-2) if bias is not None else torch.tensor(0.0, device=weight.device))
+        upper = (center.matmul(A_qi_top) + diff.matmul(A_qi_top.abs())).squeeze(-2)
+
+        return IntervalBounds(bounds.region, lower, upper)
+
+    def propagate_size(self, in_size):
+        return self.module.A_qi_top.size(-2)
 
 
 class Constant(nn.Module):
@@ -233,45 +275,60 @@ class BoundExp(BoundActivation):
 
 
 class QBound(nn.Module):
-    def __init__(self, q_bounds, scale):
+    def __init__(self, dynamics_network, q_bounds, scale, factor=2.0):
         super(QBound, self).__init__()
 
+        self.dynamics_network = dynamics_network
         self.q_bounds = q_bounds.unsqueeze(1)
-        self.scale = scale
+        self.scale = factor * scale
 
     def forward(self, x):
-        x = (x - self.q_bounds) / (2 * self.scale)
+        x = (x - self.q_bounds) / self.scale
         return torch.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
 
 
 class BoundQBound(BoundModule):
+    def __init__(self, module, factory, **kwargs):
+        super().__init__(module, factory, **kwargs)
+
+        self.bound_dynamics = factory.build(module.dynamics_network)
+
     @property
     def need_relaxation(self):
         return False
 
     def crown_backward(self, linear_bounds):
+        assert linear_bounds.lower is not None and linear_bounds.upper is not None, 'bound_lower=False and bound_upper=False cannot be used with QBound'
+
+        input_bounds = LinearBounds(linear_bounds.region,
+            (linear_bounds.lower[0], torch.zeros_like(linear_bounds.lower[1])),
+            (linear_bounds.upper[0], torch.zeros_like(linear_bounds.upper[1])),
+        )
+
+        dynamics_bounds = self.bound_dynamics.crown_backward(input_bounds)
+
         if linear_bounds.lower is None:
             lower = None
         else:
-            lowerA = (linear_bounds.lower[0] / (2 * self.scale)).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
-            lower_bias = (self.q_bounds / (2 * self.scale)).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
+            lowerA = (-dynamics_bounds.upper[0] / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
+            lower_bias = (self.q_bounds / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
             lower_bias = lower_bias.unsqueeze(-2).matmul(linear_bounds.lower[0].transpose(-1, -2)).squeeze(-2)
-            lower = (lowerA, linear_bounds.lower[1] + lower_bias)
+            lower = (lowerA, -dynamics_bounds.upper[1] + linear_bounds.lower[1] + lower_bias)
 
         if linear_bounds.upper is None:
             upper = None
         else:
-            upperA = (linear_bounds.upper[0] / (2 * self.scale)).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
-            upper_bias = (self.q_bounds / (2 * self.scale)).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
+            upperA = (-dynamics_bounds.lower[0] / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
+            upper_bias = (self.q_bounds / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
             upper_bias = upper_bias.unsqueeze(-2).matmul(linear_bounds.upper[0].transpose(-1, -2)).squeeze(-2)
-            upper = (upperA, linear_bounds.upper[1] + upper_bias)
+            upper = (upperA, -dynamics_bounds.lower[1] + linear_bounds.upper[1] + upper_bias)
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
     @assert_bound_order
     def ibp_forward(self, bounds, save_relaxation=False):
-        lower = ((bounds.lower - self.q_bounds) / (2 * self.scale)).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
-        upper = ((bounds.upper - self.q_bounds) / (2 * self.scale)).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
+        lower = ((self.q_bounds - bounds.upper) / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
+        upper = ((self.q_bounds - bounds.lower) / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
 
         return IntervalBounds(bounds.region, lower, upper)
 
@@ -378,16 +435,15 @@ class TruncatedGaussianExpectation(Sum):
     def __init__(self, dynamics_network, A_qi, scale, q_bounds):
         super().__init__(
             nn.Sequential(
-                dynamics_network,
                 Sub(
                     nn.Sequential(
-                        QBound(q_bounds[0], scale),
+                        QBound(dynamics_network, q_bounds[0], scale),
                         Square(),
                         Constant(torch.full_like(scale, -2)),
                         Exp()
                     ),
                     nn.Sequential(
-                        QBound(q_bounds[1], scale),
+                        QBound(dynamics_network, q_bounds[1], scale),
                         Square(),
                         Constant(torch.full_like(scale, -2)),
                         Exp()
@@ -411,6 +467,24 @@ class BoundErf(BoundSigmoid):
     def derivative(self, x):
         x_squared = x ** 2
         return (2.0 / math.sqrt(math.pi)) * (-x_squared).exp()
+
+
+class ProbabilityNetwork(nn.Sequential):
+    def __init__(self, dynamics_network, A_qi, scale, q_bounds):
+        super().__init__(
+            Sub(
+                nn.Sequential(
+                    QBound(dynamics_network, q_bounds[1], scale, factor=math.sqrt(2.0)),
+                    Erf()
+                ),
+                nn.Sequential(
+                    QBound(dynamics_network, q_bounds[0], scale, factor=math.sqrt(2.0)),
+                    Erf()
+                )
+            ),
+            Constant(torch.full_like(scale, 0.5)),
+            Clamp(min=0.0, max=1.0)
+        )
 
 
 class FCNNBarrierNetwork(nn.Sequential):
