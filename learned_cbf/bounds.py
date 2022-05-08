@@ -5,7 +5,8 @@ from bound_propagation import HyperRectangle, BoundModule, LinearBounds, Interva
 from torch import nn
 
 from .networks import BoundBetaNetwork, BetaNetwork, Mean, BoundMean, Constant, BoundConstant, BoundExp, Exp, \
-    BoundSquare, Square, BoundQBound, QBound, BoundSum, Sum, BoundErf, Erf, BoundAqiNetwork, AqiNetwork
+    BoundSquare, Square, BoundQBound, QBound, BoundSum, Sum, BoundErf, Erf, BoundAqiNetwork, AqiNetwork, \
+    BoundIgnoreZeroScale, IgnoreZeroScale, BoundProd, Prod
 
 
 class Affine:
@@ -136,6 +137,7 @@ class LearnedCBFBoundModelFactory(BoundModelFactory):
 
         self.register(Mean, BoundMean)
         self.register(Sum, BoundSum)
+        self.register(Prod, BoundProd)
         self.register(Constant, BoundConstant)
         self.register(Exp, BoundExp)
         self.register(Square, BoundSquare)
@@ -143,3 +145,4 @@ class LearnedCBFBoundModelFactory(BoundModelFactory):
         self.register(Erf, BoundErf)
         self.register(AqiNetwork, BoundAqiNetwork)
         self.register(BetaNetwork, BoundBetaNetwork)
+        self.register(IgnoreZeroScale, BoundIgnoreZeroScale)

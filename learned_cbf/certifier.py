@@ -8,7 +8,7 @@ from torch import nn
 from .dynamics import AdditiveGaussianDynamics
 from .bounds import bounds, Affine
 from .partitioning import Partitions
-from .networks import BetaNetwork
+from .networks import BetaNetwork, ExpectationBounds
 
 logger = logging.getLogger(__name__)
 
@@ -453,6 +453,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
         assert isinstance(dynamics, AdditiveGaussianDynamics)
 
+        self.factory = factory
         self.barrier = factory.build(barrier)
         self.nominal_dynamics = factory.build(dynamics.nominal_system)
         self.dynamics = dynamics
@@ -478,11 +479,18 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         state_space_partitioning = self.beta_state_space_partitioning(**kwargs)
         # state_space_partitioning = self.beta_partitioning.state_space
 
-        _ = kwargs.pop('method')
-        state_space_lower, state_space_upper = bounds(self.barrier, state_space_partitioning, method='crown_linear', **kwargs)
+        # _ = kwargs.pop('method')
+        state_space_lower, state_space_upper = bounds(self.barrier, state_space_partitioning, method='crown_linear', **{key: value for key, value in kwargs.items() if key != 'method'})
+        A_qi = state_space_lower.A, state_space_upper.A
+        b_qi = state_space_lower.b, state_space_upper.b
+        scale = self.dynamics.v[1].to(A_qi[0].device)
+        q_bounds = state_space_partitioning.lower, state_space_partitioning.upper
+        expectation_network = ExpectationBounds(self.barrier.module, self.dynamics.nominal_system, A_qi, b_qi, scale, q_bounds)
+        expectation_network = self.factory.build(expectation_network)
+
         set = self.initial_partitioning.safe
 
-        min, max = self.min_max_beta(state_space_partitioning, set, state_space_lower, state_space_upper, **kwargs)
+        min, max = self.min_max_beta(expectation_network, set, **kwargs)
         last_gap = [torch.finfo(min.dtype).max for _ in range(9)] + [(max.max() - min.max()).item()]
 
         while not self.should_stop_beta_gamma('BETA', set, min, max, last_gap):
@@ -505,7 +513,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
                 new_set = self.region_prune(new_set, self.dynamics.safe)
                 new_sets.append(new_set)
 
-                new_min, new_max = self.min_max_beta(state_space_partitioning, new_set, state_space_lower, state_space_upper, **kwargs)
+                new_min, new_max = self.min_max_beta(expectation_network, new_set, **kwargs)
                 new_mins.append(new_min)
                 new_maxs.append(new_max)
 
@@ -519,16 +527,22 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
         return max.max().clamp(min=0)
 
-    def min_max_beta(self, state_space_set, set, state_space_lower, state_space_upper, **kwargs):
-        safe_lower, safe_upper = bounds(self.barrier, set, method='crown_linear', **kwargs)
-        dynamics_lower, dynamics_upper = bounds(self.nominal_dynamics, set, method='crown_linear', **kwargs)
+    def min_max_beta(self, expectation_network, set, **kwargs):
+        lower, upper = bounds(expectation_network, set, **kwargs)
+        min = lower.partition_min()
+        max = upper.partition_max()
 
-        P_v_in_q = self.P_v_in_q(state_space_set, dynamics_lower, dynamics_upper)
+        return min.view(-1), max.view(-1)
 
-        min = self.beta_min_max_oneside(state_space_set, P_v_in_q[0], state_space_lower, dynamics_lower, dynamics_upper, safe_upper)
-        max = self.beta_min_max_oneside(state_space_set, P_v_in_q[1], state_space_upper, dynamics_lower, dynamics_upper, safe_lower, min=False)
-
-        return min, max
+        # safe_lower, safe_upper = bounds(self.barrier, set, method='crown_linear', **kwargs)
+        # dynamics_lower, dynamics_upper = bounds(self.nominal_dynamics, set, method='crown_linear', **kwargs)
+        #
+        # P_v_in_q = self.P_v_in_q(state_space_set, dynamics_lower, dynamics_upper)
+        #
+        # min = self.beta_min_max_oneside(state_space_set, P_v_in_q[0], state_space_lower, dynamics_lower, dynamics_upper, safe_upper)
+        # max = self.beta_min_max_oneside(state_space_set, P_v_in_q[1], state_space_upper, dynamics_lower, dynamics_upper, safe_lower, min=False)
+        #
+        # return min, max
 
     def beta_min_max_oneside(self, state_space_set, P_v_in_q, state_space_bounds, dynamics_lower, dynamics_upper, safe, min=True):
         nonzero_prob = P_v_in_q.squeeze(-1).nonzero(as_tuple=True)
@@ -707,7 +721,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         lower, upper = bounds(self.barrier, set, method='crown_linear', **{key: value for key, value in kwargs.items() if key != 'method'})
         last_gap = [torch.finfo(min.dtype).max for _ in range(199)] + [(upper - lower).partition_max().max().item()]
 
-        while not self.should_stop_beta_gamma('BETA_STATE_SPACE', set, min, max, last_gap, max_set_size=100000):
+        while not self.should_stop_beta_gamma('BETA_STATE_SPACE', set, min, max, last_gap, max_set_size=10000):
             batch_size = 100
             k = torch.min(torch.tensor([batch_size, len(set)])).item()
 
