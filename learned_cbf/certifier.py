@@ -502,7 +502,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
                 logger.warning(f'Pruning all in beta: {min}, {max}, last gap: {last_gap[-1]}')
                 break
 
-            batch_size = 100
+            batch_size = 20
 
             new_sets = []
             new_mins = []
@@ -721,7 +721,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         lower, upper = bounds(self.barrier, set, method='crown_linear', **{key: value for key, value in kwargs.items() if key != 'method'})
         last_gap = [torch.finfo(min.dtype).max for _ in range(199)] + [(upper - lower).partition_max().max().item()]
 
-        while not self.should_stop_beta_gamma('BETA_STATE_SPACE', set, min, max, last_gap, max_set_size=10000):
+        while not self.should_stop_beta_gamma('BETA_STATE_SPACE', set, min, max, last_gap, max_set_size=100000):
             batch_size = 100
             k = torch.min(torch.tensor([batch_size, len(set)])).item()
 

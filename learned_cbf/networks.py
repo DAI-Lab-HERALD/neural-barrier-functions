@@ -3,7 +3,7 @@ import math
 import torch
 from bound_propagation import Residual, BoundModule, LinearBounds, IntervalBounds, HyperRectangle, Sub, BoundActivation, \
     Clamp, Parallel, Add
-from bound_propagation.activation import assert_bound_order, BoundSigmoid
+from bound_propagation.activation import assert_bound_order, BoundSigmoid, crown_backward_act_jit
 from bound_propagation.linear import crown_backward_linear_jit
 from torch import nn, Tensor
 
@@ -141,8 +141,8 @@ class AqiNetwork(nn.Module):
     def __init__(self, A_qi, b_qi=None):
         super().__init__()
 
-        self.register_buffer('A_qi_bot', A_qi[0].unsqueeze(1))
-        self.register_buffer('A_qi_top', A_qi[1].unsqueeze(1))
+        self.register_buffer('A_qi_bot', A_qi[0])
+        self.register_buffer('A_qi_top', A_qi[1])
 
         if b_qi is None:
             self.register_buffer('b_qi_bot', None)
@@ -167,13 +167,13 @@ class BoundAqiNetwork(BoundModule):
         if linear_bounds.lower is None:
             lower = None
         else:
-            lower = crown_backward_linear_jit(self.module.A_qi_bot, self.b_qi_bot, linear_bounds.lower[0])
+            lower = crown_backward_linear_jit(self.module.A_qi_bot, self.module.b_qi_bot, linear_bounds.lower[0])
             lower = (lower[0], lower[1] + linear_bounds.lower[1])
 
         if linear_bounds.upper is None:
             upper = None
         else:
-            upper = crown_backward_linear_jit(self.module.A_qi_top, self.b_qi_top, linear_bounds.upper[0])
+            upper = crown_backward_linear_jit(self.module.A_qi_top, self.module.b_qi_top, linear_bounds.upper[0])
             upper = (upper[0], upper[1] + linear_bounds.upper[1])
 
         return LinearBounds(linear_bounds.region, lower, upper)
@@ -187,12 +187,12 @@ class BoundAqiNetwork(BoundModule):
         A_qi_bot = self.module.A_qi_bot.transpose(-1, -2)
         lower = (center.matmul(A_qi_bot) - diff.matmul(A_qi_bot.abs())).squeeze(-2)
         if self.b_qi_bot is not None:
-            lower = lower + self.b_qi_bot
+            lower = lower + self.module.b_qi_bot
 
         A_qi_top = self.module.A_qi_top.transpose(-1, -2)
         upper = (center.matmul(A_qi_top) + diff.matmul(A_qi_top.abs())).squeeze(-2)
         if self.b_qi_top is not None:
-            upper = upper + self.b_qi_top
+            upper = upper + self.module.b_qi_top
 
         return IntervalBounds(bounds.region, lower, upper)
 
@@ -229,8 +229,8 @@ class BoundConstant(BoundModule):
         neg = self.module.constant < 0.0
         if torch.any(neg):
             assert lower is not None and upper is not None, 'bound_lower=False and bound_upper=False cannot be used with a negative constant'
-            lower = torch.where(neg, upper[0], lower[0]), torch.where(neg, upper[1], lower[1])
-            upper = torch.where(neg, lower[0], upper[0]), torch.where(neg, lower[1], upper[1])
+            lower = torch.where(neg, upper[0], lower[0]), lower[1]
+            upper = torch.where(neg, lower[0], upper[0]), upper[1]
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
@@ -307,14 +307,20 @@ class BoundQBound(BoundModule):
 
     @property
     def need_relaxation(self):
-        return False
+        return self.bound_dynamics.need_relaxation
+
+    def clear_relaxation(self):
+        self.bound_dynamics.clear_relaxation()
+
+    def backward_relaxation(self, region):
+        return self.bound_dynamics.backward_relaxation(region)
 
     def crown_backward(self, linear_bounds):
         assert linear_bounds.lower is not None and linear_bounds.upper is not None, 'bound_lower=False and bound_upper=False cannot be used with QBound'
 
         input_bounds = LinearBounds(linear_bounds.region,
-            ((linear_bounds.lower[0] / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0), torch.zeros_like(linear_bounds.lower[1])),
-            ((linear_bounds.upper[0] / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0), torch.zeros_like(linear_bounds.upper[1])),
+            ((linear_bounds.upper[0] / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0), torch.zeros_like(linear_bounds.lower[1])),
+            ((linear_bounds.lower[0] / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0), torch.zeros_like(linear_bounds.upper[1])),
         )
 
         dynamics_bounds = self.bound_dynamics.crown_backward(input_bounds)
@@ -323,7 +329,7 @@ class BoundQBound(BoundModule):
             lower = None
         else:
             lowerA = -dynamics_bounds.upper[0]
-            lower_bias = (self.q_bounds / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
+            lower_bias = (self.module.q_bounds / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
             lower_bias = lower_bias.unsqueeze(-2).matmul(linear_bounds.lower[0].transpose(-1, -2)).squeeze(-2)
             lower = (lowerA, -dynamics_bounds.upper[1] + linear_bounds.lower[1] + lower_bias)
 
@@ -331,7 +337,7 @@ class BoundQBound(BoundModule):
             upper = None
         else:
             upperA = -dynamics_bounds.lower[0]
-            upper_bias = (self.q_bounds / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
+            upper_bias = (self.module.q_bounds / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
             upper_bias = upper_bias.unsqueeze(-2).matmul(linear_bounds.upper[0].transpose(-1, -2)).squeeze(-2)
             upper = (upperA, -dynamics_bounds.lower[1] + linear_bounds.upper[1] + upper_bias)
 
@@ -339,8 +345,8 @@ class BoundQBound(BoundModule):
 
     @assert_bound_order
     def ibp_forward(self, bounds, save_relaxation=False):
-        lower = ((self.q_bounds - bounds.upper) / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
-        upper = ((self.q_bounds - bounds.lower) / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
+        lower = ((self.module.q_bounds - bounds.upper) / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
+        upper = ((self.module.q_bounds - bounds.lower) / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
 
         return IntervalBounds(bounds.region, lower, upper)
 
@@ -469,7 +475,7 @@ class TruncatedGaussianExpectation(Sum):
 
 class Erf(nn.Module):
     def forward(self, x):
-        torch.erf(x)
+        return torch.erf(x)
 
 
 class BoundErf(BoundSigmoid):
@@ -512,16 +518,18 @@ class BoundIgnoreZeroScale(BoundModule):
         if linear_bounds.lower is None:
             lower = None
         else:
-            lowerA = linear_bounds.lower[0]
+            lowerA = linear_bounds.lower[0].clone()
             lowerA[..., zero_scale] = 0.0
-            lower = (lowerA, self.ignore_zero_scale_lower(v_bounds_under, linear_bounds.lower[1]))
+            lower_bias = linear_bounds.lower[0].matmul(self.ignore_zero_scale_lower(v_bounds_under).unsqueeze(-1))
+            lower = (lowerA, linear_bounds.lower[1] + lower_bias.squeeze(-1))
 
         if linear_bounds.upper is None:
             upper = None
         else:
-            upperA = linear_bounds.upper[0]
+            upperA = linear_bounds.upper[0].clone()
             upperA[..., zero_scale] = 0.0
-            upper = (upperA, self.ignore_zero_scale_upper(v_bounds_over, linear_bounds.upper[1]))
+            upper_bias = linear_bounds.upper[0].matmul(self.ignore_zero_scale_upper(v_bounds_over).unsqueeze(-1))
+            upper = (upperA, linear_bounds.upper[1] + upper_bias.squeeze(-1))
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
@@ -533,40 +541,34 @@ class BoundIgnoreZeroScale(BoundModule):
         return IntervalBounds(bounds.region, lower, upper)
 
     def v_bounds(self, dynamics_interval):
-        dynamics_lower = dynamics_interval.lower.unsqueeze(1)
-        dynamics_upper = dynamics_interval.upper.unsqueeze(1)
+        dynamics_lower, dynamics_upper = dynamics_interval.lower, dynamics_interval.upper
+        q_lower, q_upper = self.module.q_bounds[0].unsqueeze(1), self.module.q_bounds[1].unsqueeze(1)
 
-        v_bounds_under = self.module.q_bounds[0] - dynamics_lower, self.module.q_bounds[1] - dynamics_upper
-        v_bounds_over = self.module.q_bounds[0] - dynamics_upper, self.module.q_bounds[0] - dynamics_lower
+        v_bounds_under = q_lower - dynamics_lower, q_upper - dynamics_upper
+        v_bounds_over = q_lower - dynamics_upper, q_upper - dynamics_lower
 
         return v_bounds_under, v_bounds_over
 
     def ignore_zero_scale(self, dynamics_interval, lower, upper):
         v_bounds_under, v_bounds_over = self.v_bounds(dynamics_interval)
-
-        return self.ignore_zero_scale_lower(v_bounds_under, lower),\
-               self.ignore_zero_scale_upper(v_bounds_over, upper)
-
-    def ignore_zero_scale_lower(self, v_bounds_under, lower):
         zero_scale = (self.module.scale == 0.0)
 
-        lower[..., zero_scale] = (
-                (v_bounds_under[0][..., zero_scale] <= 0.0) &
-                (0.0 <= v_bounds_under[1][..., zero_scale]) &
-                (v_bounds_under[0][..., zero_scale] >= v_bounds_under[1][..., zero_scale])
-        ).to(lower.dtype)
+        if lower.dim() != v_bounds_under[0].dim():
+            lower = lower.unsqueeze(0).expand(*v_bounds_under[0].size())
+            upper = upper.unsqueeze(0).expand(*v_bounds_over[0].size())
 
-        return lower
+        lower[..., zero_scale] = self.ignore_zero_scale_lower(v_bounds_under)[..., zero_scale]
+        upper[..., zero_scale] = self.ignore_zero_scale_upper(v_bounds_over)[..., zero_scale]
 
-    def ignore_zero_scale_upper(self, v_bounds_over, upper):
+        return lower, upper
+
+    def ignore_zero_scale_lower(self, v_bounds_under):
         zero_scale = (self.module.scale == 0.0)
+        return (zero_scale & (v_bounds_under[0] <= 0.0) & (0.0 <= v_bounds_under[1]) & (v_bounds_under[0] >= v_bounds_under[1])).float()
 
-        upper[..., zero_scale] = (
-                (v_bounds_over[0][..., zero_scale] <= 0.0) &
-                (0.0 <= v_bounds_over[1][..., zero_scale])
-        ).to(upper.dtype)
-
-        return upper
+    def ignore_zero_scale_upper(self, v_bounds_over):
+        zero_scale = (self.module.scale == 0.0)
+        return (zero_scale & (v_bounds_over[0] <= 0.0) & (0.0 <= v_bounds_over[1])).float()
 
     def propagate_size(self, in_size):
         out_size = self.bound_dynamics.propagate_size(in_size)
@@ -587,6 +589,7 @@ class ProbabilityNetwork(nn.Sequential):
                     Erf()
                 )
             ),
+            IgnoreZeroScale(dynamics_network, scale, q_bounds),
             Constant(torch.full_like(scale, 0.5)),
             Clamp(min=0.0, max=1.0)
         )
@@ -637,7 +640,7 @@ class BoundProd(BoundModule):
         else:
             acc = subnetwork_bounds.upper[0][..., 0, :], subnetwork_bounds.upper[1][..., 0]
 
-            for i in range(1, subnetwork_bounds.lower[1].size(-1)):
+            for i in range(1, subnetwork_bounds.upper[1].size(-1)):
                 acc = self.combine_bounds(acc, (subnetwork_bounds.upper[0][..., i, :], subnetwork_bounds.upper[1][..., i]), linear_bounds.region, lower=False)
 
             upper = (acc[0].unsqueeze(-2), acc[1].unsqueeze(-1) + linear_bounds.upper[1])
@@ -651,7 +654,8 @@ class BoundProd(BoundModule):
         A_prime = acc[0].unsqueeze(-1).matmul(bounds[0].unsqueeze(-2))
         A = (A_prime + A_prime.transpose(-1, -2)) / 2.0
 
-        Gamma, U = torch.linalg.eigh(A)
+        # Gamma, U = torch.linalg.eigh(A)
+        U, Gamma, _ = torch.linalg.svd(A)
         U_transpose = U.transpose(-1, -2)
 
         center, diff = region.center, region.width / 2.0
