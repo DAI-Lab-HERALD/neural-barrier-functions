@@ -121,7 +121,7 @@ def polynomial_main(args, config):
         initial_partitioning, beta_partitioning = initial_partitioning.to(args.device), beta_partitioning.to(args.device)
         robust_learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
         empirical_learner = EmpiricalNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
-        certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, beta_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
+        certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon'], device=args.device)
 
         load(robust_learner, args, 'final')
 

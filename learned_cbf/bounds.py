@@ -4,9 +4,9 @@ import torch
 from bound_propagation import HyperRectangle, BoundModule, LinearBounds, IntervalBounds, BoundModelFactory
 from torch import nn
 
-from .networks import BoundBetaNetwork, BetaNetwork, Mean, BoundMean, Constant, BoundConstant, BoundExp, Exp, \
-    BoundSquare, Square, BoundQBound, QBound, BoundSum, Sum, BoundErf, Erf, BoundAqiNetwork, AqiNetwork, \
-    BoundIgnoreZeroScale, IgnoreZeroScale, BoundProd, Prod
+from .networks import BoundBetaNetwork, BetaNetwork, Mean, BoundMean, BoundSum, Sum, BoundGaussianExpectationRegion, \
+    GaussianExpectationRegion, BoundGaussianProbabilityNetwork, GaussianProbabilityNetwork, AdditiveGaussianBetaNetwork, \
+    BoundAdditiveGaussianBetaNetwork
 
 
 class Affine:
@@ -137,12 +137,7 @@ class LearnedCBFBoundModelFactory(BoundModelFactory):
 
         self.register(Mean, BoundMean)
         self.register(Sum, BoundSum)
-        self.register(Prod, BoundProd)
-        self.register(Constant, BoundConstant)
-        self.register(Exp, BoundExp)
-        self.register(Square, BoundSquare)
-        self.register(QBound, BoundQBound)
-        self.register(Erf, BoundErf)
-        # self.register(AqiNetwork, BoundAqiNetwork)
         self.register(BetaNetwork, BoundBetaNetwork)
-        self.register(IgnoreZeroScale, BoundIgnoreZeroScale)
+        self.register(GaussianProbabilityNetwork, BoundGaussianProbabilityNetwork)
+        self.register(GaussianExpectationRegion, BoundGaussianExpectationRegion)
+        self.register(AdditiveGaussianBetaNetwork, BoundAdditiveGaussianBetaNetwork)

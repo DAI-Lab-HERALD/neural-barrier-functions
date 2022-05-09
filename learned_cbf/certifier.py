@@ -3,17 +3,12 @@ import math
 
 import torch
 from bound_propagation import Clamp, IntervalBounds, LinearBounds, HyperRectangle
-from matplotlib import pyplot as plt
 from torch import nn
-from tqdm import tqdm, trange
 
-from discretization import ButcherTableau, BoundButcherTableau
-from experiments.polynomial.dynamics import PolynomialUpdate, NominalPolynomialUpdate, BoundPolynomialUpdate, \
-    BoundNominalPolynomialUpdate
 from .dynamics import AdditiveGaussianDynamics
 from .bounds import bounds, Affine, LearnedCBFBoundModelFactory
 from .partitioning import Partitions
-from .networks import BetaNetwork, ExpectationBounds
+from .networks import BetaNetwork, AdditiveGaussianBetaNetwork
 
 logger = logging.getLogger(__name__)
 
@@ -451,16 +446,19 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
 
 class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
-    def __init__(self, barrier: nn.Module, dynamics: AdditiveGaussianDynamics, factory, initial_partitioning, beta_partitioning, horizon,
-                 certification_threshold=1.0e-10, split_gap_stop_treshold=1e-6,
-                 max_set_size=500000):
+    def __init__(self, barrier: nn.Module, dynamics: AdditiveGaussianDynamics, factory, initial_partitioning, horizon,
+                 certification_threshold=1.0e-10, split_gap_stop_treshold=1e-6, max_set_size=10000, device=None):
         super().__init__()
 
         assert isinstance(dynamics, AdditiveGaussianDynamics)
 
-        self.factory = factory
         self.barrier = factory.build(barrier)
-        self.nominal_dynamics = factory.build(dynamics.nominal_system)
+
+        loc, scale = dynamics.v
+        loc, scale = loc.to(device), scale.to(device)
+        factory.kwargs['state_space_bounds'] = initial_partitioning.state_space.lower[0], initial_partitioning.state_space.upper[0]
+        factory.kwargs['slices'] = [201 for _ in range(initial_partitioning.state_space.lower.size(-1))]
+        self.beta_network = factory.build(AdditiveGaussianBetaNetwork(barrier, dynamics.nominal_system, loc, scale))
         self.dynamics = dynamics
 
         # Assumptions:
@@ -469,7 +467,6 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         # 3. Partitions containing the boundary of the safe / unsafe set belong to both (to ensure correctness)
         # 4. Partitions are hyperrectangular and non-overlapping
         self.initial_partitioning = initial_partitioning
-        self.beta_partitioning = beta_partitioning
 
         self.horizon = horizon
         self.certification_threshold = certification_threshold
@@ -479,19 +476,11 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
     @torch.no_grad()
     def beta(self, **kwargs):
         assert self.initial_partitioning.safe is not None
-        assert self.beta_partitioning.state_space is not None
-
-        state_space_partitioning, _, state_space_upper = self.beta_state_space_partitioning(**kwargs)
-
-        A_qi, b_qi = state_space_upper.A, state_space_upper.b
-        scale = self.dynamics.v[1].to(A_qi.device)
-        q_bounds = state_space_partitioning.lower, state_space_partitioning.upper
-        expectation_network = ExpectationBounds(self.barrier.module, self.dynamics.nominal_system, A_qi, b_qi, scale, q_bounds)
-        expectation_network = self.factory.build(expectation_network)
 
         set = self.initial_partitioning.safe
 
-        min, max = self.min_max_beta(expectation_network, set, **kwargs)
+        kwargs['method'] = 'crown_interval'
+        min, max = self.min_max_beta(set, **kwargs)
         last_gap = [torch.finfo(min.dtype).max for _ in range(19)] + [(max.max() - min.max()).item()]
 
         while not self.should_stop_beta_gamma('BETA', set, min, max, last_gap):
@@ -514,7 +503,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
                 new_set = self.region_prune(new_set, self.dynamics.safe)
                 new_sets.append(new_set)
 
-                new_min, new_max = self.min_max_beta(expectation_network, new_set, **kwargs)
+                new_min, new_max = self.min_max_beta(new_set, **kwargs)
                 new_mins.append(new_min)
                 new_maxs.append(new_max)
 
@@ -528,20 +517,17 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
         return max.max().clamp(min=0)
 
-    def min_max_beta(self, expectation_network, set, **kwargs):
-        lower, upper = bounds(expectation_network, set, **kwargs)
+    def min_max_beta(self, set, **kwargs):
+        lower, upper = bounds(self.beta_network, set, **kwargs)
         min = lower.partition_min()
         max = upper.partition_max()
 
         return min.view(-1), max.view(-1)
 
     def split_beta(self, set, **kwargs):
-        kwargs.pop('method', None)
+        lower, upper = bounds(self.beta_network, set, **kwargs)
 
-        lower_dynamics, upper_dynamics = bounds(self.nominal_dynamics, set, method='crown_linear', **kwargs)
-        lower_barrier, upper_barrier = bounds(self.barrier, set, method='crown_linear', **kwargs)
-
-        split_dim = ((lower_dynamics.A.sum(dim=-1, keepdim=True).abs() + upper_dynamics.A.sum(dim=-1, keepdim=True).abs() + lower_barrier.A.abs() + upper_barrier.A.abs())[:, 0] * set.width).argmax(dim=-1)
+        split_dim = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
         split_dim = (partition_indices, split_dim)
 
@@ -561,49 +547,6 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         assert torch.all(lower <= upper + 1e-8)
 
         return Partitions((lower, upper))
-
-    def beta_state_space_partitioning(self, **kwargs):
-        assert self.initial_partitioning.state_space is not None
-        set = self.initial_partitioning.state_space
-
-        lower, upper = bounds(self.barrier, set, method='crown_linear', **{key: value for key, value in kwargs.items() if key != 'method'})
-        last_gap = [torch.finfo(lower.A.dtype).max for _ in range(199)] + [(upper - lower).partition_max().max().item()]
-
-        while not self.should_stop_beta_gamma('BETA_STATE_SPACE', set, lower.partition_min(), upper.partition_max(), last_gap, max_set_size=20000):
-            batch_size = 100
-            k = torch.min(torch.tensor([batch_size, len(set)])).item()
-
-            split_indices = self.split_indices(set, k, lower, upper)
-            other_indices = torch.full((lower.A.size(0),), True, dtype=torch.bool, device=lower.A.device)
-            other_indices[split_indices] = False
-
-            split_set = set[split_indices]
-
-            set = set[other_indices]
-            lower = (lower.A[other_indices], lower.b[other_indices], lower.lower[other_indices], lower.upper[other_indices])
-            upper = (upper.A[other_indices], upper.b[other_indices], upper.lower[other_indices], upper.upper[other_indices])
-
-            split_set = self.split(split_set, **kwargs)
-            split_set = self.region_prune(split_set, self.dynamics.state_space)
-
-            set = Partitions((torch.cat([set.lower, split_set.lower]), torch.cat([set.upper, split_set.upper])))
-
-            split_lower, split_upper = bounds(self.barrier, split_set, method='crown_linear', **{key: value for key, value in kwargs.items() if key != 'method'})
-            lower = Affine(torch.cat([lower[0], split_lower.A]), torch.cat([lower[1], split_lower.b]), torch.cat([lower[2], split_lower.lower]), torch.cat([lower[3], split_lower.upper]))
-            upper = Affine(torch.cat([upper[0], split_upper.A]), torch.cat([upper[1], split_upper.b]), torch.cat([upper[2], split_upper.lower]), torch.cat([upper[3], split_upper.upper]))
-
-            last_gap.append((upper - lower).partition_max().max().item())
-            last_gap.pop(0)
-
-        return set, lower, upper
-
-    def split_indices(self, set, k, lower, upper):
-        # largest_upper_slope = (upper.A.abs()[:, 0] * set.width).sum(dim=-1).topk(k)
-        largest_upper_slope_and_gap = ((upper.A.abs()[:, 0] * set.width).sum(dim=-1) + ((upper - lower).partition_max()[:, 0] * set.volume)).topk(k)
-        # largest_average_slope = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).sum(dim=-1).topk(k)
-        # largest_average_slope_and_gap = (((lower.A.abs() + upper.A.abs())[:, 0] * set.width).sum(dim=-1) + ((upper - lower).partition_max()[:, 0] * set.volume)).topk(k)
-        # largest_linear_gap = ((upper - lower).partition_max()[:, 0] * set.volume).topk(k)
-        return largest_upper_slope_and_gap.indices
 
     def region_prune(self, set, contain_func):
         center = set.center

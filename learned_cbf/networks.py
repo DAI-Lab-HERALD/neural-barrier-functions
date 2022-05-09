@@ -2,7 +2,7 @@ import math
 
 import torch
 from bound_propagation import Residual, BoundModule, LinearBounds, IntervalBounds, HyperRectangle, Sub, BoundActivation, \
-    Clamp, Parallel, Add
+    Clamp, Parallel, Add, BoundSub
 from bound_propagation.activation import assert_bound_order, BoundSigmoid, crown_backward_act_jit
 from bound_propagation.linear import crown_backward_linear_jit
 from torch import nn, Tensor
@@ -137,269 +137,6 @@ class BoundBetaNetwork(BoundModule):
         return out_size1
 
 
-class AqiNetwork(nn.Linear):
-    def __init__(self, A_qi, b_qi=None):
-        super().__init__(A_qi.size(-1), A_qi.size(-2), bias=b_qi is not None)
-
-        del self.weight
-        del self.bias
-
-        self.register_buffer('weight', A_qi)
-
-        if b_qi is None:
-            self.register_buffer('bias', None)
-        else:
-            self.register_buffer('bias', b_qi.unsqueeze(1))
-
-    def forward(self, x: Tensor) -> Tensor:
-        x = x.matmul(self.weight.transpose(-1, -2))
-        if self.bias is not None:
-            x = x + self.bias
-        return x
-
-
-class BoundAqiNetwork(BoundModule):
-    @property
-    def need_relaxation(self):
-        return False
-
-    def crown_backward(self, linear_bounds):
-        if linear_bounds.lower is None:
-            lower = None
-        else:
-            lower = crown_backward_linear_jit(self.module.A_qi_bot, self.module.b_qi_bot, linear_bounds.lower[0])
-            lower = (lower[0], lower[1] + linear_bounds.lower[1])
-
-        if linear_bounds.upper is None:
-            upper = None
-        else:
-            upper = crown_backward_linear_jit(self.module.A_qi_top, self.module.b_qi_top, linear_bounds.upper[0])
-            upper = (upper[0], upper[1] + linear_bounds.upper[1])
-
-        return LinearBounds(linear_bounds.region, lower, upper)
-
-    @assert_bound_order
-    def ibp_forward(self, bounds, save_relaxation=False):
-        center, diff = bounds.center, bounds.width / 2
-
-        center, diff = center.unsqueeze(-2), diff.unsqueeze(-2)
-
-        A_qi_bot = self.module.A_qi_bot.transpose(-1, -2)
-        lower = (center.matmul(A_qi_bot) - diff.matmul(A_qi_bot.abs())).squeeze(-2)
-        if self.b_qi_bot is not None:
-            lower = lower + self.module.b_qi_bot
-
-        A_qi_top = self.module.A_qi_top.transpose(-1, -2)
-        upper = (center.matmul(A_qi_top) + diff.matmul(A_qi_top.abs())).squeeze(-2)
-        if self.b_qi_top is not None:
-            upper = upper + self.module.b_qi_top
-
-        return IntervalBounds(bounds.region, lower, upper)
-
-    def propagate_size(self, in_size):
-        return self.module.A_qi_top.size(-2)
-
-
-class Constant(nn.Module):
-    def __init__(self, constant):
-        super().__init__()
-        self.constant = constant
-
-    def forward(self, x):
-        return self.constant * x
-
-
-class BoundConstant(BoundModule):
-
-    @property
-    def need_relaxation(self):
-        return False
-
-    def crown_backward(self, linear_bounds):
-        if linear_bounds.lower is None:
-            lower = None
-        else:
-            lower = (self.module.constant * linear_bounds.lower[0], linear_bounds.lower[1])
-
-        if linear_bounds.upper is None:
-            upper = None
-        else:
-            upper = (self.module.constant * linear_bounds.upper[0], linear_bounds.upper[1])
-
-        neg = self.module.constant < 0.0
-        if torch.any(neg):
-            assert lower is not None and upper is not None, 'bound_lower=False and bound_upper=False cannot be used with a negative constant'
-            lower = torch.where(neg, upper[0], lower[0]), lower[1]
-            upper = torch.where(neg, lower[0], upper[0]), upper[1]
-
-        return LinearBounds(linear_bounds.region, lower, upper)
-
-    def ibp_forward(self, bounds, save_relaxation=False):
-        return IntervalBounds(bounds.region, self.module.constant * bounds.lower, self.module.constant * bounds.upper)
-
-    def propagate_size(self, in_size):
-        return in_size
-
-
-class Exp(nn.Module):
-    def forward(self, x):
-        return x.exp()
-
-
-class BoundExp(BoundActivation):
-    def func(self, x):
-        return x.exp()
-
-    def derivative(self, x):
-        return x.exp()
-
-    @assert_bound_order
-    def alpha_beta(self, preactivation):
-        lower, upper = preactivation.lower, preactivation.upper
-        zero_width = torch.isclose(lower, upper, rtol=0.0, atol=1e-8)
-        other = ~zero_width
-
-        self.alpha_lower, self.beta_lower = torch.zeros_like(lower), torch.zeros_like(lower)
-        self.alpha_upper, self.beta_upper = torch.zeros_like(lower), torch.zeros_like(lower)
-
-        # Use upper and lower in the bias to account for a small numerical difference between lower and upper
-        # which ought to be negligible, but may still be present due to torch.isclose.
-        self.alpha_lower[zero_width], self.beta_lower[zero_width] = 0, self(lower[zero_width])
-        self.alpha_upper[zero_width], self.beta_upper[zero_width] = 0, self(upper[zero_width])
-
-        lower_act, upper_act = self.func(lower), self.func(upper)
-
-        d = (lower + upper) * 0.5  # Let d be the midpoint of the two bounds
-        d_act = self.func(d)
-        d_prime = self.derivative(d)
-
-        slope = (upper_act - lower_act) / (upper - lower)
-
-        def add_linear(alpha, beta, mask, a, x, y, a_mask=True):
-            if a_mask:
-                a = a[mask]
-
-            alpha[mask] = a
-            beta[mask] = y[mask] - a * x[mask]
-
-        add_linear(self.alpha_upper, self.beta_upper, mask=other, a=slope, x=lower, y=lower_act)
-        add_linear(self.alpha_lower, self.beta_lower, mask=other, a=d_prime, x=d, y=d_act)
-
-
-class QBound(nn.Module):
-    def __init__(self, dynamics_network, q_bounds, scale, factor=2.0):
-        super(QBound, self).__init__()
-
-        self.dynamics_network = dynamics_network
-        self.q_bounds = q_bounds.unsqueeze(1)
-        self.scale = factor * scale
-
-    def forward(self, x):
-        x = (x - self.q_bounds) / self.scale
-        return torch.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
-
-
-class BoundQBound(BoundModule):
-    def __init__(self, module, factory, **kwargs):
-        super().__init__(module, factory, **kwargs)
-
-        self.bound_dynamics = factory.build(module.dynamics_network)
-
-    @property
-    def need_relaxation(self):
-        return self.bound_dynamics.need_relaxation
-
-    def clear_relaxation(self):
-        self.bound_dynamics.clear_relaxation()
-
-    def backward_relaxation(self, region):
-        return self.bound_dynamics.backward_relaxation(region)
-
-    def crown_backward(self, linear_bounds):
-        assert linear_bounds.lower is not None and linear_bounds.upper is not None, 'bound_lower=False and bound_upper=False cannot be used with QBound'
-
-        input_bounds = LinearBounds(linear_bounds.region,
-            ((linear_bounds.upper[0] / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0), torch.zeros_like(linear_bounds.lower[1])),
-            ((linear_bounds.lower[0] / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0), torch.zeros_like(linear_bounds.upper[1])),
-        )
-
-        dynamics_bounds = self.bound_dynamics.crown_backward(input_bounds)
-
-        if linear_bounds.lower is None:
-            lower = None
-        else:
-            lowerA = -dynamics_bounds.upper[0]
-            lower_bias = (self.module.q_bounds / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
-            lower_bias = lower_bias.unsqueeze(-2).matmul(linear_bounds.lower[0].transpose(-1, -2)).squeeze(-2)
-            lower = (lowerA, -dynamics_bounds.upper[1] + linear_bounds.lower[1] + lower_bias)
-
-        if linear_bounds.upper is None:
-            upper = None
-        else:
-            upperA = -dynamics_bounds.lower[0]
-            upper_bias = (self.module.q_bounds / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
-            upper_bias = upper_bias.unsqueeze(-2).matmul(linear_bounds.upper[0].transpose(-1, -2)).squeeze(-2)
-            upper = (upperA, -dynamics_bounds.lower[1] + linear_bounds.upper[1] + upper_bias)
-
-        return LinearBounds(linear_bounds.region, lower, upper)
-
-    @assert_bound_order
-    def ibp_forward(self, bounds, save_relaxation=False):
-        lower = ((self.module.q_bounds - bounds.upper) / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
-        upper = ((self.module.q_bounds - bounds.lower) / self.module.scale).nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
-
-        return IntervalBounds(bounds.region, lower, upper)
-
-    def propagate_size(self, in_size):
-        return in_size
-
-
-class Square(nn.Module):
-    def forward(self, x):
-        return x ** 2
-
-
-class BoundSquare(BoundActivation):
-    def func(self, x):
-        return x ** 2
-
-    def derivative(self, x):
-        return 2 * x
-
-    @assert_bound_order
-    def alpha_beta(self, preactivation):
-        lower, upper = preactivation.lower, preactivation.upper
-        zero_width = torch.isclose(lower, upper, rtol=0.0, atol=1e-8)
-        other = ~zero_width
-
-        self.alpha_lower, self.beta_lower = torch.zeros_like(lower), torch.zeros_like(lower)
-        self.alpha_upper, self.beta_upper = torch.zeros_like(lower), torch.zeros_like(lower)
-
-        # Use upper and lower in the bias to account for a small numerical difference between lower and upper
-        # which ought to be negligible, but may still be present due to torch.isclose.
-        lower_act, upper_act = self(lower[zero_width]), self(upper[zero_width])
-        self.alpha_lower[zero_width], self.beta_lower[zero_width] = 0, torch.min(lower_act, upper_act)
-        self.alpha_upper[zero_width], self.beta_upper[zero_width] = 0, torch.max(lower_act, upper_act)
-
-        lower_act, upper_act = self.func(lower), self.func(upper)
-
-        d = (lower + upper) * 0.5  # Let d be the midpoint of the two bounds
-        d_act = self.func(d)
-        d_prime = self.derivative(d)
-
-        slope = (upper_act - lower_act) / (upper - lower)
-
-        def add_linear(alpha, beta, mask, a, x, y, a_mask=True):
-            if a_mask:
-                a = a[mask]
-
-            alpha[mask] = a
-            beta[mask] = y[mask] - a * x[mask]
-
-        add_linear(self.alpha_upper, self.beta_upper, mask=other, a=slope, x=lower, y=lower_act)
-        add_linear(self.alpha_lower, self.beta_lower, mask=other, a=d_prime, x=d, y=d_act)
-
-
 class Sum(nn.Module):
     def __init__(self, subnetwork):
         super().__init__()
@@ -449,315 +186,201 @@ class BoundSum(BoundModule):
         return self.subnetwork.propagate_size(in_size)
 
 
-class TruncatedGaussianExpectation(Sum):
-    def __init__(self, dynamics_network, A_qi, scale, q_bounds):
-        super().__init__(
-            nn.Sequential(
-                Sub(
-                    nn.Sequential(
-                        QBound(dynamics_network, q_bounds[0], scale),
-                        Square(),
-                        Constant(torch.full_like(scale, -2)),
-                        Exp()
-                    ),
-                    nn.Sequential(
-                        QBound(dynamics_network, q_bounds[1], scale),
-                        Square(),
-                        Constant(torch.full_like(scale, -2)),
-                        Exp()
-                    ),
-                ),
-                Constant(scale / math.sqrt(2 * math.pi)),
-                AqiNetwork(A_qi)
-            )
-        )
-
-
-class Erf(nn.Module):
-    def forward(self, x):
-        return torch.erf(x)
-
-
-class BoundErf(BoundSigmoid):
-    def func(self, x):
-        return torch.erf(x)
-
-    def derivative(self, x):
-        x_squared = x ** 2
-        return (2.0 / math.sqrt(math.pi)) * (-x_squared).exp()
-
-
-class IgnoreZeroScale(nn.Module):
-    def __init__(self, dynamics_network, scale, q_bounds):
+class GaussianProbabilityNetwork(nn.Module):
+    def __init__(self, dynamics, loc, scale):
         super().__init__()
 
-        self.dynamics_network = dynamics_network
-        self.scale = scale
-        self.q_bounds = q_bounds
-
-    def forward(self, x):
-        v_bounds = self.q_bounds[0].unsqueeze(1) - x, self.q_bounds[1].unsqueeze(1) - x
-        return torch.where(self.scale > 0.0, x, ((v_bounds[0] <= 0.0) & (0.0 <= v_bounds[1])).to(x.dtype))
+        self.dynamics = dynamics
+        self.loc, self.scale = loc, scale
 
 
-class BoundIgnoreZeroScale(BoundModule):
+class BoundGaussianProbabilityNetwork(BoundModule):
     def __init__(self, module, factory, **kwargs):
         super().__init__(module, factory, **kwargs)
+        self.out_size = None
 
-        self.bound_dynamics = factory.build(module.dynamics_network)
+        self.bound_dynamics = factory.build(module.dynamics)
+
+    @property
+    def need_relaxation(self):
+        return self.bound_dynamics.need_relaxation
+
+    def clear_relaxation(self):
+        self.bound_dynamics.clear_relaxation()
+
+    def backward_relaxation(self, region):
+        return self.bound_dynamics.backward_relaxation(region)
+
+    def crown_backward(self, linear_bounds):
+        v_region = self.v_region(linear_bounds.region)
+        probability = self.probability(v_region)
+
+        subnetworks_bounds = self.bound_dynamics.crown_backward(linear_bounds)
+
+        if subnetworks_bounds.lower is None:
+            lower = None
+        else:
+            lower = (probability.unsqueeze(-1) * subnetworks_bounds.lower[0], probability * subnetworks_bounds.lower[1])
+
+        if subnetworks_bounds.upper is None:
+            upper = None
+        else:
+            upper = (probability.unsqueeze(-1) * subnetworks_bounds.upper[0], probability * subnetworks_bounds.upper[1])
+
+        return LinearBounds(linear_bounds.region, lower, upper)
+
+    def v_region(self, region):
+        return HyperRectangle(region.lower[..., self.out_size:], region.upper[..., self.out_size:])
+
+    def probability(self, v_region):
+        scale_center_erf = lambda v: torch.erf((v - self.module.loc) / (math.sqrt(2) * self.module.scale))
+        probability = (scale_center_erf(v_region.upper) - scale_center_erf(v_region.lower)) / 2
+
+        zero_scale = (self.module.scale == 0)
+        probability[..., zero_scale] = 1.0
+
+        return probability.prod(dim=-1, keepdim=True)
+
+    def ibp_forward(self, bounds, save_relaxation=False):
+        raise NotImplementedError()
+
+    def propagate_size(self, in_size):
+        assert in_size % 2 == 0
+        self.out_size = in_size // 2
+        return self.out_size
+
+
+class GaussianExpectationRegion(nn.Module):
+    def __init__(self, dynamics, loc, scale):
+        super().__init__()
+
+        self.dynamics = dynamics
+        self.loc, self.scale = loc, scale
+
+
+class BoundGaussianExpectationRegion(BoundModule):
+    def __init__(self, module, factory, **kwargs):
+        super().__init__(module, factory, **kwargs)
+        self.out_size = None
 
     @property
     def need_relaxation(self):
         return False
 
     def crown_backward(self, linear_bounds):
-        f_bounds = self.bound_dynamics.crown(linear_bounds.region).concretize()
-        v_bounds_under, v_bounds_over = self.v_bounds(f_bounds)
-        zero_scale = (self.module.scale == 0.0)
+        v_region = self.v_region(linear_bounds.region)
+        expectation = self.expectation(v_region)
 
         if linear_bounds.lower is None:
             lower = None
         else:
-            lowerA = linear_bounds.lower[0].clone()
-            lowerA[..., zero_scale] = 0.0
-            lower_bias = linear_bounds.lower[0].matmul(self.ignore_zero_scale_lower(v_bounds_under).unsqueeze(-1))
-            lower = (lowerA, linear_bounds.lower[1] + lower_bias.squeeze(-1))
+            lowerA = torch.zeros_like(linear_bounds.lower[0]).expand(*[-1 for _ in range(linear_bounds.lower[0].dim() - 1)], linear_bounds.lower[0].size(-1) * 2)
+            lower = (lowerA, linear_bounds.lower[0].matmul(expectation.unsqueeze(-1)).squeeze(-1))
 
         if linear_bounds.upper is None:
             upper = None
         else:
-            upperA = linear_bounds.upper[0].clone()
-            upperA[..., zero_scale] = 0.0
-            upper_bias = linear_bounds.upper[0].matmul(self.ignore_zero_scale_upper(v_bounds_over).unsqueeze(-1))
-            upper = (upperA, linear_bounds.upper[1] + upper_bias.squeeze(-1))
+            upperA = torch.zeros_like(linear_bounds.upper[0]).expand(*[-1 for _ in range(linear_bounds.upper[0].dim() - 1)], linear_bounds.upper[0].size(-1) * 2)
+            upper = (upperA, linear_bounds.upper[0].matmul(expectation.unsqueeze(-1)).squeeze(-1))
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
-    @assert_bound_order
+    def v_region(self, region):
+        return HyperRectangle(region.lower[..., self.out_size:], region.upper[..., self.out_size:])
+
+    def expectation(self, v_region):
+        scale_center_erf = lambda v: torch.erf((self.module.loc - v) / (math.sqrt(2) * self.module.scale))
+        cdf_adjusted_mean = (self.module.loc / 2) * (scale_center_erf(v_region.lower) - scale_center_erf(v_region.upper))
+
+        pdf_exp = lambda v: torch.exp((v - self.module.loc) ** 2 / (-2 * (self.module.scale ** 2)))
+        variance_adjustment = (self.module.scale / (math.sqrt(2 * math.pi))) * (pdf_exp(v_region.lower) - pdf_exp(v_region.upper))
+
+        expectation = cdf_adjusted_mean + variance_adjustment
+
+        zero_scale = (self.module.scale == 0)
+        expectation[..., zero_scale] = self.module.loc[zero_scale]
+
+        return expectation
+
     def ibp_forward(self, bounds, save_relaxation=False):
-        f_bounds = self.bound_dynamics.ibp(bounds.region)
-        lower, upper = self.ignore_zero_scale(f_bounds, bounds.lower, bounds.upper)
-
-        return IntervalBounds(bounds.region, lower, upper)
-
-    def v_bounds(self, dynamics_interval):
-        dynamics_lower, dynamics_upper = dynamics_interval.lower, dynamics_interval.upper
-        q_lower, q_upper = self.module.q_bounds[0].unsqueeze(1), self.module.q_bounds[1].unsqueeze(1)
-
-        v_bounds_under = q_lower - dynamics_lower, q_upper - dynamics_upper
-        v_bounds_over = q_lower - dynamics_upper, q_upper - dynamics_lower
-
-        return v_bounds_under, v_bounds_over
-
-    def ignore_zero_scale(self, dynamics_interval, lower, upper):
-        v_bounds_under, v_bounds_over = self.v_bounds(dynamics_interval)
-        zero_scale = (self.module.scale == 0.0)
-
-        if lower.dim() != v_bounds_under[0].dim():
-            lower = lower.unsqueeze(0).expand(*v_bounds_under[0].size())
-            upper = upper.unsqueeze(0).expand(*v_bounds_over[0].size())
-
-        lower[..., zero_scale] = self.ignore_zero_scale_lower(v_bounds_under)[..., zero_scale]
-        upper[..., zero_scale] = self.ignore_zero_scale_upper(v_bounds_over)[..., zero_scale]
-
-        return lower, upper
-
-    def ignore_zero_scale_lower(self, v_bounds_under):
-        zero_scale = (self.module.scale == 0.0)
-        return (zero_scale & (v_bounds_under[0] <= 0.0) & (0.0 <= v_bounds_under[1]) & (v_bounds_under[0] >= v_bounds_under[1])).float()
-
-    def ignore_zero_scale_upper(self, v_bounds_over):
-        zero_scale = (self.module.scale == 0.0)
-        return (zero_scale & (v_bounds_over[0] <= 0.0) & (0.0 <= v_bounds_over[1])).float()
+        raise NotImplementedError()
 
     def propagate_size(self, in_size):
-        out_size = self.bound_dynamics.propagate_size(in_size)
-        assert in_size == out_size
-        return out_size
+        assert in_size % 2 == 0
+        self.out_size = in_size // 2
+        return self.out_size
 
 
-class ProbabilityNetwork(nn.Sequential):
-    def __init__(self, dynamics_network, scale, q_bounds):
+class AdditiveGaussianExpectation(Sum):
+    def __init__(self, barrier, dynamics, loc, scale):
         super().__init__(
-            Sub(
-                nn.Sequential(
-                    QBound(dynamics_network, q_bounds[1], scale, factor=math.sqrt(2.0)),
-                    Erf()
+            nn.Sequential(
+                Add(
+                    GaussianProbabilityNetwork(dynamics, loc, scale),
+                    GaussianExpectationRegion(dynamics, loc, scale),
                 ),
-                nn.Sequential(
-                    QBound(dynamics_network, q_bounds[0], scale, factor=math.sqrt(2.0)),
-                    Erf()
-                )
-            ),
-            IgnoreZeroScale(dynamics_network, scale, q_bounds),
-            Constant(torch.full_like(scale, 0.5)),
-            Clamp(min=0.0, max=1.0)
-        )
-
-
-class Prod(nn.Module):
-    def __init__(self, subnetwork):
-        super().__init__()
-        self.subnetwork = subnetwork
-
-    def forward(self, x):
-        return self.subnetwork(x).prod(dim=-1, keepdim=True)
-
-
-class BoundProd(BoundModule):
-    def __init__(self, module, factory, **kwargs):
-        super().__init__(module, factory, **kwargs)
-
-        self.bound_subnetwork = factory.build(module.subnetwork)
-        self.out_size = None
-
-    @property
-    def need_relaxation(self):
-        return self.bound_subnetwork.need_relaxation
-
-    def backward_relaxation(self, region):
-        return self.bound_subnetwork.backward_relaxation(region)
-
-    def clear_relaxation(self):
-        self.bound_subnetwork.clear_relaxation()
-
-    def crown_backward(self, linear_bounds):
-        input_bounds = self.initial_linear_bounds(linear_bounds.region, self.out_size)
-        subnetwork_bounds = self.bound_subnetwork.crown_backward(input_bounds)
-
-        if linear_bounds.lower is None:
-            lower = None
-        else:
-            acc = subnetwork_bounds.lower[0][..., 0, :], subnetwork_bounds.lower[1][..., 0]
-
-            for i in range(1, subnetwork_bounds.lower[1].size(-1)):
-                acc = self.combine_bounds(acc, (subnetwork_bounds.lower[0][..., i, :], subnetwork_bounds.lower[1][..., i]), linear_bounds.region)
-
-            lower = (acc[0].unsqueeze(-2), acc[1].unsqueeze(-1) + linear_bounds.lower[1])
-
-        if linear_bounds.upper is None:
-            upper = None
-        else:
-            acc = subnetwork_bounds.upper[0][..., 0, :], subnetwork_bounds.upper[1][..., 0]
-
-            for i in range(1, subnetwork_bounds.upper[1].size(-1)):
-                acc = self.combine_bounds(acc, (subnetwork_bounds.upper[0][..., i, :], subnetwork_bounds.upper[1][..., i]), linear_bounds.region, lower=False)
-
-            upper = (acc[0].unsqueeze(-2), acc[1].unsqueeze(-1) + linear_bounds.upper[1])
-
-        return LinearBounds(linear_bounds.region, lower, upper)
-
-    def combine_bounds(self, acc, bounds, region, lower=True):
-        linear = acc[0] * bounds[1].unsqueeze(-1) + bounds[0] * acc[1].unsqueeze(-1)
-        bias = acc[1] * bounds[1]
-
-        A_prime = acc[0].unsqueeze(-1).matmul(bounds[0].unsqueeze(-2))
-        A = (A_prime + A_prime.transpose(-1, -2)) / 2.0
-
-        # Gamma, U = torch.linalg.eigh(A)
-        U, Gamma, _ = torch.linalg.svd(A)
-        U_transpose = U.transpose(-1, -2)
-
-        center, diff = region.center, region.width / 2.0
-        W_center, W_diff = U_transpose.matmul(center.unsqueeze(-1)), U_transpose.abs().matmul(diff.unsqueeze(-1))
-        y_bounds = IntervalBounds(region, (W_center - W_diff).squeeze(-1), (W_center + W_diff).squeeze(-1))
-
-        square_lower, square_upper = self.alpha_beta(y_bounds)
-        if lower:
-            square_lower, square_upper = square_upper, square_lower
-
-        A_x = (Gamma * torch.where(Gamma < 0.0, square_lower[0], square_upper[0])).unsqueeze(-2).matmul(U_transpose).squeeze(-2)
-        b_x = (Gamma * torch.where(Gamma < 0.0, square_lower[1], square_upper[1])).sum(dim=-1)
-
-        return A_x + linear, b_x + bias
-
-    def square(self, x):
-        return x ** 2
-
-    def square_derivative(self, x):
-        return 2 * x
-
-    @assert_bound_order
-    def alpha_beta(self, preactivation):
-        lower, upper = preactivation.lower, preactivation.upper
-        zero_width = torch.isclose(lower, upper, rtol=0.0, atol=1e-8)
-        other = ~zero_width
-
-        alpha_lower, beta_lower = torch.zeros_like(lower), torch.zeros_like(lower)
-        alpha_upper, beta_upper = torch.zeros_like(lower), torch.zeros_like(lower)
-
-        # Use upper and lower in the bias to account for a small numerical difference between lower and upper
-        # which ought to be negligible, but may still be present due to torch.isclose.
-        lower_act, upper_act = self.square(lower[zero_width]), self.square(upper[zero_width])
-        alpha_lower[zero_width], beta_lower[zero_width] = 0, torch.min(lower_act, upper_act)
-        alpha_upper[zero_width], beta_upper[zero_width] = 0, torch.max(lower_act, upper_act)
-
-        lower_act, upper_act = self.square(lower), self.square(upper)
-
-        d = (lower + upper) * 0.5  # Let d be the midpoint of the two bounds
-        d_act = self.square(d)
-        d_prime = self.square_derivative(d)
-
-        slope = (upper_act - lower_act) / (upper - lower)
-
-        def add_linear(alpha, beta, mask, a, x, y, a_mask=True):
-            if a_mask:
-                a = a[mask]
-
-            alpha[mask] = a
-            beta[mask] = y[mask] - a * x[mask]
-
-        add_linear(alpha_upper, beta_upper, mask=other, a=slope, x=lower, y=lower_act)
-        add_linear(alpha_lower, beta_lower, mask=other, a=d_prime, x=d, y=d_act)
-
-        return (alpha_lower, beta_lower), (alpha_upper, beta_upper)
-
-    def ibp_forward(self, bounds, save_relaxation=False):
-        bounds = self.bound_subnetwork.ibp_forward(bounds, save_relaxation=save_relaxation)
-        lower, upper = bounds.lower[..., 0], bounds.upper[..., 0]
-
-        for i in range(1, bounds.lower.size(-1)):
-            dim_lower, dim_upper = bounds.lower[..., i], bounds.upper[..., i]
-            candidates = lower * dim_lower, lower * dim_upper, upper * dim_lower, upper * dim_upper
-            lower = torch.min(torch.min(*candidates[:2]), torch.min(*candidates[2:]))
-            upper = torch.max(torch.max(*candidates[:2]), torch.max(*candidates[2:]))
-
-        return IntervalBounds(bounds.region, lower.unsqueeze(-1), upper.unsqueeze(-1))
-
-    def propagate_size(self, in_size):
-        self.out_size = self.bound_subnetwork.propagate_size(in_size)
-        return 1
-
-
-class AqiDynamicsNetwork(nn.Sequential):
-    def __init__(self, dynamics_network, A_qi, b_qi):
-        super(AqiDynamicsNetwork, self).__init__(
-            dynamics_network,
-            AqiNetwork(A_qi, b_qi)
-        )
-
-
-class NominalSystemBarrier(Sum):
-    def __init__(self, dynamics_network, A_qi, b_qi, scale, q_bounds):
-        super().__init__(
-            Prod(
-                Parallel(
-                    AqiDynamicsNetwork(dynamics_network, A_qi, b_qi),
-                    ProbabilityNetwork(dynamics_network, scale, q_bounds)
-                )
+                barrier
             )
         )
 
 
-class ExpectationBounds(Sub):
-    def __init__(self, barrier, dynamics_network, A_qi, b_qi, scale, q_bounds):
+class AdditiveGaussianBetaNetwork(Sub):
+    def __init__(self, barrier, dynamics, loc, scale):
         super().__init__(
-            Add(
-                NominalSystemBarrier(dynamics_network, A_qi, b_qi, scale, q_bounds),
-                TruncatedGaussianExpectation(dynamics_network, A_qi, scale, q_bounds)
-            ),
+            AdditiveGaussianExpectation(barrier, dynamics, loc, scale),
             barrier
         )
+
+        self.dynamics = dynamics
+        self.loc, self.scale = loc, scale
+
+
+class BoundAdditiveGaussianBetaNetwork(BoundSub):
+    def __init__(self, module, factory, state_space_bounds, slices, **kwargs):
+        super().__init__(module, factory, **kwargs)
+
+        self.bound_dynamics = factory.build(module.dynamics)
+        self.state_space_bounds = state_space_bounds
+        self.slices = slices
+
+    def crown_with_relaxation(self, relax, region, bound_lower, bound_upper):
+        region = self.partition_noise(region)
+        return super().crown_with_relaxation(relax, region, bound_lower, bound_upper)
+
+    def partition_noise(self, region):
+        dynamics_bounds = self.bound_dynamics.crown(region).concretize()
+        v_min = self.state_space_bounds[0] - dynamics_bounds.upper
+        v_max = self.state_space_bounds[1] - dynamics_bounds.lower
+
+        centers = []
+        half_widths = []
+
+        for i, num_slices in enumerate(self.slices):
+            if self.module.scale[i] == 0.0:
+                center = torch.tensor([self.module.loc[i]], device=v_min.device)
+                half_width = torch.tensor(0.0, device=v_min.device)
+            else:
+                v_space = self.vector_linspace(v_min[..., i], v_max[..., i], num_slices).squeeze(-1)
+                center = (v_space[:-1] + v_space[1:]) / 2
+                half_width = (v_space[1] - v_space[0]) / 2
+
+            centers.append(center)
+            half_widths.append(half_width)
+
+        centers = torch.cartesian_prod(*centers)
+        half_widths = torch.stack(half_widths, dim=-1)
+
+        lower_v, upper_v = (centers - half_widths).unsqueeze(1).expand(-1, len(region), -1), (centers + half_widths).unsqueeze(1).expand(-1, len(region), -1)
+
+        region_lower, region_upper = region.lower.unsqueeze(0).expand_as(lower_v), region.upper.unsqueeze(0).expand_as(upper_v)
+
+        return HyperRectangle(torch.cat([region_lower, lower_v], dim=-1), torch.cat([region_upper, upper_v], dim=-1))
+
+    def vector_linspace(self, start, stop, steps):
+        steps = torch.linspace(0.0, 1.0, steps, device=start.device)
+        out = start + steps.unsqueeze(-1) * (stop - start)
+
+        return out
 
 
 class FCNNBarrierNetwork(nn.Sequential):
