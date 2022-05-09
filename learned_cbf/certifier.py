@@ -481,10 +481,8 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         assert self.initial_partitioning.safe is not None
         assert self.beta_partitioning.state_space is not None
 
-        state_space_partitioning = self.beta_state_space_partitioning(**kwargs)
-        # state_space_partitioning = self.beta_partitioning.state_space
+        state_space_partitioning, _, state_space_upper = self.beta_state_space_partitioning(**kwargs)
 
-        _, state_space_upper = bounds(self.barrier, state_space_partitioning, method='crown_linear', bound_lower=False, **{key: value for key, value in kwargs.items() if key != 'method'})
         A_qi, b_qi = state_space_upper.A, state_space_upper.b
         scale = self.dynamics.v[1].to(A_qi.device)
         q_bounds = state_space_partitioning.lower, state_space_partitioning.upper
@@ -568,30 +566,25 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         assert self.initial_partitioning.state_space is not None
         set = self.initial_partitioning.state_space
 
-        min, max = self.min_max(set, **kwargs)
         lower, upper = bounds(self.barrier, set, method='crown_linear', **{key: value for key, value in kwargs.items() if key != 'method'})
-        last_gap = [torch.finfo(min.dtype).max for _ in range(199)] + [(upper - lower).partition_max().max().item()]
+        last_gap = [torch.finfo(lower.A.dtype).max for _ in range(199)] + [(upper - lower).partition_max().max().item()]
 
-        while not self.should_stop_beta_gamma('BETA_STATE_SPACE', set, min, max, last_gap, max_set_size=20000):
+        while not self.should_stop_beta_gamma('BETA_STATE_SPACE', set, lower.partition_min(), upper.partition_max(), last_gap, max_set_size=20000):
             batch_size = 100
             k = torch.min(torch.tensor([batch_size, len(set)])).item()
 
-            split_indices = self.split_indices(set, k, min, max, lower, upper)
-            other_indices = torch.full_like(min, True, dtype=torch.bool)
+            split_indices = self.split_indices(set, k, lower, upper)
+            other_indices = torch.full((lower.A.size(0),), True, dtype=torch.bool, device=lower.A.device)
             other_indices[split_indices] = False
 
             split_set = set[split_indices]
 
             set = set[other_indices]
-            min, max = min[other_indices], max[other_indices]
             lower = (lower.A[other_indices], lower.b[other_indices], lower.lower[other_indices], lower.upper[other_indices])
             upper = (upper.A[other_indices], upper.b[other_indices], upper.lower[other_indices], upper.upper[other_indices])
 
             split_set = self.split(split_set, **kwargs)
             split_set = self.region_prune(split_set, self.dynamics.state_space)
-
-            split_min, split_max = self.min_max(split_set, **kwargs)
-            min, max = torch.cat([min, split_min]), torch.cat([max, split_max])
 
             set = Partitions((torch.cat([set.lower, split_set.lower]), torch.cat([set.upper, split_set.upper])))
 
@@ -602,15 +595,14 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
             last_gap.append((upper - lower).partition_max().max().item())
             last_gap.pop(0)
 
-        return set
+        return set, lower, upper
 
-    def split_indices(self, set, k, min, max, lower, upper):
+    def split_indices(self, set, k, lower, upper):
         # largest_upper_slope = (upper.A.abs()[:, 0] * set.width).sum(dim=-1).topk(k)
         largest_upper_slope_and_gap = ((upper.A.abs()[:, 0] * set.width).sum(dim=-1) + ((upper - lower).partition_max()[:, 0] * set.volume)).topk(k)
         # largest_average_slope = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).sum(dim=-1).topk(k)
         # largest_average_slope_and_gap = (((lower.A.abs() + upper.A.abs())[:, 0] * set.width).sum(dim=-1) + ((upper - lower).partition_max()[:, 0] * set.volume)).topk(k)
         # largest_linear_gap = ((upper - lower).partition_max()[:, 0] * set.volume).topk(k)
-        # largest_interval_gap = (max - min).topk(k)
         return largest_upper_slope_and_gap.indices
 
     def region_prune(self, set, contain_func):
