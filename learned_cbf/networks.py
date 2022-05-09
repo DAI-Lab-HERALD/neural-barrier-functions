@@ -139,20 +139,17 @@ class BoundBetaNetwork(BoundModule):
 
 class AqiNetwork(nn.Linear):
     def __init__(self, A_qi, b_qi=None):
-        super().__init__(A_qi[1].size(-1), A_qi[1].size(-2), bias=b_qi is not None)
+        super().__init__(A_qi.size(-1), A_qi.size(-2), bias=b_qi is not None)
 
         del self.weight
         del self.bias
 
-        # self.register_buffer('A_qi_bot', A_qi[0])
-        self.register_buffer('weight', A_qi[1])
+        self.register_buffer('weight', A_qi)
 
         if b_qi is None:
-            # self.register_buffer('b_qi_bot', None)
             self.register_buffer('bias', None)
         else:
-            # self.register_buffer('b_qi_bot', b_qi[0].unsqueeze(1))
-            self.register_buffer('bias', b_qi[1].unsqueeze(1))
+            self.register_buffer('bias', b_qi.unsqueeze(1))
 
     def forward(self, x: Tensor) -> Tensor:
         x = x.matmul(self.weight.transpose(-1, -2))
