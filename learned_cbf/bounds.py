@@ -143,6 +143,6 @@ class LearnedCBFBoundModelFactory(BoundModelFactory):
         self.register(Square, BoundSquare)
         self.register(QBound, BoundQBound)
         self.register(Erf, BoundErf)
-        self.register(AqiNetwork, BoundAqiNetwork)
+        # self.register(AqiNetwork, BoundAqiNetwork)
         self.register(BetaNetwork, BoundBetaNetwork)
         self.register(IgnoreZeroScale, BoundIgnoreZeroScale)

@@ -137,24 +137,27 @@ class BoundBetaNetwork(BoundModule):
         return out_size1
 
 
-class AqiNetwork(nn.Module):
+class AqiNetwork(nn.Linear):
     def __init__(self, A_qi, b_qi=None):
-        super().__init__()
+        super().__init__(A_qi[1].size(-1), A_qi[1].size(-2), bias=b_qi is not None)
 
-        self.register_buffer('A_qi_bot', A_qi[0])
-        self.register_buffer('A_qi_top', A_qi[1])
+        del self.weight
+        del self.bias
+
+        # self.register_buffer('A_qi_bot', A_qi[0])
+        self.register_buffer('weight', A_qi[1])
 
         if b_qi is None:
-            self.register_buffer('b_qi_bot', None)
-            self.register_buffer('b_qi_top', None)
+            # self.register_buffer('b_qi_bot', None)
+            self.register_buffer('bias', None)
         else:
-            self.register_buffer('b_qi_bot', b_qi[0].unsqueeze(1))
-            self.register_buffer('b_qi_top', b_qi[1].unsqueeze(1))
+            # self.register_buffer('b_qi_bot', b_qi[0].unsqueeze(1))
+            self.register_buffer('bias', b_qi[1].unsqueeze(1))
 
     def forward(self, x: Tensor) -> Tensor:
-        x = x.matmul(self.A_qi_bot.transpose(-1, -2))
-        if self.b_qi_bot is not None:
-            x = x + self.b_qi_bot
+        x = x.matmul(self.weight.transpose(-1, -2))
+        if self.bias is not None:
+            x = x + self.bias
         return x
 
 

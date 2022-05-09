@@ -491,7 +491,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         set = self.initial_partitioning.safe
 
         min, max = self.min_max_beta(expectation_network, set, **kwargs)
-        last_gap = [torch.finfo(min.dtype).max for _ in range(9)] + [(max.max() - min.max()).item()]
+        last_gap = [torch.finfo(min.dtype).max for _ in range(19)] + [(max.max() - min.max()).item()]
 
         while not self.should_stop_beta_gamma('BETA', set, min, max, last_gap):
             size_before = len(set)
@@ -502,7 +502,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
                 logger.warning(f'Pruning all in beta: {min}, {max}, last gap: {last_gap[-1]}')
                 break
 
-            batch_size = 20
+            batch_size = 25
 
             new_sets = []
             new_mins = []
@@ -754,7 +754,8 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         return set
 
     def split_indices(self, set, k, min, max, lower, upper):
-        #largest_average_slope = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).sum(dim=-1).topk(k)
+        # largest_average_slope = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).sum(dim=-1).topk(k)
+        # largest_average_slope_and_gap = (((lower.A.abs() + upper.A.abs())[:, 0] * set.width).sum(dim=-1) + ((upper - lower).partition_max()[:, 0] * set.volume)).topk(k)
         largest_linear_gap = ((upper - lower).partition_max()[:, 0] * set.volume).topk(k)
         # largest_interval_gap = (max - min).topk(k)
         return largest_linear_gap.indices
