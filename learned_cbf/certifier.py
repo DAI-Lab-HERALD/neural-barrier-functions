@@ -525,7 +525,8 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         return min.view(-1), max.view(-1)
 
     def split_beta(self, set, **kwargs):
-        lower, upper = bounds(self.beta_network, set, **kwargs)
+        kwargs.pop('method', None)
+        lower, upper = bounds(self.beta_network, set, method='crown_linear', **kwargs)
 
         split_dim = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
