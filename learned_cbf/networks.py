@@ -360,7 +360,7 @@ class BoundGaussianExpectationRegion(BoundModule, VRegionMixin):
             lowerA = torch.zeros_like(linear_bounds.lower[0])
             if lowerA.dim() == 3:
                 lowerA = lowerA.unsqueeze(0).expand(expectation.size(0), -1, -1, -1)
-            lower = (lowerA, linear_bounds.lower[0].matmul(expectation.unsqueeze(-1)).squeeze(-1))
+            lower = (lowerA, linear_bounds.lower[0].matmul(expectation.unsqueeze(-1)).squeeze(-1) + linear_bounds.lower[1])
 
         if linear_bounds.upper is None:
             upper = None
@@ -368,7 +368,7 @@ class BoundGaussianExpectationRegion(BoundModule, VRegionMixin):
             upperA = torch.zeros_like(linear_bounds.upper[0])
             if upperA.dim() == 3:
                 upperA = upperA.unsqueeze(0).expand(expectation.size(0), -1, -1, -1)
-            upper = (upperA, linear_bounds.upper[0].matmul(expectation.unsqueeze(-1)).squeeze(-1))
+            upper = (upperA, linear_bounds.upper[0].matmul(expectation.unsqueeze(-1)).squeeze(-1) + linear_bounds.upper[1])
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
