@@ -274,7 +274,6 @@ class BoundGaussianProbabilityNetwork(BoundModule, VRegionMixin):
         self.state_size = None
 
         self.bound_dynamics = factory.build(module.dynamics)
-        self.cache_probability = None
         self.state_space_bounds = state_space_bounds
         self.slices = slices
 
@@ -306,9 +305,6 @@ class BoundGaussianProbabilityNetwork(BoundModule, VRegionMixin):
         return LinearBounds(linear_bounds.region, lower, upper)
 
     def probability(self, region):
-        if self.cache_probability is not None:
-            return self.cache_probability
-
         v_region = self.v_region(region)
 
         def scale_center_erf(v):
@@ -318,8 +314,7 @@ class BoundGaussianProbabilityNetwork(BoundModule, VRegionMixin):
         zero_scale = (self.module.scale == 0)
         probability[..., zero_scale] = 1.0
 
-        self.cache_probability = probability.prod(dim=-1, keepdim=True)
-        return self.cache_probability
+        return probability.prod(dim=-1, keepdim=True)
 
     def ibp_forward(self, bounds, save_relaxation=False):
         raise NotImplementedError()
@@ -343,7 +338,6 @@ class BoundGaussianExpectationRegion(BoundModule, VRegionMixin):
         self.state_size = None
 
         self.bound_dynamics = factory.build(module.dynamics)
-        self.cache_expectation = None
         self.state_space_bounds = state_space_bounds
         self.slices = slices
 
@@ -352,7 +346,6 @@ class BoundGaussianExpectationRegion(BoundModule, VRegionMixin):
         return self.bound_dynamics.need_relaxation
 
     def clear_relaxation(self):
-        self.cache_expectation = None
         self.bound_dynamics.clear_relaxation()
 
     def backward_relaxation(self, region):
@@ -398,7 +391,6 @@ class BoundGaussianExpectationRegion(BoundModule, VRegionMixin):
         zero_scale = (self.module.scale == 0)
         expectation[..., zero_scale] = self.module.loc[zero_scale]
 
-        self.cache_expectation = expectation
         return expectation
 
     def ibp_forward(self, bounds, save_relaxation=False):
