@@ -373,9 +373,6 @@ class BoundGaussianExpectationRegion(BoundModule, VRegionMixin):
         return LinearBounds(linear_bounds.region, lower, upper)
 
     def expectation(self, region):
-        if self.cache_expectation is not None:
-            return self.cache_expectation
-
         v_region = self.v_region(region)
 
         def scale_center_erf(v):
