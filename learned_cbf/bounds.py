@@ -5,8 +5,8 @@ from bound_propagation import HyperRectangle, BoundModule, LinearBounds, Interva
 from torch import nn
 
 from .networks import BoundBetaNetwork, BetaNetwork, Mean, BoundMean, BoundSum, Sum, BoundGaussianExpectationRegion, \
-    GaussianExpectationRegion, BoundGaussianProbabilityNetwork, GaussianProbabilityNetwork, AdditiveGaussianBetaNetwork, \
-    BoundAdditiveGaussianBetaNetwork
+    GaussianExpectationRegion, BoundGaussianProbabilityNetwork, GaussianProbabilityNetwork, DynamicsNoise, \
+    BoundDynamicsNoise, BoundAdditiveGaussianExpectation, AdditiveGaussianExpectation
 
 
 class Affine:
@@ -140,4 +140,5 @@ class LearnedCBFBoundModelFactory(BoundModelFactory):
         self.register(BetaNetwork, BoundBetaNetwork)
         self.register(GaussianProbabilityNetwork, BoundGaussianProbabilityNetwork)
         self.register(GaussianExpectationRegion, BoundGaussianExpectationRegion)
-        self.register(AdditiveGaussianBetaNetwork, BoundAdditiveGaussianBetaNetwork)
+        self.register(DynamicsNoise, BoundDynamicsNoise)
+        self.register(AdditiveGaussianExpectation, BoundAdditiveGaussianExpectation)

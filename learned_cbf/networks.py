@@ -1,3 +1,4 @@
+import copy
 import math
 
 import torch
@@ -186,6 +187,59 @@ class BoundSum(BoundModule):
         return self.subnetwork.propagate_size(in_size)
 
 
+class VRegionMixin:
+    def v_region(self, region):
+        linear_bounds = self.initial_linear_bounds(region, self.state_size)
+        dynamics_bounds = self.bound_dynamics.crown_backward(linear_bounds).concretize()
+        v_min = self.state_space_bounds[0] - dynamics_bounds.upper
+        v_max = self.state_space_bounds[1] - dynamics_bounds.lower
+
+        centers = []
+        half_widths = []
+
+        for i, num_slices in enumerate(self.slices):
+            if self.module.scale[i] == 0.0:
+                center = torch.full((v_min.size(0), 1), self.module.loc[i], device=v_min.device)
+                half_width = torch.zeros((v_min.size(0), 1), device=v_min.device)
+            else:
+                v_space = vector_linspace(v_min[..., i], v_max[..., i], num_slices + 1).squeeze(-1)
+                center = (v_space[:, :-1] + v_space[:, 1:]) / 2
+                half_width = (v_space[:, 1:] - v_space[:, :-1]) / 2
+
+            centers.append(center)
+            half_widths.append(half_width)
+
+        centers = batch_cartesian_prod(*centers).transpose(0, 1)
+        half_widths = batch_cartesian_prod(*half_widths).transpose(0, 1)
+        lower, upper = centers - half_widths, centers + half_widths
+
+        return HyperRectangle(lower, upper)
+
+
+def vector_linspace(start, stop, steps):
+    start, stop = start.unsqueeze(-1), stop.unsqueeze(-1)
+    steps = torch.linspace(0.0, 1.0, steps, device=start.device)
+    out = start + steps * (stop - start)
+
+    return out
+
+
+def batch_cartesian_prod(*args):
+    batch_size = args[0].size(0)
+    dim = len(args)
+    view = [batch_size] + [1 for _ in range(dim)]
+    expand_size = [batch_size] + [arg.size(-1) for arg in args]
+
+    def view_dim(i, arg):
+        v = copy.deepcopy(view)
+        v[i + 1] = arg.size(-1)
+        return v
+
+    args = [arg.view(view_dim(i, arg)).expand(*expand_size) for i, arg in enumerate(args)]
+    stacked = torch.stack(args, dim=-1).view(batch_size, -1, dim)
+    return stacked
+
+
 class GaussianProbabilityNetwork(nn.Module):
     def __init__(self, dynamics, loc, scale):
         super().__init__()
@@ -194,12 +248,15 @@ class GaussianProbabilityNetwork(nn.Module):
         self.loc, self.scale = loc, scale
 
 
-class BoundGaussianProbabilityNetwork(BoundModule):
-    def __init__(self, module, factory, **kwargs):
+class BoundGaussianProbabilityNetwork(BoundModule, VRegionMixin):
+    def __init__(self, module, factory, state_space_bounds, slices, **kwargs):
         super().__init__(module, factory, **kwargs)
-        self.out_size = None
+        self.state_size = None
 
         self.bound_dynamics = factory.build(module.dynamics)
+        self.cache_probability = None
+        self.state_space_bounds = state_space_bounds
+        self.slices = slices
 
     @property
     def need_relaxation(self):
@@ -212,8 +269,7 @@ class BoundGaussianProbabilityNetwork(BoundModule):
         return self.bound_dynamics.backward_relaxation(region)
 
     def crown_backward(self, linear_bounds):
-        v_region = self.v_region(linear_bounds.region)
-        probability = self.probability(v_region)
+        probability = self.probability(linear_bounds.region)
 
         subnetworks_bounds = self.bound_dynamics.crown_backward(linear_bounds)
 
@@ -229,25 +285,28 @@ class BoundGaussianProbabilityNetwork(BoundModule):
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
-    def v_region(self, region):
-        return HyperRectangle(region.lower[..., self.out_size:], region.upper[..., self.out_size:])
+    def probability(self, region):
+        if self.cache_probability is not None:
+            return self.cache_probability
 
-    def probability(self, v_region):
-        scale_center_erf = lambda v: torch.erf((v - self.module.loc) / (math.sqrt(2) * self.module.scale))
+        v_region = self.v_region(region)
+
+        def scale_center_erf(v):
+            return torch.erf((v - self.module.loc) / (math.sqrt(2) * self.module.scale))
         probability = (scale_center_erf(v_region.upper) - scale_center_erf(v_region.lower)) / 2
 
         zero_scale = (self.module.scale == 0)
         probability[..., zero_scale] = 1.0
 
-        return probability.prod(dim=-1, keepdim=True)
+        self.cache_probability = probability.prod(dim=-1, keepdim=True)
+        return self.cache_probability
 
     def ibp_forward(self, bounds, save_relaxation=False):
         raise NotImplementedError()
 
     def propagate_size(self, in_size):
-        assert in_size % 2 == 0
-        self.out_size = in_size // 2
-        return self.out_size
+        self.state_size = in_size
+        return self.state_size
 
 
 class GaussianExpectationRegion(nn.Module):
@@ -258,41 +317,60 @@ class GaussianExpectationRegion(nn.Module):
         self.loc, self.scale = loc, scale
 
 
-class BoundGaussianExpectationRegion(BoundModule):
-    def __init__(self, module, factory, **kwargs):
+class BoundGaussianExpectationRegion(BoundModule, VRegionMixin):
+    def __init__(self, module, factory, state_space_bounds, slices, **kwargs):
         super().__init__(module, factory, **kwargs)
-        self.out_size = None
+        self.state_size = None
+
+        self.bound_dynamics = factory.build(module.dynamics)
+        self.cache_expectation = None
+        self.state_space_bounds = state_space_bounds
+        self.slices = slices
 
     @property
     def need_relaxation(self):
-        return False
+        return self.bound_dynamics.need_relaxation
+
+    def clear_relaxation(self):
+        self.cache_expectation = None
+        self.bound_dynamics.clear_relaxation()
+
+    def backward_relaxation(self, region):
+        return self.bound_dynamics.backward_relaxation(region)
 
     def crown_backward(self, linear_bounds):
-        v_region = self.v_region(linear_bounds.region)
-        expectation = self.expectation(v_region)
+        expectation = self.expectation(linear_bounds.region)
 
         if linear_bounds.lower is None:
             lower = None
         else:
-            lowerA = torch.zeros_like(linear_bounds.lower[0]).expand(*[-1 for _ in range(linear_bounds.lower[0].dim() - 1)], linear_bounds.lower[0].size(-1) * 2)
+            lowerA = torch.zeros_like(linear_bounds.lower[0])
+            if lowerA.dim() == 3:
+                lowerA = lowerA.unsqueeze(0).expand(expectation.size(0), -1, -1, -1)
             lower = (lowerA, linear_bounds.lower[0].matmul(expectation.unsqueeze(-1)).squeeze(-1))
 
         if linear_bounds.upper is None:
             upper = None
         else:
-            upperA = torch.zeros_like(linear_bounds.upper[0]).expand(*[-1 for _ in range(linear_bounds.upper[0].dim() - 1)], linear_bounds.upper[0].size(-1) * 2)
+            upperA = torch.zeros_like(linear_bounds.upper[0])
+            if upperA.dim() == 3:
+                upperA = upperA.unsqueeze(0).expand(expectation.size(0), -1, -1, -1)
             upper = (upperA, linear_bounds.upper[0].matmul(expectation.unsqueeze(-1)).squeeze(-1))
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
-    def v_region(self, region):
-        return HyperRectangle(region.lower[..., self.out_size:], region.upper[..., self.out_size:])
+    def expectation(self, region):
+        if self.cache_expectation is not None:
+            return self.cache_expectation
 
-    def expectation(self, v_region):
-        scale_center_erf = lambda v: torch.erf((self.module.loc - v) / (math.sqrt(2) * self.module.scale))
+        v_region = self.v_region(region)
+
+        def scale_center_erf(v):
+            return torch.erf((self.module.loc - v) / (math.sqrt(2) * self.module.scale))
         cdf_adjusted_mean = (self.module.loc / 2) * (scale_center_erf(v_region.lower) - scale_center_erf(v_region.upper))
 
-        pdf_exp = lambda v: torch.exp((v - self.module.loc) ** 2 / (-2 * (self.module.scale ** 2)))
+        def pdf_exp(v):
+            return torch.exp((v - self.module.loc) ** 2 / (-2 * (self.module.scale ** 2)))
         variance_adjustment = (self.module.scale / (math.sqrt(2 * math.pi))) * (pdf_exp(v_region.lower) - pdf_exp(v_region.upper))
 
         expectation = cdf_adjusted_mean + variance_adjustment
@@ -300,15 +378,71 @@ class BoundGaussianExpectationRegion(BoundModule):
         zero_scale = (self.module.scale == 0)
         expectation[..., zero_scale] = self.module.loc[zero_scale]
 
+        self.cache_expectation = expectation
         return expectation
 
     def ibp_forward(self, bounds, save_relaxation=False):
         raise NotImplementedError()
 
     def propagate_size(self, in_size):
-        assert in_size % 2 == 0
-        self.out_size = in_size // 2
-        return self.out_size
+        self.state_size = in_size
+        return self.state_size
+
+
+class DynamicsNoise(nn.Module):
+    def __init__(self, dynamics, loc, scale):
+        super().__init__()
+
+        self.dynamics = dynamics
+        self.loc, self.scale = loc, scale
+
+
+class BoundDynamicsNoise(BoundModule, VRegionMixin):
+    def __init__(self, module, factory, state_space_bounds, slices, **kwargs):
+        super().__init__(module, factory, **kwargs)
+        self.state_size = None
+
+        self.bound_dynamics = factory.build(module.dynamics)
+        self.state_space_bounds = state_space_bounds
+        self.slices = slices
+
+    @property
+    def need_relaxation(self):
+        return self.bound_dynamics.need_relaxation
+
+    def clear_relaxation(self):
+        self.bound_dynamics.clear_relaxation()
+
+    def backward_relaxation(self, region):
+        return self.bound_dynamics.backward_relaxation(region)
+
+    def crown_backward(self, linear_bounds):
+        assert linear_bounds.lower is not None and linear_bounds.upper is not None
+
+        v_region = self.v_region(linear_bounds.region)
+        center, diff = v_region.center.unsqueeze(-1), v_region.width.unsqueeze(-1) / 2.0
+        subnetworks_bounds = self.bound_dynamics.crown_backward(linear_bounds)
+
+        lowerA = torch.zeros_like(subnetworks_bounds.lower[0])
+        if lowerA.dim() == 3:
+            lowerA = lowerA.unsqueeze(0).expand(v_region.lower.size(0), -1, -1, -1)
+        lower_bias = linear_bounds.lower[0].matmul(center) - linear_bounds.lower[0].abs().matmul(diff)
+        lower = (lowerA, subnetworks_bounds.lower[1] + lower_bias.squeeze(-1))
+
+        upperA = torch.zeros_like(linear_bounds.upper[0])
+        if upperA.dim() == 3:
+            upperA = upperA.unsqueeze(0).expand(v_region.upper.size(0), -1, -1, -1)
+        upper_bias = linear_bounds.upper[0].matmul(center) - linear_bounds.upper[0].abs().matmul(diff)
+        upper = (upperA, subnetworks_bounds.upper[1] + upper_bias.squeeze(-1))
+
+        return LinearBounds(linear_bounds.region, lower, upper)
+
+    def ibp_forward(self, bounds, save_relaxation=False):
+        raise NotImplementedError()
+
+    def propagate_size(self, in_size):
+        self.state_size = in_size
+        return self.state_size
 
 
 class AdditiveGaussianExpectation(Sum):
@@ -323,6 +457,45 @@ class AdditiveGaussianExpectation(Sum):
             )
         )
 
+        self.dynamics = dynamics
+        self.loc, self.scale = loc, scale
+
+
+class BoundAdditiveGaussianExpectation(BoundSum, VRegionMixin):
+    def __init__(self, module, factory, **kwargs):
+        super().__init__(module, factory, **kwargs)
+
+        self.subnetwork = factory.build(module.subnetwork)
+        self.barrier_dynamics = factory.build(
+            nn.Sequential(
+                DynamicsNoise(module.dynamics, module.loc, module.scale),
+                module.subnetwork[1]
+            )
+        )
+
+        self.subnetwork.bound_sequential[1] = self.barrier_dynamics.bound_sequential[1]
+
+    @property
+    def need_relaxation(self):
+        return self.subnetwork.need_relaxation or self.barrier_dynamics.need_relaxation
+
+    def clear_relaxation(self):
+        self.subnetwork.clear_relaxation()
+        self.barrier_dynamics.clear_relaxation()
+
+    def backward_relaxation(self, region):
+        if self.subnetwork.bound_sequential[0].need_relaxation:
+            return self.subnetwork.backward_relaxation(region)
+
+        return self.barrier_dynamics.backward_relaxation(region)
+
+    def propagate_size(self, in_size):
+        out_size1 = self.subnetwork.propagate_size(in_size)
+        out_size2 = self.barrier_dynamics.propagate_size(in_size)
+
+        assert out_size1 == out_size2
+        return out_size1
+
 
 class AdditiveGaussianBetaNetwork(Sub):
     def __init__(self, barrier, dynamics, loc, scale):
@@ -330,57 +503,6 @@ class AdditiveGaussianBetaNetwork(Sub):
             AdditiveGaussianExpectation(barrier, dynamics, loc, scale),
             barrier
         )
-
-        self.dynamics = dynamics
-        self.loc, self.scale = loc, scale
-
-
-class BoundAdditiveGaussianBetaNetwork(BoundSub):
-    def __init__(self, module, factory, state_space_bounds, slices, **kwargs):
-        super().__init__(module, factory, **kwargs)
-
-        self.bound_dynamics = factory.build(module.dynamics)
-        self.state_space_bounds = state_space_bounds
-        self.slices = slices
-
-    def crown_with_relaxation(self, relax, region, bound_lower, bound_upper):
-        region = self.partition_noise(region)
-        return super().crown_with_relaxation(relax, region, bound_lower, bound_upper)
-
-    def partition_noise(self, region):
-        dynamics_bounds = self.bound_dynamics.crown(region).concretize()
-        v_min = self.state_space_bounds[0] - dynamics_bounds.upper
-        v_max = self.state_space_bounds[1] - dynamics_bounds.lower
-
-        centers = []
-        half_widths = []
-
-        for i, num_slices in enumerate(self.slices):
-            if self.module.scale[i] == 0.0:
-                center = torch.tensor([self.module.loc[i]], device=v_min.device)
-                half_width = torch.tensor(0.0, device=v_min.device)
-            else:
-                v_space = self.vector_linspace(v_min[..., i], v_max[..., i], num_slices).squeeze(-1)
-                center = (v_space[:-1] + v_space[1:]) / 2
-                half_width = (v_space[1] - v_space[0]) / 2
-
-            centers.append(center)
-            half_widths.append(half_width)
-
-        centers = torch.cartesian_prod(*centers)
-        half_widths = torch.stack(half_widths, dim=-1)
-
-        lower_v, upper_v = (centers - half_widths).unsqueeze(1).expand(-1, len(region), -1), (centers + half_widths).unsqueeze(1).expand(-1, len(region), -1)
-
-        region_lower, region_upper = region.lower.unsqueeze(0).expand_as(lower_v), region.upper.unsqueeze(0).expand_as(upper_v)
-
-        return HyperRectangle(torch.cat([region_lower, lower_v], dim=-1), torch.cat([region_upper, upper_v], dim=-1))
-
-    def vector_linspace(self, start, stop, steps):
-        steps = torch.linspace(0.0, 1.0, steps, device=start.device)
-        out = start + steps.unsqueeze(-1) * (stop - start)
-
-        return out
 
 
 class FCNNBarrierNetwork(nn.Sequential):
