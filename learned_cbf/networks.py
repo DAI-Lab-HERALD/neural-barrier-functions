@@ -202,7 +202,8 @@ class VRegionMixin:
                 center = torch.full((v_min.size(0), 1), self.module.loc[i], device=v_min.device)
                 half_width = torch.zeros((v_min.size(0), 1), device=v_min.device)
             else:
-                v_space = vector_linspace(v_min[..., i], v_max[..., i], num_slices + 1).squeeze(-1)
+                # v_space = vector_linspace(v_min[..., i], v_max[..., i], num_slices + 1).squeeze(-1)
+                v_space = gaussian_partitioning(v_min[..., i], v_max[..., i], num_slices + 1, self.module.loc[i], self.module.scale[i]).squeeze(-1)
                 center = (v_space[:, :-1] + v_space[:, 1:]) / 2
                 half_width = (v_space[:, 1:] - v_space[:, :-1]) / 2
 
@@ -220,6 +221,25 @@ def vector_linspace(start, stop, steps):
     start, stop = start.unsqueeze(-1), stop.unsqueeze(-1)
     steps = torch.linspace(0.0, 1.0, steps, device=start.device)
     out = start + steps * (stop - start)
+
+    return out
+
+
+def gaussian_partitioning(start, stop, steps, loc, scale):
+    linspace = vector_linspace(start, stop, steps)
+
+    start, stop = start.unsqueeze(-1), stop.unsqueeze(-1)
+    steps = torch.linspace(0.0, 1.0, steps, device=start.device)
+
+    def cdf(x):
+        return 0.5 * (1 + torch.erf((x - loc) / (scale * math.sqrt(2))))
+
+    def inverse_cdf(x):
+        return loc + scale * math.sqrt(2) * torch.erfinv(2 * x - 1)
+
+    out = inverse_cdf(steps * (cdf(stop) - cdf(start)) + cdf(start))
+    out = torch.where(out.isinf(), linspace, out)
+    out[:, 0], out[:, -1] = start[:, 0], stop[:, 0]
 
     return out
 
