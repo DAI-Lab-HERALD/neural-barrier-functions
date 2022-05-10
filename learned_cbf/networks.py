@@ -431,23 +431,29 @@ class BoundDynamicsNoise(BoundModule, VRegionMixin):
     def crown_backward(self, linear_bounds):
         assert linear_bounds.lower is not None and linear_bounds.upper is not None
 
-        v_region = self.v_region(linear_bounds.region)
-        center, diff = v_region.center.unsqueeze(-1), v_region.width.unsqueeze(-1) / 2.0
+        v_region, dynamics_bounds = self.v_region(linear_bounds.region)
+        region_lower, region_upper = linear_bounds.region.lower.unsqueeze(0).expand_as(v_region.lower), \
+                                     linear_bounds.region.upper.unsqueeze(0).expand_as(v_region.upper)
+        extended_region = HyperRectangle(torch.cat([region_lower, v_region.lower], dim=-1), torch.cat([region_upper, v_region.upper], dim=-1))
+
         subnetworks_bounds = self.bound_dynamics.crown_backward(linear_bounds)
 
-        lowerA = torch.zeros_like(subnetworks_bounds.lower[0])
+        lowerA = torch.cat([subnetworks_bounds.lower[0], linear_bounds.lower[0]], dim=-1)
+        lower_bias = subnetworks_bounds.lower[1]
         if lowerA.dim() == 3:
             lowerA = lowerA.unsqueeze(0).expand(v_region.lower.size(0), -1, -1, -1)
-        lower_bias = linear_bounds.lower[0].matmul(center) - linear_bounds.lower[0].abs().matmul(diff)
-        lower = (lowerA, subnetworks_bounds.lower[1] + lower_bias.squeeze(-1))
+            lower_bias = lower_bias.unsqueeze(0).expand(v_region.lower.size(0), -1, -1)
+        lower = (lowerA, lower_bias)
 
-        upperA = torch.zeros_like(linear_bounds.upper[0])
+        upperA = torch.cat([subnetworks_bounds.upper[0], linear_bounds.upper[0]], dim=-1)
+        upper_bias = subnetworks_bounds.upper[1]
         if upperA.dim() == 3:
             upperA = upperA.unsqueeze(0).expand(v_region.upper.size(0), -1, -1, -1)
-        upper_bias = linear_bounds.upper[0].matmul(center) - linear_bounds.upper[0].abs().matmul(diff)
-        upper = (upperA, subnetworks_bounds.upper[1] + upper_bias.squeeze(-1))
+            upper_bias = upper_bias.unsqueeze(0).expand(v_region.upper.size(0), -1, -1)
+        upper = (upperA, upper_bias)
 
-        return LinearBounds(linear_bounds.region, lower, upper)
+        linear_bounds = LinearBounds(extended_region, lower, upper)
+        return linear_bounds
 
     def ibp_forward(self, bounds, save_relaxation=False):
         raise NotImplementedError()
