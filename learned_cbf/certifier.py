@@ -496,32 +496,9 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
             lower = Affine(lower.A[keep], lower.b[keep], set.lower, set.upper)
             upper = Affine(upper.A[keep], upper.b[keep], set.lower, set.upper)
 
-            batch_size = 20
-
-            new_sets = []
-            new_lowers = []
-            new_uppers = []
-
-            while len(set) > 0:
-                batch_set = set[:batch_size]
-                batch_lower = Affine(lower.A[:batch_size], lower.b[:batch_size], batch_set.lower, batch_set.upper)
-                batch_upper = Affine(upper.A[:batch_size], upper.b[:batch_size], batch_set.lower, batch_set.upper)
-                new_set = self.split_beta(batch_set, batch_lower, batch_upper)
-                new_set = self.region_prune(new_set, self.dynamics.safe)
-                new_sets.append(new_set)
-
-                new_lower, new_upper = bounds(self.beta_network, new_set, **kwargs)
-
-                new_lowers.append(new_lower)
-                new_uppers.append(new_upper)
-
-                set = set[batch_size:]
-                lower = Affine(lower.A[batch_size:], lower.b[batch_size:], set.lower, set.upper)
-                upper = Affine(upper.A[batch_size:], upper.b[batch_size:], set.lower, set.upper)
-
-            set = Partitions((torch.cat([set.lower for set in new_sets]), torch.cat([set.upper for set in new_sets])))
-            lower = Affine(torch.cat([new_lower.A for new_lower in new_lowers]), torch.cat([new_lower.b for new_lower in new_lowers]), set.lower, set.upper)
-            upper = Affine(torch.cat([new_upper.A for new_upper in new_uppers]), torch.cat([new_upper.b for new_upper in new_uppers]), set.lower, set.upper)
+            set = self.split_beta(set, lower, upper)
+            set = self.region_prune(set, self.dynamics.safe)
+            lower, upper = bounds(self.beta_network, set, **kwargs)
             min, max = self.min_max_beta(lower, upper)
 
             last_gap.append((max.max() - min.max()).item())
