@@ -883,9 +883,26 @@ class BoundDubinSelect(BoundModule):
         return 3
 
 
-class DubinsCarStrategyComposition(nn.Sequential, StochasticDynamics):
+class DubinsCarStrategyComposition(nn.Sequential, AdditiveGaussianDynamics):
+    @property
+    def nominal_system(self):
+        system = nn.Sequential(
+            Cat(self[0].subnetwork),
+            Euler(DubinsCarUpdate(self.dynamics_config), self.dynamics_config['dt']),
+            DubinSelect()
+        )
+
+        return system
+
+    @property
+    def v(self):
+        return (
+            torch.tensor([0.0, 0.0, self.dynamics_config['mu'] * self.dynamics_config['dt']]),
+            torch.tensor([0.0, 0.0, self.dynamics_config['sigma'] * self.dynamics_config['dt']])
+        )
+
     def __init__(self, dynamics_config, strategy=None):
-        StochasticDynamics.__init__(self, dynamics_config['num_samples'])
+        AdditiveGaussianDynamics.__init__(self, dynamics_config['num_samples'])
 
         if strategy is None:
             strategy = DubinsCarNoActuation()
@@ -897,6 +914,7 @@ class DubinsCarStrategyComposition(nn.Sequential, StochasticDynamics):
         )
 
         self.initial_set = dynamics_config['initial_set']
+        self.dynamics_config = dynamics_config
 
     def __getitem__(self, idx):
         if isinstance(idx, slice):
@@ -928,6 +946,10 @@ class DubinsCarStrategyComposition(nn.Sequential, StochasticDynamics):
             return overlap_rectangle(lower_x, upper_x,
                                      torch.tensor([-0.1, -2.0, np.pi / 6.0], device=x.device),
                                      torch.tensor([0.1, -1.8, np.pi / 4.0], device=x.device))
+        elif self.initial_set == 'left':
+            return overlap_rectangle(lower_x, upper_x,
+                                     torch.tensor([-0.95, 0.0, 0.0], device=x.device),
+                                     torch.tensor([-0.95, 0.0, 0.0], device=x.device))
         else:
             raise ValueError('Invalid initial set')
 
@@ -936,6 +958,8 @@ class DubinsCarStrategyComposition(nn.Sequential, StochasticDynamics):
             dist = distributions.Uniform(torch.tensor([-0.1, -2.0, -np.pi / 6.0]), torch.tensor([0.1, -1.8, np.pi / 6.0]))
         elif self.initial_set == 'right':
             dist = distributions.Uniform(torch.tensor([-0.1, -2.0, np.pi / 6.0]), torch.tensor([0.1, -1.8, np.pi / 4.0]))
+        elif self.initial_set == 'left':
+            return torch.tensor([[-0.95, 0.0, 0.0]])
         else:
             raise ValueError('Invalid initial set')
 

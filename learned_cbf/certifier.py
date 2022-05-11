@@ -156,7 +156,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
                  max_set_size=20000):
         super().__init__()
 
-        barrier = nn.Sequential(barrier, Clamp(max=1.0 + 1e-6))
+        # barrier = nn.Sequential(barrier, Clamp(max=1.0 + 1e-6))
 
         self.barrier = factory.build(barrier)
         self.beta_network = factory.build(BetaNetwork(dynamics, barrier))

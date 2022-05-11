@@ -3,7 +3,7 @@ import torch
 from torch import nn, Tensor, distributions
 from torch.distributions import Normal
 
-from learned_cbf.dynamics import StochasticDynamics, AdditiveGaussianDynamics
+from learned_cbf.dynamics import AdditiveGaussianDynamics
 
 
 class Population(nn.Linear, AdditiveGaussianDynamics):
@@ -27,7 +27,7 @@ class Population(nn.Linear, AdditiveGaussianDynamics):
 
     def __init__(self, dynamics_config):
         nn.Linear.__init__(self, 2, 2)
-        StochasticDynamics.__init__(self, dynamics_config['num_samples'])
+        AdditiveGaussianDynamics.__init__(self, dynamics_config['num_samples'])
 
         del self.weight
         del self.bias
