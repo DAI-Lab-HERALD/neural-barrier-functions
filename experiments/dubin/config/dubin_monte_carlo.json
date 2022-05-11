@@ -10,6 +10,7 @@
     "dt": 0.1,
     "velocity": 1.0,
     "horizon": 20,
-    "initial_set": "right"
+    "initial_set": "right",
+    "unsafe_set": "barrel"
   }
 }

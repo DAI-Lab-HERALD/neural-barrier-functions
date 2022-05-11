@@ -1,16 +1,16 @@
 {
   "system": "dubin",
   "experiment_type": "barrier_function",
-  "strategy": "neural_network",
+  "strategy": "no_actuation",
   "dynamics": {
-    "mu": 0.0,
+    "mu": 1.05263157895,
     "sigma": 0.02,
     "num_samples": 200,
-    "dt": 0.1,
+    "dt": 0.05,
     "velocity": 1.0,
-    "horizon": 40,
-    "initial_set": "front",
-    "unsafe_set": "barrel"
+    "horizon": 10,
+    "initial_set": "left",
+    "unsafe_set": "walls"
   },
   "partitioning": {
     "method": "grid",
@@ -26,14 +26,14 @@
   "training": {
     "batch_size": 1000,
     "iter_per_epoch": 400,
-    "eps": [0.01, 0.01, 0.01],
+    "eps": [0.005, 0.005, 0.005],
     "epochs": 150,
     "empirical_epochs": 20,
-    "test_every": 25,
+    "test_every": 5,
     "adjust_overlap": false
   },
   "test": {
-    "ibp_batch_size": 30,
-    "crown_ibp_batch_size": 30
+    "ibp_batch_size": 40,
+    "crown_ibp_batch_size": 40
   }
 }

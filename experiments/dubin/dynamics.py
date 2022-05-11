@@ -12,7 +12,7 @@ from torch import nn, distributions
 from torch.distributions import Normal
 
 from learned_cbf.discretization import Euler, RK4, Heun
-from learned_cbf.dynamics import StochasticDynamics
+from learned_cbf.dynamics import AdditiveGaussianDynamics
 from learned_cbf.utils import overlap_circle, overlap_rectangle, overlap_outside_circle
 
 
@@ -914,6 +914,7 @@ class DubinsCarStrategyComposition(nn.Sequential, AdditiveGaussianDynamics):
         )
 
         self.initial_set = dynamics_config['initial_set']
+        self.unsafe_set = dynamics_config['unsafe_set']
         self.dynamics_config = dynamics_config
 
     def __getitem__(self, idx):
@@ -1013,7 +1014,7 @@ class DubinsCarStrategyComposition(nn.Sequential, AdditiveGaussianDynamics):
 
     @property
     def volume(self):
-        return 4.0**2 * np.pi**2
+        return 4.0**2 * np.pi
 
 
 if __name__ == '__main__':
