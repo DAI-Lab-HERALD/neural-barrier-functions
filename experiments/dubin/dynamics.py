@@ -986,7 +986,7 @@ class DubinsCarStrategyComposition(nn.Sequential, AdditiveGaussianDynamics):
 
             return x[:num_particles]
         elif self.unsafe_set == 'walls':
-            dist = distributions.Uniform([-1.9, -1.9, -np.pi / 2], [1.9, 1.9, np.pi / 2])
+            dist = distributions.Uniform(torch.tensor([-1.9, -1.9, -np.pi / 2]), torch.tensor([1.9, 1.9, np.pi / 2]))
             return dist.sample((num_particles,))
         else:
             raise ValueError('Invalid unsafe set')
