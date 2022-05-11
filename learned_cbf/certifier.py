@@ -457,8 +457,8 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         loc, scale = dynamics.v
         loc, scale = loc.to(device), scale.to(device)
         factory.kwargs['state_space_bounds'] = initial_partitioning.state_space.lower[0], initial_partitioning.state_space.upper[0]
-        factory.kwargs['slices'] = [200 for _ in range(initial_partitioning.state_space.lower.size(-1))]
-        self.beta_network = factory.build(AdditiveGaussianBetaNetwork(barrier, dynamics.nominal_system, loc, scale))
+        factory.kwargs['slices'] = [10000 for _ in range(initial_partitioning.state_space.lower.size(-1))]
+        self.beta_network = factory.build(AdditiveGaussianBetaNetwork(nn.Sequential(barrier, Clamp(max=1.0)), dynamics.nominal_system, loc, scale))
         self.dynamics = dynamics
 
         # Assumptions:

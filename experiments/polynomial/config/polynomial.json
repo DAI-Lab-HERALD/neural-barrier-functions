@@ -28,7 +28,7 @@
     "adjust_overlap": false
   },
   "test": {
-    "ibp_batch_size": 5000,
-    "crown_ibp_batch_size": 5000
+    "ibp_batch_size": 1,
+    "crown_ibp_batch_size": 1
   }
 }
