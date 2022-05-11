@@ -1033,7 +1033,7 @@ class DubinsCarStrategyComposition(nn.Sequential, AdditiveGaussianDynamics):
             count = dist.sample().int()
 
             samples = []
-            for n, (lower, upper) in enumerate(rects, count):
+            for (lower, upper), n in zip(rects, count):
                 dist = distributions.Uniform(torch.tensor(lower), torch.tensor(upper))
                 sample = dist.sample((n,))
                 samples.append(sample)
