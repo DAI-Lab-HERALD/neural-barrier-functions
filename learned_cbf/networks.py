@@ -428,7 +428,7 @@ class BoundDynamicsNoise(BoundModule, VRegionMixin):
     def crown_backward(self, linear_bounds):
         assert linear_bounds.lower is not None and linear_bounds.upper is not None
 
-        v_region, dynamics_bounds = self.v_region(linear_bounds.region)
+        v_region = self.v_region(linear_bounds.region)
         region_lower, region_upper = linear_bounds.region.lower.unsqueeze(0).expand_as(v_region.lower), \
                                      linear_bounds.region.upper.unsqueeze(0).expand_as(v_region.upper)
         extended_region = HyperRectangle(torch.cat([region_lower, v_region.lower], dim=-1), torch.cat([region_upper, v_region.upper], dim=-1))
