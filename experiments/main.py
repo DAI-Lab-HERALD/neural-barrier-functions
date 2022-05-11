@@ -29,6 +29,7 @@ def parse_arguments():
     parser.add_argument('--config-path', type=str, help='Path to configuration of experiment.')
     parser.add_argument('--save-path', type=str, default='models/sbf.pth', help='Path to save SBF to.')
     parser.add_argument('--log-file', type=str, help='Path to log file.')
+    parser.add_argument('--task', type=str, choices=['train', 'test', 'plot'], default='train', help='Train will learn a barrier and save to file. Test and plot with load the barrier and do their respective operations.')
 
     return parser.parse_args()
 

@@ -96,6 +96,11 @@ def save(learner, args, state):
     torch.save(learner.state_dict(), path)
 
 
+def load(model, args, state):
+    path = args.save_path.format(state=state)
+    model.load_state_dict(torch.load(path, map_location=args.device))
+
+
 def population_main(args, config):
     logger.info('Constructing model')
     dynamics = Population(config['dynamics']).to(args.device)
@@ -108,13 +113,16 @@ def population_main(args, config):
         empirical_learner = EmpiricalNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
         certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
-        # learner.load_state_dict(torch.load(args.save_path))
+        if args.task in ['test', 'plot']:
+            load(robust_learner, args, 'final')
 
-        train(robust_learner, empirical_learner, certifier, args, config)
-        save(robust_learner, args, 'final')
-        test(certifier, config['test'])
-
-        plot_bounds_2d(barrier, dynamics, args, config)
+        if args.task == 'train':
+            train(robust_learner, empirical_learner, certifier, args, config)
+            save(robust_learner, args, 'final')
+        elif args.task == 'test':
+            test(certifier, config['test'])
+        elif args.task == 'plot':
+            plot_bounds_2d(barrier, dynamics, args, config)
     elif config['experiment_type'] == 'monte_carlo':
         monte_carlo_simulation(args, dynamics, config)
     else:
