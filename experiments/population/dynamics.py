@@ -10,7 +10,8 @@ class Population(nn.Linear, AdditiveGaussianDynamics):
     @property
     def nominal_system(self):
         nominal = nn.Linear(2, 2, bias=False)
-        nominal.weight.copy_(self.weight.squeeze(0))
+        with torch.no_grad():
+            nominal.weight.copy_(self.weight.squeeze(0))
 
         return nominal
 
