@@ -11,7 +11,8 @@ from .dynamics import Population
 from .partitioning import population_partitioning, plot_partitioning
 from .plot import plot_bounds_2d
 
-from learned_cbf.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifier
+from learned_cbf.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifier, \
+    AdditiveGaussianSplittingNeuralSBFCertifier
 from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from learned_cbf.networks import FCNNBarrierNetwork
 from learned_cbf.dataset import StochasticSystemDataset
@@ -47,8 +48,8 @@ def test_method(certifier, method, batch_size, kappa=None):
 @torch.no_grad()
 def test(certifier, status_config, kappa=None):
     # test_method(certifier, method='ibp', batch_size=status_config['ibp_batch_size'], kappa=kappa)
-    # test_method(certifier, method='crown_ibp_interval', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
-    test_method(certifier, method='optimal', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
+    test_method(certifier, method='crown_interval', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
+    # test_method(certifier, method='optimal', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
 
 
 def train(robust_learner, empirical_learner, certifier, args, config):
@@ -111,7 +112,7 @@ def population_main(args, config):
         partitioning = population_partitioning(config, dynamics).to(args.device)
         robust_learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
         empirical_learner = EmpiricalNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
-        certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
+        certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
         if args.task in ['test', 'plot']:
             load(robust_learner, args, 'final')

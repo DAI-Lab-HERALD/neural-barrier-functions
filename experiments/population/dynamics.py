@@ -3,10 +3,24 @@ import torch
 from torch import nn, Tensor, distributions
 from torch.distributions import Normal
 
-from learned_cbf.dynamics import StochasticDynamics
+from learned_cbf.dynamics import StochasticDynamics, AdditiveGaussianDynamics
 
 
-class Population(nn.Linear, StochasticDynamics):
+class Population(nn.Linear, AdditiveGaussianDynamics):
+    @property
+    def nominal_system(self):
+        nominal = nn.Linear(2, 2, bias=False)
+        nominal.weight.copy_(self.weight.squeeze(0))
+
+        return nominal
+
+    @property
+    def v(self):
+        return (
+            torch.tensor([0.0, 0.0]),
+            torch.tensor([0.0, self.sigma])
+        )
+
     # x[1] = juveniles
     # x[2] = adults
 
@@ -22,7 +36,8 @@ class Population(nn.Linear, StochasticDynamics):
             [dynamics_config['survival_juvenile'], dynamics_config['survival_adult']]
         ]).unsqueeze(0), persistent=True)
 
-        dist = Normal(0.0, dynamics_config['sigma'])
+        self.sigma = dynamics_config['sigma']
+        dist = Normal(0.0, self.sigma)
         z = dist.sample((self.num_samples,))
         self.register_buffer('bias', torch.stack([torch.zeros_like(z), z], dim=-1).unsqueeze(1), persistent=True)
 

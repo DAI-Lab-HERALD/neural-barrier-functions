@@ -47,7 +47,11 @@ class StochasticDynamics(abc.ABC):
         raise NotImplementedError()
 
 
-class AdditiveGaussianDynamics(StochasticDynamics, abc.ABC):
+class AdditiveNoiseDynamics(StochasticDynamics, abc.ABC):
+    pass
+
+
+class AdditiveGaussianDynamics(AdditiveNoiseDynamics, abc.ABC):
     @property
     @abc.abstractmethod
     def nominal_system(self):
