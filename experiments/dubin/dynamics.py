@@ -13,7 +13,7 @@ from torch.distributions import Normal
 
 from learned_cbf.discretization import Euler, RK4, Heun
 from learned_cbf.dynamics import AdditiveGaussianDynamics
-from learned_cbf.utils import overlap_circle, overlap_rectangle, overlap_outside_circle
+from learned_cbf.utils import overlap_circle, overlap_rectangle, overlap_outside_circle, overlap_outside_rectangle
 
 
 class DubinsCarUpdate(nn.Module):
@@ -972,13 +972,24 @@ class DubinsCarStrategyComposition(nn.Sequential, AdditiveGaussianDynamics):
         else:
             lower_x, upper_x = x, x
 
-        return overlap_outside_circle(lower_x[..., :2], upper_x[..., :2], torch.tensor([0.0, 0.0], device=x.device), math.sqrt(0.04))
+        if self.unsafe_set == 'barrel':
+            return overlap_outside_circle(lower_x[..., :2], upper_x[..., :2], torch.tensor([0.0, 0.0], device=x.device), math.sqrt(0.04))
+        elif self.unsafe_set == 'walls':
+            return overlap_rectangle(lower_x[..., :2], upper_x[..., :2], torch.tensor([-1.9, -1.9], device=x.device), torch.tensor([1.9, 1.9], device=x.device))
+        else:
+            raise ValueError('Invalid unsafe set')
 
     def sample_safe(self, num_particles):
-        x = self.sample_state_space(num_particles * 2)
-        x = x[self.safe(x)]
+        if self.unsafe_set == 'barrel':
+            x = self.sample_state_space(num_particles * 2)
+            x = x[self.safe(x)]
 
-        return x[:num_particles]
+            return x[:num_particles]
+        elif self.unsafe_set == 'walls':
+            dist = distributions.Uniform([-1.9, -1.9, -np.pi / 2], [1.9, 1.9, np.pi / 2])
+            return dist.sample((num_particles,))
+        else:
+            raise ValueError('Invalid unsafe set')
 
     def unsafe(self, x, eps=None):
         if eps is not None:
@@ -986,17 +997,55 @@ class DubinsCarStrategyComposition(nn.Sequential, AdditiveGaussianDynamics):
         else:
             lower_x, upper_x = x, x
 
-        return overlap_circle(lower_x[..., :2], upper_x[..., :2], torch.tensor([0.0, 0.0], device=x.device), math.sqrt(0.04))
+        if self.unsafe_set == 'barrel':
+            return overlap_circle(lower_x[..., :2], upper_x[..., :2], torch.tensor([0.0, 0.0], device=x.device), math.sqrt(0.04))
+        elif self.unsafe_set == 'walls':
+            return overlap_outside_rectangle(lower_x[..., :2], upper_x[..., :2], torch.tensor([-1.9, -1.9], device=x.device), torch.tensor([1.9, 1.9], device=x.device))
+        else:
+            raise ValueError('Invalid unsafe set')
 
     def sample_unsafe(self, num_particles):
-        dist = distributions.Uniform(0, 1)
-        r = math.sqrt(0.04) * dist.sample((num_particles,)).sqrt()
-        theta = dist.sample((num_particles,)) * 2 * np.pi
+        if self.unsafe_set == 'barrel':
+            dist = distributions.Uniform(0, 1)
+            r = math.sqrt(0.04) * dist.sample((num_particles,)).sqrt()
+            theta = dist.sample((num_particles,)) * 2 * np.pi
 
-        dist = distributions.Uniform(-np.pi / 2, np.pi / 2)
-        phi = dist.sample((num_particles,))
+            dist = distributions.Uniform(-np.pi / 2, np.pi / 2)
+            phi = dist.sample((num_particles,))
 
-        return torch.stack([r * theta.cos(), r * theta.sin(), phi], dim=-1)
+            return torch.stack([r * theta.cos(), r * theta.sin(), phi], dim=-1)
+        elif self.unsafe_set == 'walls':
+            rects = [
+                ([-2.0, -2.0], [-1.9, -1.9]),
+                ([-2.0, -1.9], [-1.9, 1.9]),
+                ([-2.0, 1.9], [-1.9, 2.0]),
+                ([1.9, -2.0], [2.0, -1.9]),
+                ([1.9, -1.9], [2.0, 1.9]),
+                ([1.9, 1.9], [2.0, 2.0]),
+                ([-1.9, -2.0], [1.9, -1.9]),
+                ([-1.9, 1.9], [1.9, 2.0]),
+            ]
+            areas = [(upper[0] - lower[0]) * (upper[1] - lower[1]) for lower, upper in rects]
+            total_area = sum(areas)
+            probs = [area / total_area for area in areas]
+
+            dist = distributions.Multinomial(total_count=num_particles, probs=torch.tensor(probs))
+            count = dist.sample().int()
+
+            samples = []
+            for n, (lower, upper) in enumerate(rects, count):
+                dist = distributions.Uniform(torch.tensor(lower), torch.tensor(upper))
+                sample = dist.sample((n,))
+                samples.append(sample)
+
+            samples = torch.cat(samples)
+
+            dist = distributions.Uniform(-np.pi / 2, np.pi / 2)
+            phi = dist.sample((num_particles, 1))
+
+            return torch.cat([samples, phi], dim=-1)
+        else:
+            raise ValueError('Invalid unsafe set')
 
     def state_space(self, x, eps=None):
         if eps is not None:
