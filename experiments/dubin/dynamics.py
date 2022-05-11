@@ -943,7 +943,7 @@ class DubinsCarStrategyComposition(nn.Sequential, AdditiveGaussianDynamics):
             return overlap_rectangle(lower_x, upper_x,
                                      torch.tensor([-0.1, -2.0, -np.pi / 6.0], device=x.device),
                                      torch.tensor([0.1, -1.8, np.pi / 6.0], device=x.device))
-        elif self.initial_set == 'right':
+        elif self.initial_set == 'right_dir':
             return overlap_rectangle(lower_x, upper_x,
                                      torch.tensor([-0.1, -2.0, np.pi / 6.0], device=x.device),
                                      torch.tensor([0.1, -1.8, np.pi / 4.0], device=x.device))
@@ -957,7 +957,7 @@ class DubinsCarStrategyComposition(nn.Sequential, AdditiveGaussianDynamics):
     def sample_initial(self, num_particles):
         if self.initial_set == 'front':
             dist = distributions.Uniform(torch.tensor([-0.1, -2.0, -np.pi / 6.0]), torch.tensor([0.1, -1.8, np.pi / 6.0]))
-        elif self.initial_set == 'right':
+        elif self.initial_set == 'right_dir':
             dist = distributions.Uniform(torch.tensor([-0.1, -2.0, np.pi / 6.0]), torch.tensor([0.1, -1.8, np.pi / 4.0]))
         elif self.initial_set == 'left':
             return torch.tensor([[-0.95, 0.0, 0.0]])

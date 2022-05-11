@@ -255,18 +255,23 @@ def dubins_car_main(args, config):
         initial_partitioning = dubins_car_partitioning(config, dynamics).to(args.device)
         robust_learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
         empirical_learner = EmpiricalNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
-        certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
-        # load(robust_learner, args, 'final')
+        if args.task in ['test', 'plot']:
+            load(robust_learner, args, 'final')
 
-        if isinstance(strategy, DubinsCarNNStrategy):
-            load(strategy, args, 'rl-final')
+        if args.task == 'train':
+            certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
 
-        train(robust_learner, empirical_learner, certifier, args, config)
-        save(robust_learner, args, 'final')
-        test(certifier, config['test'])
+            if isinstance(strategy, DubinsCarNNStrategy):
+                load(strategy, args, 'rl-final')
 
-        # plot_bounds_2d(barrier, dynamics, args, config)
+            train(robust_learner, empirical_learner, certifier, args, config)
+            save(robust_learner, args, 'final')
+        elif args.task == 'test':
+            certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
+            test(certifier, config['test'])
+        elif args.task == 'plot':
+            plot_bounds_2d(barrier, dynamics, args, config)
     elif config['experiment_type'] == 'rl':
         reinforcement_learning(strategy, dynamics, args, config)
     elif config['experiment_type'] == 'monte_carlo':
