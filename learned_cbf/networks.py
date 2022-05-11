@@ -306,12 +306,13 @@ class BoundGaussianProbabilityNetwork(BoundModule, VRegionMixin):
 
     def probability(self, region):
         v_region = self.v_region(region)
+        loc, scale = self.module.loc.to(v_region.lower.device), self.module.scale.to(v_region.lower.device)
 
         def scale_center_erf(v):
-            return torch.erf((v - self.module.loc) / (math.sqrt(2) * self.module.scale))
+            return torch.erf((v - loc) / (math.sqrt(2) * scale))
         probability = (scale_center_erf(v_region.upper) - scale_center_erf(v_region.lower)) / 2
 
-        zero_scale = (self.module.scale == 0)
+        zero_scale = (scale == 0)
         probability[..., zero_scale] = 1.0
 
         return probability.prod(dim=-1, keepdim=True)
@@ -374,19 +375,20 @@ class BoundGaussianExpectationRegion(BoundModule, VRegionMixin):
 
     def expectation(self, region):
         v_region = self.v_region(region)
+        loc, scale = self.module.loc.to(v_region.lower.device), self.module.scale.to(v_region.lower.device)
 
         def scale_center_erf(v):
-            return torch.erf((self.module.loc - v) / (math.sqrt(2) * self.module.scale))
-        cdf_adjusted_mean = (self.module.loc / 2) * (scale_center_erf(v_region.lower) - scale_center_erf(v_region.upper))
+            return torch.erf((loc - v) / (math.sqrt(2) * scale))
+        cdf_adjusted_mean = (loc / 2) * (scale_center_erf(v_region.lower) - scale_center_erf(v_region.upper))
 
         def pdf_exp(v):
-            return torch.exp((v - self.module.loc) ** 2 / (-2 * (self.module.scale ** 2)))
-        variance_adjustment = (self.module.scale / (math.sqrt(2 * math.pi))) * (pdf_exp(v_region.lower) - pdf_exp(v_region.upper))
+            return torch.exp((v - loc) ** 2 / (-2 * (scale ** 2)))
+        variance_adjustment = (scale / (math.sqrt(2 * math.pi))) * (pdf_exp(v_region.lower) - pdf_exp(v_region.upper))
 
         expectation = cdf_adjusted_mean + variance_adjustment
 
-        zero_scale = (self.module.scale == 0)
-        expectation[..., zero_scale] = self.module.loc[zero_scale]
+        zero_scale = (scale == 0)
+        expectation[..., zero_scale] = loc[zero_scale]
 
         return expectation
 
