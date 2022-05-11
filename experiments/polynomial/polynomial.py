@@ -120,15 +120,16 @@ def polynomial_main(args, config):
         initial_partitioning = polynomial_partitioning(config, dynamics).to(args.device)
         robust_learner = AdversarialNeuralSBF(barrier, dynamics, factory, horizon=config['dynamics']['horizon']).to(args.device)
         empirical_learner = EmpiricalNeuralSBF(barrier, dynamics, horizon=config['dynamics']['horizon']).to(args.device)
-        certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon'], device=args.device)
 
         if args.task in ['test', 'plot']:
             load(robust_learner, args, 'final')
 
         if args.task == 'train':
+            certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
             train(robust_learner, empirical_learner, certifier, args, config)
             save(robust_learner, args, 'final')
         elif args.task == 'test':
+            certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
             test(certifier, config['test'])
         elif args.task == 'plot':
             plot_bounds_2d(barrier, dynamics, args, config)
