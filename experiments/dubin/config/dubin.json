@@ -28,7 +28,6 @@
     "iter_per_epoch": 400,
     "eps": [0.005, 0.005, 0.005],
     "epochs": 150,
-    "empirical_epochs": 20,
     "test_every": 5,
     "adjust_overlap": false
   },
