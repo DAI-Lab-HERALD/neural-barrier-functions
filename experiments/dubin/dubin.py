@@ -14,7 +14,7 @@ from tqdm import trange, tqdm
 
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, DubinsFixedStrategy, BoundDubinsFixedStrategy, \
     DubinsCarNoActuation, DubinsCarStrategyComposition, DubinsCarNNStrategy, \
-    BoundDubinSelect, DubinSelect
+    BoundDubinSelect, DubinSelect, BoundDubinsCarNominalUpdate, DubinsCarNominalUpdate
 from .partitioning import dubins_car_partitioning
 from .plot import plot_bounds_2d
 
@@ -247,6 +247,7 @@ def dubins_car_main(args, config):
     if config['experiment_type'] == 'barrier_function':
         factory = LearnedCBFBoundModelFactory()
         factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
+        factory.register(DubinsCarNominalUpdate, BoundDubinsCarNominalUpdate)
         factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
         factory.register(DubinSelect, BoundDubinSelect)
         factory.register(ButcherTableau, BoundButcherTableau)

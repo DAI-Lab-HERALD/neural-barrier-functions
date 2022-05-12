@@ -8,7 +8,7 @@ from tqdm import tqdm
 from learned_cbf.bounds import bounds, LearnedCBFBoundModelFactory
 from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, BoundDubinsFixedStrategy, \
-    DubinsFixedStrategy, DubinSelect, BoundDubinSelect
+    DubinsFixedStrategy, DubinSelect, BoundDubinSelect, BoundDubinsCarNominalUpdate, DubinsCarNominalUpdate
 
 
 def bound_propagation(model, lower_x, upper_x, config):
@@ -19,6 +19,7 @@ def bound_propagation(model, lower_x, upper_x, config):
 
     factory = LearnedCBFBoundModelFactory()
     factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
+    factory.register(DubinsCarNominalUpdate, BoundDubinsCarNominalUpdate)
     factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
     factory.register(DubinSelect, BoundDubinSelect)
     factory.register(ButcherTableau, BoundButcherTableau)

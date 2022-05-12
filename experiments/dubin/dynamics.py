@@ -297,6 +297,91 @@ class BoundDubinsCarUpdate(BoundModule):
         return 4
 
 
+class DubinsCarNominalUpdate(nn.Module):
+    def __init__(self, dynamics_config):
+        super().__init__()
+
+        self.velocity = dynamics_config['velocity']
+
+        dist = Normal(torch.tensor(dynamics_config['mu']), torch.tensor(dynamics_config['sigma']))
+        self.register_buffer('z', dist.sample((dynamics_config['num_samples'],)).view(-1, 1))
+
+    def forward(self, x):
+        x1 = self.velocity * x[..., 2].sin()
+        x2 = self.velocity * x[..., 2].cos()
+        # x[..., 3] = u, i.e. the control. We assume it's concatenated on the last dimension
+        x3 = x[..., 3]
+
+        x = torch.stack([x1, x2, x3, torch.zeros_like(x3)], dim=-1)
+        return x
+
+
+@torch.jit.script
+def crown_backward_dubin_nominal_jit(W_tilde: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    _lambda = torch.where(W_tilde[..., :2] < 0, alpha[0].unsqueeze(-2), alpha[1].unsqueeze(-2))
+    _delta = torch.where(W_tilde[..., :2] < 0, beta[0].unsqueeze(-2), beta[1].unsqueeze(-2))
+
+    bias = torch.sum(W_tilde[..., :2] * _delta, dim=-1)
+    W_tilde1 = torch.zeros_like(W_tilde[..., 0])
+    W_tilde2 = torch.zeros_like(W_tilde[..., 1])
+    W_tilde3 = torch.sum(W_tilde[..., :2] * _lambda, dim=-1)
+    W_tilde4 = W_tilde[..., 2]
+    W_tilde = torch.stack([W_tilde1, W_tilde2, W_tilde3, W_tilde4], dim=-1)
+
+    return W_tilde, bias
+
+
+class BoundDubinsCarNominalUpdate(BoundDubinsCarUpdate):
+    def crown_backward(self, linear_bounds):
+        assert self.bounded
+
+        # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!
+        if linear_bounds.lower is None:
+            lower = None
+        else:
+            alpha = self.alpha_upper, self.alpha_lower
+            beta = self.beta_upper, self.beta_lower
+            lower = crown_backward_dubin_nominal_jit(linear_bounds.lower[0], alpha, beta)
+
+            lower = (lower[0], lower[1] + linear_bounds.lower[1])
+
+        if linear_bounds.upper is None:
+            upper = None
+        else:
+            alpha = self.alpha_lower, self.alpha_upper
+            beta = self.beta_lower, self.beta_upper
+            upper = crown_backward_dubin_nominal_jit(linear_bounds.upper[0], alpha, beta)
+            upper = (upper[0], upper[1] + linear_bounds.upper[1])
+
+        return LinearBounds(linear_bounds.region, lower, upper)
+
+    def ibp_control(self, bounds):
+        # x[..., 3] = u, i.e. the control. We assume it's concatenated on the last dimension
+        x3_lower = bounds.lower[..., 3]
+        x3_upper = bounds.upper[..., 3]
+
+        return x3_lower, x3_upper
+
+    @assert_bound_order
+    def ibp_forward(self, bounds, save_relaxation=False):
+        if save_relaxation:
+            self.alpha_beta(preactivation=bounds)
+            self.bounded = True
+
+        x1_lower, x1_upper = self.ibp_sin_phi(bounds)
+        x2_lower, x2_upper = self.ibp_cos_phi(bounds)
+        x3_lower, x3_upper = self.ibp_control(bounds)
+
+        lower = torch.stack([x1_lower, x2_lower, x3_lower, torch.zeros_like(x3_lower)], dim=-1)
+        upper = torch.stack([x1_upper, x2_upper, x3_upper, torch.zeros_like(x3_upper)], dim=-1)
+        return IntervalBounds(bounds.region, lower, upper)
+
+    def propagate_size(self, in_size):
+        assert in_size == 4
+
+        return 4
+
+
 def plot_dubins_car():
     dynamics = DubinsCarUpdate({
         'mu': 0.1,
@@ -888,7 +973,7 @@ class DubinsCarStrategyComposition(nn.Sequential, AdditiveGaussianDynamics):
     def nominal_system(self):
         system = nn.Sequential(
             Cat(self[0].subnetwork),
-            Euler(DubinsCarUpdate(self.dynamics_config), self.dynamics_config['dt']),
+            Euler(DubinsCarNominalUpdate(self.dynamics_config), self.dynamics_config['dt']),
             DubinSelect()
         )
 
