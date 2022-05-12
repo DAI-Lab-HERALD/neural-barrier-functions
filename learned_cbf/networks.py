@@ -322,6 +322,8 @@ class BoundGaussianProbabilityNetwork(BoundModule, VRegionMixin):
 
     def propagate_size(self, in_size):
         self.state_size = in_size
+        out_size = self.bound_dynamics.propagate_size(in_size)
+        assert out_size == self.state_size
         return self.state_size
 
 
@@ -397,6 +399,8 @@ class BoundGaussianExpectationRegion(BoundModule, VRegionMixin):
 
     def propagate_size(self, in_size):
         self.state_size = in_size
+        out_size = self.bound_dynamics.propagate_size(in_size)
+        assert out_size == self.state_size
         return self.state_size
 
 
@@ -459,6 +463,8 @@ class BoundDynamicsNoise(BoundModule, VRegionMixin):
 
     def propagate_size(self, in_size):
         self.state_size = in_size
+        out_size = self.bound_dynamics.propagate_size(in_size)
+        assert out_size == self.state_size
         return self.state_size
 
 
