@@ -131,8 +131,8 @@ class NeuralSBFCertifier(nn.Module):
         If alpha > 1.0, we can do better but gamma + beta * horizon remains an upper bound.
         :return: Upper bound for (1 - safety probability).
         """
-        beta = self.beta(**kwargs)
         gamma = self.gamma(**kwargs)
+        beta = self.beta(**kwargs)
         bx_violation_prob = gamma + beta * self.horizon
 
         if return_beta_gamma:
@@ -426,8 +426,8 @@ class SplittingNeuralSBFCertifier(nn.Module):
         If alpha > 1.0, we can do better but gamma + beta * horizon remains an upper bound.
         :return: Upper bound for (1 - safety probability).
         """
-        beta = self.beta(**kwargs)
         gamma = self.gamma(**kwargs)
+        beta = self.beta(**kwargs)
         bx_violation_prob = gamma + beta * self.horizon
 
         if return_beta_gamma:
@@ -738,8 +738,8 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         If alpha > 1.0, we can do better but gamma + beta * horizon remains an upper bound.
         :return: Upper bound for (1 - safety probability).
         """
-        beta = self.beta(**kwargs)
         gamma = self.gamma(**kwargs)
+        beta = self.beta(**kwargs)
         bx_violation_prob = gamma + beta * self.horizon
 
         if return_beta_gamma:

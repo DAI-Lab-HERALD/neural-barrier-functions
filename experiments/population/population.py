@@ -77,8 +77,8 @@ def train(robust_learner, empirical_learner, certifier, args, config):
         scheduler.step()
         kappa *= 0.97
 
-    while not certifier.certify(method='optimal', batch_size=config['test']['ibp_batch_size']):
-        logger.info(f'Current violation: {certifier.barrier_violation(method="optimal", batch_size=config["test"]["ibp_batch_size"])}')
+    while not certifier.certify(method='crown_interval', batch_size=config['test']['ibp_batch_size']):
+        logger.info(f'Current violation: {certifier.barrier_violation(method="crown_interval", batch_size=config["test"]["ibp_batch_size"])}')
         for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
             # plot_partitioning(partitioning, config['dynamics']['safe_set'])
 
