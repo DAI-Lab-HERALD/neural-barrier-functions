@@ -482,7 +482,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         kwargs['method'] = 'crown_linear'
         lower, upper = bounds(self.beta_network, set, **kwargs)
         min, max = self.min_max_beta(lower, upper)
-        last_gap = [torch.finfo(min.dtype).max for _ in range(19)] + [(max.max() - min.max()).item()]
+        last_gap = [torch.finfo(min.dtype).max for _ in range(1999)] + [(max.max() - min.max()).item()]
 
         while not self.should_stop_beta_gamma('BETA', set, min, max, last_gap):
             size_before = len(set)
@@ -496,15 +496,37 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
             lower = Affine(lower.A[keep], lower.b[keep], set.lower, set.upper)
             upper = Affine(upper.A[keep], upper.b[keep], set.lower, set.upper)
 
-            set = self.split_beta(set, lower, upper)
-            set = self.region_prune(set, self.dynamics.safe)
-            lower, upper = bounds(self.beta_network, set, **kwargs)
+            split_index, other = self.pick_for_splitting(max[keep], **kwargs)
+
+            split_set = set[split_index]
+            split_lower = Affine(lower.A[split_index], lower.b[split_index], set.lower[split_index], set.upper[split_index])
+            split_upper = Affine(upper.A[split_index], upper.b[split_index], set.lower[split_index], set.upper[split_index])
+
+            set = set[other]
+            lower = Affine(lower.A[other], lower.b[other], set.lower, set.upper)
+            upper = Affine(upper.A[other], upper.b[other], set.lower, set.upper)
+
+            split_set = self.split_beta(split_set, split_lower, split_upper)
+            split_set = self.region_prune(split_set, self.dynamics.safe)
+            split_lower, split_upper = bounds(self.beta_network, split_set, **kwargs)
+
+            set = Partitions((torch.cat([set.lower, split_set.lower]), torch.cat([set.upper, split_set.upper])))
+            lower = Affine(torch.cat([lower.A, split_lower.A]), torch.cat([lower.b, split_lower.b]), set.lower, set.upper)
+            upper = Affine(torch.cat([upper.A, split_upper.A]), torch.cat([upper.b, split_upper.b]), set.lower, set.upper)
+
             min, max = self.min_max_beta(lower, upper)
 
             last_gap.append((max.max() - min.max()).item())
             last_gap.pop(0)
 
         return max.max().clamp(min=0)
+
+    def pick_for_splitting(self, max, batch_size=1, **Kwargs):
+        split_indices = max.topk(min(batch_size, max.size(0))).indices
+        other_indices = torch.full((max.size(0),), True, dtype=torch.bool, device=max.device)
+        other_indices[split_indices] = False
+
+        return split_indices, other_indices
 
     def min_max_beta(self, lower, upper):
         min = lower.partition_min()
