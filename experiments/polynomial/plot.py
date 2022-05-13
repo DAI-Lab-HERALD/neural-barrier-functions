@@ -296,7 +296,7 @@ def plot_dynamics(model, dynamics, args, config):
     plt.ylim(-2.0, 1.0)
 
     matplotlib.rc('axes', titlepad=20)
-    plt.title(f'Polynomial system & initial and safe sets')
+    plt.title(f'Polynomial system & initial and unsafe sets')
 
     plt.legend(loc='lower right')
     plt.savefig('figures/polynomial_dynamics.pdf', bbox_inches='tight')
