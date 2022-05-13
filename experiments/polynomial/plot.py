@@ -152,7 +152,7 @@ def plot_barrier(model, args, config):
     ax.set_zlabel('$B(x, y)$', labelpad=12.0)
 
     plt.legend()
-    plt.title(f'Barrier function & initial and safe sets')
+    plt.title(f'Barrier function & initial and unsafe sets')
     plt.savefig('figures/barrier_3d.pdf', bbox_inches='tight')
     # plt.show()
 
@@ -312,7 +312,7 @@ def plot_bounds_2d(model, dynamics, args, config):
 
     matplotlib.rc('font', **font)
 
-    # plot_barrier(model, args, config)
-    # plot_partitions(model, dynamics, args, config)
-    # plot_heatmaps(model, dynamics, args, config)
+    plot_barrier(model, args, config)
+    plot_partitions(model, dynamics, args, config)
+    plot_heatmaps(model, dynamics, args, config)
     plot_dynamics(model, dynamics, args, config)
