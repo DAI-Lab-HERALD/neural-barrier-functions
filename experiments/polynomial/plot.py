@@ -1,3 +1,4 @@
+import json
 import math
 
 import matplotlib
@@ -303,6 +304,70 @@ def plot_dynamics(model, dynamics, args, config):
     # plt.show()
 
 
+def plot_contour(model, args, config, levels, file_path):
+    fig, ax = plt.subplots(figsize=(1.9 * 5.4, 1.9 * 4.8))
+
+    circle_init = plt.Circle((1.5, 0), math.sqrt(0.25), facecolor=(*sns.color_palette('deep')[2], 0.4), edgecolor=(*sns.color_palette('deep')[2], 1.0), fill=True, linewidth=2, label='Initial set')
+    polygon_init = plt.Polygon(np.array([[-1.2, 0.1], [-1.8, 0.1], [-1.8, -0.1], [-1.4, -0.1], [-1.4, -0.5], [-1.2, -0.5]]),
+                               facecolor=(*sns.color_palette('deep')[2], 0.4), edgecolor=(*sns.color_palette('deep')[2], 1.0), fill=True, linewidth=2)
+    ax.add_patch(circle_init)
+    ax.add_patch(polygon_init)
+
+    circle_unsafe = plt.Circle((-1.0, -1.0), math.sqrt(0.16), facecolor=(*sns.color_palette('deep')[3], 0.4), edgecolor=(*sns.color_palette('deep')[3], 1.0), fill=True, linewidth=2, label='Unsafe set')
+    polygon_unsafe = plt.Polygon(np.array([[0.4, 0.1], [0.8, 0.1], [0.8, 0.3], [0.6, 0.3], [0.6, 0.5], [0.4, 0.5]]),
+                                 facecolor=(*sns.color_palette('deep')[3], 0.4), edgecolor=(*sns.color_palette('deep')[3], 1.0), fill=True, linewidth=2)
+    ax.add_patch(circle_unsafe)
+    ax.add_patch(polygon_unsafe)
+
+    num_points = 200
+    x1_space = torch.linspace(-3.5, 2.0, num_points)
+    x2_space = torch.linspace(-2.0, 1.0, num_points)
+
+    input = torch.cartesian_prod(x1_space, x2_space)
+    z = model(input).view(num_points, num_points).numpy()
+    input = input.view(num_points, num_points, -1).numpy()
+    x, y = input[..., 0], input[..., 1]
+
+    contour = ax.contour(x, y, z, levels, cmap=sns.color_palette('crest', as_cmap=True), vmin=0.0, linewidths=2)
+    ax.clabel(contour, contour.levels, inline=True, fontsize=22)
+
+    plt.xlabel('$x$')
+    plt.ylabel('$y$')
+
+    plt.xlim(-3.5, 2.0)
+    plt.ylim(-2.0, 1.0)
+
+    matplotlib.rc('axes', titlepad=20)
+    plt.title(f'Barrier levelsets for polynomial system')
+
+    plt.legend(loc='lower right')
+    plt.savefig(file_path, bbox_inches='tight')
+    # plt.show()
+
+
+def plot_contours(model, args, config):
+    levels = [1, 1.5, 2.0, 2.2, 2.4, 2.6]
+    file_path = 'figures/polynomial_contour_sbf.pdf'
+    plot_contour(model, args, config, levels, file_path)
+
+    with open('models/polynomial_system_sos_barrier.json', 'r') as f:
+        sos_barrier_parameters = json.load(f)
+
+    def sos_barrier(x):
+        x1, x2 = x[..., 0], x[..., 1]
+
+        agg = 0
+
+        for term in sos_barrier_parameters:
+            agg = agg + term['coefficient'] * (x1 ** term['exponents'][0]) * (x2 ** term['exponents'][1])
+
+        return agg
+
+    levels = [1, 5, 10, 20, 50]
+    file_path = 'figures/polynomial_contour_sos.pdf'
+    plot_contour(sos_barrier, args, config, levels, file_path)
+
+
 @torch.no_grad()
 def plot_bounds_2d(model, dynamics, args, config):
 
@@ -312,7 +377,8 @@ def plot_bounds_2d(model, dynamics, args, config):
 
     matplotlib.rc('font', **font)
 
-    plot_barrier(model, args, config)
-    plot_partitions(model, dynamics, args, config)
-    plot_heatmaps(model, dynamics, args, config)
-    plot_dynamics(model, dynamics, args, config)
+    # plot_barrier(model, args, config)
+    # plot_partitions(model, dynamics, args, config)
+    # plot_heatmaps(model, dynamics, args, config)
+    # plot_dynamics(model, dynamics, args, config)
+    plot_contours(model, args, config)

@@ -1,9 +1,13 @@
+import json
+import math
 from typing import Tuple
 
+import matplotlib
 import torch
 from bound_propagation import HyperRectangle
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+import seaborn as sns
 from tqdm import tqdm
 
 from learned_cbf.bounds import LearnedCBFBoundModelFactory
@@ -180,3 +184,79 @@ def plot_bounds_2d(model, dynamics, args, config):
             print((interval_crown.lower, interval_crown.upper), (partition_ibp.lower, partition_ibp.upper))
             print(initial, safe, unsafe)
             plot_partition(model, args, partition_rect, partition_ibp, partition_crown, initial, safe, unsafe)
+
+
+@torch.no_grad()
+def plot_contour(model, args, config, levels, file_path):
+    fig, ax = plt.subplots(figsize=(1.9 * 5.4, 1.9 * 4.8))
+
+    safe_set_type = config['dynamics']['safe_set']
+    if safe_set_type == 'circle':
+        rect_unsafe = plt.Rectangle((-3, -3), 6, 6, facecolor=(*sns.color_palette('deep')[3], 0.4), edgecolor=(*sns.color_palette('deep')[3], 1.0), fill=True, label='Unsafe set')
+        ax.add_patch(rect_unsafe)
+
+        circle_unsafe = plt.Circle((0, 0), 2.0, facecolor='w', edgecolor=(*sns.color_palette('deep')[3], 1.0), fill=True, linewidth=2)
+        ax.add_patch(circle_unsafe)
+
+        circle_init = plt.Circle((0, 0), 1.5, facecolor=(*sns.color_palette('deep')[2], 0.4), edgecolor=(*sns.color_palette('deep')[2], 1.0), fill=True, linewidth=2, label='Initial set')
+        ax.add_patch(circle_init)
+
+        plt.xlim(-3, 3)
+        plt.ylim(-3, 3)
+    elif safe_set_type == 'stripe':
+        plt.plot([2.5, 2.25], [2.25, 2.5], color=sns.color_palette('deep')[2], linewidth=2, label='Initial set')
+        plt.plot([2.25, 2.5], [2.25, 2.25], color=sns.color_palette('deep')[2], linewidth=2)
+        plt.plot([2.25, 2.25], [2.25, 2.5], color=sns.color_palette('deep')[2], linewidth=2)
+
+        plt.plot([7.5, 0.5], [0.5, 7.5], color=sns.color_palette('deep')[3], label='Unsafe set')
+        plt.plot([0.5, 7.5], [0.5, 0.5], color=sns.color_palette('deep')[3], linewidth=2)
+        plt.plot([0.5, 0.5], [0.5, 7.5], color=sns.color_palette('deep')[3], linewidth=2)
+
+        plt.xlim(0.0, 8.0)
+        plt.ylim(0.0, 8.0)
+    else:
+        raise ValueError('Invalid safe set for population')
+
+    num_points = 200
+    x_space = torch.linspace(-3.0, 3.0, num_points)
+
+    input = torch.cartesian_prod(x_space, x_space)
+    z = model(input).view(num_points, num_points).numpy()
+    input = input.view(num_points, num_points, -1).numpy()
+    x, y = input[..., 0], input[..., 1]
+
+    contour = ax.contour(x, y, z, levels, cmap=sns.color_palette('crest', as_cmap=True), vmin=0.0, linewidths=2)
+    ax.clabel(contour, contour.levels, inline=True, fontsize=22)
+
+    plt.xlabel('$x$')
+    plt.ylabel('$y$')
+
+    matplotlib.rc('axes', titlepad=20)
+    plt.title(f'Barrier levelsets for linear system')
+
+    plt.legend(loc='lower right')
+    plt.savefig(file_path, bbox_inches='tight')
+    # plt.show()
+
+
+def plot_contours(model, args, config):
+    levels = [1, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
+    file_path = 'figures/population_contour_sbf.pdf'
+    plot_contour(model, args, config, levels, file_path)
+
+    with open('models/population_system_sos_barrier.json', 'r') as f:
+        sos_barrier_parameters = json.load(f)
+
+    def sos_barrier(x):
+        x1, x2 = x[..., 0], x[..., 1]
+
+        agg = 0
+
+        for term in sos_barrier_parameters:
+            agg = agg + term['coefficient'] * (x1 ** term['exponents'][0]) * (x2 ** term['exponents'][1])
+
+        return agg
+
+    levels = [1, 5, 10, 20, 50]
+    file_path = 'figures/population_contour_sos.pdf'
+    plot_contour(sos_barrier, args, config, levels, file_path)

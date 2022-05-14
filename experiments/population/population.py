@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 from .dynamics import Population
 from .partitioning import population_partitioning, plot_partitioning
-from .plot import plot_bounds_2d
+from .plot import plot_bounds_2d, plot_contours
 
 from learned_cbf.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifier, \
     AdditiveGaussianSplittingNeuralSBFCertifier
@@ -124,6 +124,7 @@ def population_main(args, config):
             certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
             test(certifier, config['test'])
         elif args.task == 'plot':
+            plot_contours(barrier, args, config)
             plot_bounds_2d(barrier, dynamics, args, config)
     elif config['experiment_type'] == 'monte_carlo':
         monte_carlo_simulation(args, dynamics, config)
