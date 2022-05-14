@@ -329,7 +329,7 @@ def plot_contour(model, args, config, levels, file_path):
     x, y = input[..., 0], input[..., 1]
 
     contour = ax.contour(x, y, z, levels, cmap=sns.color_palette('crest', as_cmap=True), vmin=0.0, linewidths=2)
-    ax.clabel(contour, contour.levels, inline=True, fontsize=22)
+    ax.clabel(contour, contour.levels, inline=True, fontsize=30)
 
     plt.xlabel('$x$')
     plt.ylabel('$y$')
@@ -346,6 +346,13 @@ def plot_contour(model, args, config, levels, file_path):
 
 
 def plot_contours(model, args, config):
+
+    font = {'family': 'sans-serif',
+            'weight': 'normal',
+            'size': 30}
+
+    matplotlib.rc('font', **font)
+
     levels = [1, 1.5, 2.0, 2.2, 2.4, 2.6]
     file_path = 'figures/polynomial_contour_sbf.pdf'
     plot_contour(model, args, config, levels, file_path)

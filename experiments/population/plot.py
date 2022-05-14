@@ -187,7 +187,7 @@ def plot_bounds_2d(model, dynamics, args, config):
 
 
 @torch.no_grad()
-def plot_contour(model, args, config, levels, file_path):
+def plot_contour(model, args, config, levels, file_path, vmin=-1.0):
     fig, ax = plt.subplots(figsize=(1.9 * 5.4, 1.9 * 4.8))
 
     safe_set_type = config['dynamics']['safe_set']
@@ -225,8 +225,8 @@ def plot_contour(model, args, config, levels, file_path):
     input = input.view(num_points, num_points, -1).numpy()
     x, y = input[..., 0], input[..., 1]
 
-    contour = ax.contour(x, y, z, levels, cmap=sns.color_palette('crest', as_cmap=True), vmin=0.0, linewidths=2)
-    ax.clabel(contour, contour.levels, inline=True, fontsize=22)
+    contour = ax.contour(x, y, z, levels, cmap=sns.color_palette('crest', as_cmap=True), vmin=vmin, linewidths=2)
+    ax.clabel(contour, contour.levels, inline=True, fontsize=30)
 
     plt.xlabel('$x$')
     plt.ylabel('$y$')
@@ -240,7 +240,13 @@ def plot_contour(model, args, config, levels, file_path):
 
 
 def plot_contours(model, args, config):
-    levels = [1, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
+    font = {'family': 'sans-serif',
+            'weight': 'normal',
+            'size': 30}
+
+    matplotlib.rc('font', **font)
+
+    levels = [1, 2, 3, 4, 5]
     file_path = 'figures/population_contour_sbf.pdf'
     plot_contour(model, args, config, levels, file_path)
 
@@ -259,4 +265,4 @@ def plot_contours(model, args, config):
 
     levels = [1, 5, 10, 20, 50]
     file_path = 'figures/population_contour_sos.pdf'
-    plot_contour(sos_barrier, args, config, levels, file_path)
+    plot_contour(sos_barrier, args, config, levels, file_path, vmin=-10.0)
