@@ -338,7 +338,7 @@ def plot_contour(model, args, config, levels, file_path):
     plt.ylim(-2.0, 1.0)
 
     matplotlib.rc('axes', titlepad=20)
-    plt.title(f'Barrier levelsets for polynomial system')
+    # plt.title(f'Barrier levelsets for polynomial system')
 
     plt.legend(loc='lower right')
     plt.savefig(file_path, bbox_inches='tight')
