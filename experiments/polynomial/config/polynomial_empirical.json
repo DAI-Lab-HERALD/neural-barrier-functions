@@ -1,24 +1,19 @@
 {
-  "system": "dubin",
+  "system": "polynomial",
   "experiment_type": "barrier_function",
-  "strategy": "neural_network",
   "dynamics": {
-    "mu": 0.0,
-    "sigma": 0.02,
-    "num_samples": 200,
+    "sigma": 0.1,
+    "num_samples": 500,
     "dt": 0.1,
-    "velocity": 1.0,
-    "horizon": 40,
-    "initial_set": "front",
-    "unsafe_set": "barrel"
+    "horizon": 10
   },
   "partitioning": {
     "method": "grid",
-    "num_slices": [1, 1, 1]
+    "num_slices": [80, 80]
   },
   "model": {
     "type": "fcnn",
-    "input_dim": 3,
+    "input_dim": 2,
     "hidden_nodes": 128,
     "hidden_layers": 3,
     "activation": "relu"
@@ -26,14 +21,14 @@
   "training": {
     "batch_size": 1000,
     "iter_per_epoch": 400,
-    "eps": [0.01, 0.01, 0.01],
+    "eps": [0.005, 0.005],
     "epochs": 150,
     "test_every": 25,
     "adjust_overlap": false,
-    "empirical_only": false
+    "empirical_only": true
   },
   "test": {
-    "ibp_batch_size": 30,
-    "crown_ibp_batch_size": 30
+    "ibp_batch_size": 1,
+    "crown_ibp_batch_size": 1
   }
 }

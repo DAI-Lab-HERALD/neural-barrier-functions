@@ -26,10 +26,13 @@ from learned_cbf.monte_carlo import monte_carlo_simulation
 logger = logging.getLogger(__name__)
 
 
-def step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoch):
+def step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoch, empirical_only):
     optimizer.zero_grad(set_to_none=True)
 
-    loss = 0.5 * empirical_learner.loss(partitioning, kappa) + 0.5 * robust_learner.loss(partitioning, kappa, method='crown_ibp_interval')
+    if empirical_only:
+        loss = empirical_learner.loss(partitioning, kappa)
+    else:
+        loss = 0.5 * empirical_learner.loss(partitioning, kappa) + 0.5 * robust_learner.loss(partitioning, kappa, method='crown_ibp_interval')
 
     loss.backward()
     torch.nn.utils.clip_grad_norm_(robust_learner.parameters(), 1.0)
@@ -72,7 +75,7 @@ def train(robust_learner, empirical_learner, certifier, args, config):
             # plot_partitioning(partitioning)
 
             partitioning = partitioning.to(args.device)
-            step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoch)
+            step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoch, config['training']['empirical_only'])
 
         if epoch % config['training']['test_every'] == config['training']['test_every'] - 1:
             test(certifier, config['test'], kappa)
@@ -87,7 +90,7 @@ def train(robust_learner, empirical_learner, certifier, args, config):
             # plot_partitioning(partitioning)
 
             partitioning = partitioning.to(args.device)
-            step(robust_learner, empirical_learner, optimizer, partitioning, 0.0, config['training']['epochs'])
+            step(robust_learner, empirical_learner, optimizer, partitioning, 0.0, config['training']['epochs'], config['training']['empirical_only'])
 
     logger.info('Training complete')
 

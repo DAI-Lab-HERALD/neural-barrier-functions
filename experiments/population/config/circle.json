@@ -27,7 +27,8 @@
     "eps": 0.005,
     "epochs": 150,
     "test_every": 5,
-    "adjust_overlap": false
+    "adjust_overlap": false,
+    "empirical_only": false
   },
   "test": {
     "ibp_batch_size": 1,
