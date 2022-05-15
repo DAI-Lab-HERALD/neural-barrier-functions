@@ -218,11 +218,11 @@ def plot_contour(model, args, config, levels, file_path, vmin=-1.0):
         raise ValueError('Invalid safe set for population')
 
     num_points = 200
-    x_space = torch.linspace(-3.0, 3.0, num_points)
+    x_space = torch.linspace(-3.0, 3.0, num_points).to(args.device)
 
     input = torch.cartesian_prod(x_space, x_space)
-    z = model(input).view(num_points, num_points).numpy()
-    input = input.view(num_points, num_points, -1).numpy()
+    z = model(input).view(num_points, num_points).cpu().numpy()
+    input = input.view(num_points, num_points, -1).cpu().numpy()
     x, y = input[..., 0], input[..., 1]
 
     contour = ax.contour(x, y, z, levels, cmap=sns.color_palette('crest', as_cmap=True), vmin=vmin, linewidths=2)

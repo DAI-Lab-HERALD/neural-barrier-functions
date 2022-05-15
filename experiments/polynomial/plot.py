@@ -320,12 +320,12 @@ def plot_contour(model, args, config, levels, file_path):
     ax.add_patch(polygon_unsafe)
 
     num_points = 200
-    x1_space = torch.linspace(-3.5, 2.0, num_points)
-    x2_space = torch.linspace(-2.0, 1.0, num_points)
+    x1_space = torch.linspace(-3.5, 2.0, num_points).to(args.device)
+    x2_space = torch.linspace(-2.0, 1.0, num_points).to(args.device)
 
     input = torch.cartesian_prod(x1_space, x2_space)
-    z = model(input).view(num_points, num_points).numpy()
-    input = input.view(num_points, num_points, -1).numpy()
+    z = model(input).view(num_points, num_points).cpu().numpy()
+    input = input.view(num_points, num_points, -1).cpu().numpy()
     x, y = input[..., 0], input[..., 1]
 
     contour = ax.contour(x, y, z, levels, cmap=sns.color_palette('crest', as_cmap=True), vmin=0.0, linewidths=2)
