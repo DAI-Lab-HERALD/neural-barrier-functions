@@ -488,6 +488,8 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
             size_before = len(set)
             set, keep, prune_all = self.prune_beta_gamma(set, min, max)
             logger.debug(f'Min/max pruning {size_before - len(set)}')
+            partition_gap = max - min
+            logger.debug(f'Partition gap (min: {partition_gap.min().item()}/max: {partition_gap.max().item()})')
 
             if prune_all:
                 logger.warning(f'Pruning all in beta: {min}, {max}, last gap: {last_gap[-1]}')
