@@ -447,7 +447,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
 class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
     def __init__(self, barrier: nn.Module, dynamics: AdditiveGaussianDynamics, factory, initial_partitioning, horizon,
-                 certification_threshold=1.0e-10, split_gap_stop_treshold=1e-6, max_set_size=20000, device=None):
+                 certification_threshold=1.0e-10, split_gap_stop_treshold=1e-6, max_set_size=200000, device=None):
         super().__init__()
 
         assert isinstance(dynamics, AdditiveGaussianDynamics)
@@ -521,7 +521,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
         return max.max().clamp(min=0)
 
-    def pick_for_splitting(self, max, batch_size=1, **Kwargs):
+    def pick_for_splitting(self, max, batch_size=1, **kwargs):
         split_indices = max.topk(min(batch_size, max.size(0))).indices
         other_indices = torch.full((max.size(0),), True, dtype=torch.bool, device=max.device)
         other_indices[split_indices] = False
@@ -570,7 +570,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         set = self.initial_partitioning.initial
 
         min, max = self.min_max(set, **kwargs)
-        last_gap = [torch.finfo(min.dtype).max for _ in range(9)] + [(max.max() - min.max()).item()]
+        last_gap = [torch.finfo(min.dtype).max for _ in range(19)] + [(max.max() - min.max()).item()]
 
         while not self.should_stop_beta_gamma('GAMMA', set, min, max, last_gap):
             set, _, prune_all = self.prune_beta_gamma(set, min, max)
@@ -612,7 +612,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         return len(set) > max_set_size or \
                abs_max <= 0.0 or \
                gap <= self.split_gap_stop_treshold or \
-               gap >= torch.tensor(last_gap).max()
+               torch.tensor(last_gap[-10:]).min() >= torch.tensor(last_gap).max()
 
     @torch.no_grad()
     def barrier_violation(self, **kwargs):
