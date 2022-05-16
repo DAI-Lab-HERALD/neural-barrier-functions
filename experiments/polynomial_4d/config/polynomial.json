@@ -1,0 +1,34 @@
+{
+  "system": "4d-polynomial",
+  "experiment_type": "barrier_function",
+  "dynamics": {
+    "sigma": 0.1,
+    "num_samples": 500,
+    "dt": 0.1,
+    "horizon": 10
+  },
+  "partitioning": {
+    "method": "grid",
+    "num_slices": [80, 80]
+  },
+  "model": {
+    "type": "fcnn",
+    "input_dim": 4,
+    "hidden_nodes": 128,
+    "hidden_layers": 3,
+    "activation": "relu"
+  },
+  "training": {
+    "batch_size": 1000,
+    "iter_per_epoch": 400,
+    "eps": [0.00001, 0.00001],
+    "epochs": 150,
+    "test_every": 25,
+    "adjust_overlap": false,
+    "empirical_only": false
+  },
+  "test": {
+    "ibp_batch_size": 1,
+    "crown_ibp_batch_size": 1
+  }
+}

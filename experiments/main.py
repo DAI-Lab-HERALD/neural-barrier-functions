@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 import torch
 
 from dubin.dubin import dubins_car_main
+from polynomial_4d.polynomial_4d import polynomial_4d_main
 from polynomial.polynomial import polynomial_main
 from log import configure_logging
 from population.population import population_main
@@ -16,6 +17,8 @@ def main(args):
         population_main(args, config)
     elif config['system'] == 'polynomial':
         polynomial_main(args, config)
+    elif config['system'] == 'polynomial_4d':
+        polynomial_4d_main(args, config)
     elif config['system'] == 'dubin':
         dubins_car_main(args, config)
     else:
