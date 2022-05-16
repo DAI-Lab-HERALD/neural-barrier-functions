@@ -27,24 +27,8 @@ class AdversarialNeuralSBF(nn.Module):
         """
         assert partitioning.safe is not None
 
-        if kwargs.get('method') == 'combined':
-            kwargs['method'] = 'crown_ibp_interval'
-
-        with torch.no_grad():
-            _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
-
-            beta = upper.partition_max()
-            idx = beta.argmax()
-
-            beta_max_partition = partitioning.safe[idx]
-            beta_max_partition = Partitions((
-                beta_max_partition.lower.unsqueeze(0),
-                beta_max_partition.upper.unsqueeze(0)
-            ))
-
-        _, upper = bounds(self.beta_network, beta_max_partition, bound_lower=False, **kwargs)
-        upper = upper.partition_max()
-        beta = upper.view(-1)
+        _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
+        beta = upper.partition_max().view(-1)
 
         return beta.clamp(min=0).max()
 
@@ -54,20 +38,7 @@ class AdversarialNeuralSBF(nn.Module):
         """
         assert partitioning.initial is not None
 
-        if kwargs.get('method') == 'combined':
-            kwargs['method'] = 'crown_ibp_interval'
-
-        with torch.no_grad():
-            _, upper = bounds(self.barrier, partitioning.initial, bound_lower=False, **kwargs)
-            idx = upper.partition_max().argmax()
-
-            gamma_max_partition = partitioning.initial[idx]
-            gamma_max_partition = Partitions((
-                gamma_max_partition.lower.unsqueeze(0),
-                gamma_max_partition.upper.unsqueeze(0)
-            ))
-
-        _, upper = bounds(self.barrier, gamma_max_partition, bound_lower=False, **kwargs)
+        _, upper = bounds(self.barrier, partitioning.initial, bound_lower=False, **kwargs)
         gamma = upper.partition_max().view(-1)
 
         return gamma.clamp(min=0).max()
@@ -94,9 +65,6 @@ class AdversarialNeuralSBF(nn.Module):
         """
         assert partitioning.unsafe is not None
 
-        if kwargs.get('method') == 'combined':
-            kwargs['method'] = 'ibp'
-
         lower, _ = bounds(self.barrier, partitioning.unsafe, bound_upper=False, **kwargs)
         violation = (1 - lower).partition_max().clamp(min=0)
 
@@ -108,9 +76,6 @@ class AdversarialNeuralSBF(nn.Module):
         assume that barrier network ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
         :return: Loss for state space (zero if not partitioned)
         """
-        if kwargs.get('method') == 'combined':
-            kwargs['method'] = 'ibp'
-
         if partitioning.state_space is not None:
             lower, _ = bounds(self.barrier, partitioning.state_space, bound_upper=False, **kwargs)
             violation = (0 - lower).partition_max().clamp(min=0)
@@ -158,7 +123,7 @@ class EmpiricalNeuralSBF(nn.Module):
         bx = self.barrier(x)
 
         beta = (expectation - bx).view(-1)
-        return beta.max().clamp(min=0)
+        return beta.clamp(min=0).max()
 
     def gamma(self, partitioning):
         """
@@ -170,7 +135,7 @@ class EmpiricalNeuralSBF(nn.Module):
         x = partitioning.initial.center
 
         gamma = self.barrier(x).view(-1)
-        return gamma.max().clamp(min=0)
+        return gamma.clamp(min=0).max()
 
     def loss(self, partitioning, safety_weight=0.5, **kwargs):
         if safety_weight == 1.0:
