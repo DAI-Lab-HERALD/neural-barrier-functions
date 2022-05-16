@@ -32,7 +32,8 @@ def step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoc
     if empirical_only:
         loss = empirical_learner.loss(partitioning, kappa)
     else:
-        loss = 0.5 * empirical_learner.loss(partitioning, kappa) + 0.5 * robust_learner.loss(partitioning, kappa, method='crown_ibp_interval')
+        loss = robust_learner.loss(partitioning, kappa, method='crown_ibp_interval')
+        # loss = 0.5 * empirical_learner.loss(partitioning, kappa) + 0.5 * robust_learner.loss(partitioning, kappa, method='crown_ibp_interval')
 
     loss.backward()
     torch.nn.utils.clip_grad_norm_(robust_learner.parameters(), 1.0)
@@ -61,7 +62,7 @@ def test(certifier, test_config, kappa=None):
 
 def train(robust_learner, empirical_learner, certifier, args, config):
     logger.info('Starting training')
-    test(certifier, config['test'])
+    # test(certifier, config['test'])
 
     dataset = StochasticSystemDataset(config['training'], robust_learner.dynamics)
     dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
@@ -82,7 +83,7 @@ def train(robust_learner, empirical_learner, certifier, args, config):
             save(robust_learner, args, epoch)
 
         scheduler.step()
-        kappa *= 0.95
+        kappa *= 0.97
 
     while not certifier.certify(method='crown_interval', batch_size=config['test']['ibp_batch_size']):
         logger.info(f'Current violation: {certifier.barrier_violation(method="crown_interval", batch_size=config["test"]["ibp_batch_size"])}')
