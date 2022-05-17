@@ -353,7 +353,7 @@ def plot_contours(model, args, config):
 
     matplotlib.rc('font', **font)
 
-    levels = [1, 1.5, 2.0, 2.2, 2.4, 2.6]
+    levels = [1, 3, 5, 7, 9]
     file_path = 'figures/polynomial_contour_sbf.pdf'
     plot_contour(model, args, config, levels, file_path)
 
@@ -384,8 +384,8 @@ def plot_bounds_2d(model, dynamics, args, config):
 
     matplotlib.rc('font', **font)
 
-    # plot_barrier(model, args, config)
-    # plot_partitions(model, dynamics, args, config)
-    # plot_heatmaps(model, dynamics, args, config)
-    # plot_dynamics(model, dynamics, args, config)
+    plot_barrier(model, args, config)
+    plot_partitions(model, dynamics, args, config)
+    plot_heatmaps(model, dynamics, args, config)
+    plot_dynamics(model, dynamics, args, config)
     plot_contours(model, args, config)
