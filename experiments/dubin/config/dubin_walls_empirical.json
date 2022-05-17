@@ -4,9 +4,9 @@
   "strategy": "no_actuation",
   "dynamics": {
     "mu": 1.05263157895,
-    "sigma": 0.02,
+    "sigma": 0.1,
     "num_samples": 500,
-    "dt": 0.05,
+    "dt": 0.1,
     "velocity": 1.0,
     "horizon": 10,
     "initial_set": "left",
