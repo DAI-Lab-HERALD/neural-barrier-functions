@@ -45,15 +45,7 @@ function verify(system::System, σ::Number, H::Int; B_deg::Int = 4, 𝔼::Expect
     println("γ $γ, beta $β")
 
     # Alternatively use B(x_0) for γ if x_0 is absolutely known
-    if α == 1
-        prob = γ + β * H
-    elseif β * α / (α - 1) <= 1
-        prob = 1 - (1 - γ) * (1 - β)^H
-    else
-        α_inv_H = α^(-H)
-        prob = γ * α_inv_H + (1 - α_inv_H) * α * β / (α - 1)
-    end
-    prob = min(prob, γ + β * H)
+    prob = γ + β * H
 
     println("termination status $(JuMP.termination_status(model)), primal status $(JuMP.primal_status(model)), prob $prob")
 

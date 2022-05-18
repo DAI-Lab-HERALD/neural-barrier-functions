@@ -6,10 +6,6 @@ module BarrierFunctions
     const VectorAPL{T} = AbstractVector{<:AbstractPolynomial{T}}
 
     include("util.jl")
-    include("substitute.jl")
-
-    include("polytope.jl")
-    export @polytope, inequalities, polytope
 
     include("partitioning.jl")
     export NoPartitioning, EqualWidthPartitioning
@@ -27,7 +23,6 @@ module BarrierFunctions
     include("expectation.jl")
     export Exception, AnalyticExpectation
 
-    include("sparsity.jl")
     include("verify.jl")
     export verify
 end

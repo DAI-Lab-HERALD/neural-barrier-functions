@@ -6,7 +6,7 @@ struct AnalyticExpectation <: Expectation end
 
 
 
-function auxiliary_domain(yz_pairs, system::System{V, <:ExactDynamics, C, P}, p, 𝔼) where {V, C, P}
+function auxiliary_domain(yz_pairs, system::System{V, <:ExactDynamics, P}, p, 𝔼) where {V, C, P}
     z, fx = noise(system), next_state(system, p)
     domain = mapreduce(∩, yz_pairs) do (y_sample, z_sample)
         x_next = subs(fx, z => z_sample)
@@ -20,7 +20,7 @@ function auxiliary_domain(yz_pairs, system::System{V, <:ExactDynamics, C, P}, p,
     return domain
 end
 
-function auxiliary_domain(yz_pairs, system::System{V, <:BoundDynamics, C, P}, p, _) where {V, C, P}
+function auxiliary_domain(yz_pairs, system::System{V, <:BoundDynamics, P}, p, _) where {V, C, P}
     z, (lower, upper) = noise(system), next_state(system, p)
     domain = mapreduce(∩, yz_pairs) do (y_sample, z_sample)
         x_next_lower = subs(lower, z => z_sample)
@@ -31,7 +31,7 @@ function auxiliary_domain(yz_pairs, system::System{V, <:BoundDynamics, C, P}, p,
     return domain
 end
 
-function expectation(::AnalyticExpectation, system::System{V, <:ExactDynamics, C, P}, B, σ, p) where {V, C, P}
+function expectation(::AnalyticExpectation, system::System{V, <:ExactDynamics, P}, B, σ, p) where {V, C, P}
     x, z = state(system), noise(system)
     B_next = subs(B, x => next_state(system, p))
 

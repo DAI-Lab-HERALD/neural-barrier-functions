@@ -47,8 +47,7 @@ function display_and_save(system_or_folder, p, file_name)
     savefig(p, joinpath(figure_path(subfolder), file_name))
 end
 
-folder(::System{V, D, NoControl, P}) where {V, D, P} = "autonomous_system"
-folder(::System{V, D, Control, P}) where {V, D, P} = "control_system"
+folder(::BarrierFunctions.System{V, D, P}) where {V, D, P} = "autonomous_system"
 folder(s::AbstractString) = s
 
 function figure_path(subfolder)

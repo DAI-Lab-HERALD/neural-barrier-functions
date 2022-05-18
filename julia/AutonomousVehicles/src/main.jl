@@ -5,6 +5,7 @@ using BarrierFunctions
 
 include("experiments/population.jl")
 include("experiments/polynomial.jl")
+include("experiments/polynomial_4d.jl")
 include("visualization.jl")
 include("utils.jl")
 
@@ -15,5 +16,5 @@ fig_folder = @name(polynomial_system)
 
 succ, B, prob = verify(system, σ, H; B_deg = 8)
 
-save_barrier(barriers[1], "models/polynomial_system_sos_barrier.json")
-barrier_plot(fig_folder, i, barrier, 3.5)
+# save_barrier(barriers[1], "models/polynomial_system_sos_barrier.json")
+# barrier_plot(fig_folder, i, barrier, 3.5)
