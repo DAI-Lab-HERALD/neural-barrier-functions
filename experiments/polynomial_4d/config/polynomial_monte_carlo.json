@@ -1,5 +1,5 @@
 {
-  "system": "4d-polynomial",
+  "system": "polynomial_4d",
   "experiment_type": "monte_carlo",
   "num_particles": 10000,
   "dynamics": {

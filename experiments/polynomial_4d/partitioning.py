@@ -54,10 +54,10 @@ def polynomial_partitioning(config, dynamics):
     assert partitioning_config['method'] == 'grid'
 
     initial_partitioning = Partitioning(
-        (torch.tensor([[-1.8, -0.1], [-1.4, -0.5], [1.0, -0.5]]), torch.tensor([[-1.4, 0.1], [-1.2, 0.1], [2.0, 0.5]])),
-        (torch.tensor([[-3.5, -2]]), torch.tensor([[2.0, 1.0]])),
-        (torch.tensor([[0.4, 0.3], [0.4, 0.1], [-1.4, -1.4]]), torch.tensor([[0.6, 0.5], [0.8, 0.3], [-0.6, -0.6]])),
-        (torch.tensor([[-3.5, -2]]), torch.tensor([[2.0, 1.0]]))
+        (torch.tensor([[-0.2, -0.2, -0.2, -0.2]]), torch.tensor([[0.2, 0.2, 0.2, 0.2]])),
+        (torch.tensor([[-0.5, -0.5, -0.5, -0.5]]), torch.tensor([[0.5, 0.5, 0.5, 0.5]])),
+        (torch.tensor([[-1.5, -1.5, -1.5, -1.5]]), torch.tensor([[1.5, 1.5, 1.5, 1.5]])),
+        (torch.tensor([[-1.5, -1.5, -1.5, -1.5]]), torch.tensor([[1.5, 1.5, 1.5, 1.5]]))
     )
 
     # x1_space = torch.linspace(-3.5, 2.0, partitioning_config['num_slices'][0] + 1)

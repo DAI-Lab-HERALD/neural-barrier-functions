@@ -1,5 +1,5 @@
 {
-  "system": "4d-polynomial",
+  "system": "polynomial_4d",
   "experiment_type": "barrier_function",
   "dynamics": {
     "sigma": 0.1,
@@ -21,7 +21,7 @@
   "training": {
     "batch_size": 1000,
     "iter_per_epoch": 400,
-    "eps": [0.00001, 0.00001],
+    "eps": [0.00001, 0.00001, 0.00001, 0.00001],
     "epochs": 150,
     "test_every": 25,
     "adjust_overlap": false,
