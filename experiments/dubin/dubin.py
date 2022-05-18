@@ -60,7 +60,7 @@ def test_method(certifier, method, batch_size, kappa=None):
 @torch.no_grad()
 def test(certifier, test_config, kappa=None):
     # test_method(certifier, method='ibp', batch_size=test_config['ibp_batch_size'], kappa=kappa)
-    test_method(certifier, method='crown_interval', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
+    test_method(certifier, method='crown_linear', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
     # test_method(certifier, method='optimal', batch_size=test_config['crown_ibp_batch_size'], kappa=kappa)
 
 

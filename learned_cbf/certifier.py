@@ -217,7 +217,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
             lower, upper = bounds(self.beta_network, set, **kwargs)
 
             max = upper.partition_max()
-            min = lower.partition_min()
+            min = lower.partition_max()
 
         return min.view(-1), max.view(-1)
 
@@ -260,7 +260,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         assert self.initial_partitioning.initial is not None
         set = self.initial_partitioning.initial
 
-        min, max = self.min_max(set, **kwargs)
+        min, max = self.min_max_gamma(set, **kwargs)
         last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
         while not self.should_stop_beta_gamma('GAMMA', set, min, max, last_gap):
@@ -276,9 +276,29 @@ class SplittingNeuralSBFCertifier(nn.Module):
             set = self.split(set, **kwargs)
             set = self.region_prune(set, self.dynamics.initial)
 
-            min, max = self.min_max(set, **kwargs)
+            min, max = self.min_max_gamma(set, **kwargs)
 
         return max.max().clamp(min=0)
+
+    def min_max_gamma(self, set, **kwargs):
+        if kwargs.get('method') == 'optimal':
+            kwargs.pop('method')
+            lower, upper = bounds(self.barrier, set, method='ibp', **kwargs)
+            min_ibp = lower.partition_max()
+            max_ibp = upper.partition_max()
+
+            lower, upper = bounds(self.barrier, set, method='crown_interval', **kwargs)
+            min_crown = lower.partition_max()
+            max_crown = upper.partition_max()
+
+            min = torch.max(min_ibp, min_crown)
+            max = torch.min(max_ibp, max_crown)
+        else:
+            lower, upper = bounds(self.barrier, set, **kwargs)
+            min = lower.partition_max()
+            max = upper.partition_max()
+
+        return min.view(-1), max.view(-1)
 
     def prune_beta_gamma(self, set, min, max):
         largest_lower_bound = min.max()
@@ -356,18 +376,18 @@ class SplittingNeuralSBFCertifier(nn.Module):
             kwargs.pop('method')
             lower, upper = bounds(self.barrier, set, method='ibp', **kwargs)
             min_ibp = lower.partition_min()
-            max_ibp = upper.partition_max()
+            max_ibp = upper.partition_min()
 
             lower, upper = bounds(self.barrier, set, method='crown_interval', **kwargs)
             min_crown = lower.partition_min()
-            max_crown = upper.partition_max()
+            max_crown = upper.partition_min()
 
             min = torch.max(min_ibp, min_crown)
             max = torch.min(max_ibp, max_crown)
         else:
             lower, upper = bounds(self.barrier, set, **kwargs)
             min = lower.partition_min()
-            max = upper.partition_max()
+            max = upper.partition_min()
 
         return min.view(-1), max.view(-1)
 
@@ -531,7 +551,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         return split_indices, other_indices
 
     def min_max_beta(self, lower, upper):
-        min = lower.partition_min()
+        min = lower.partition_max()
         max = upper.partition_max()
 
         return min.view(-1), max.view(-1)
@@ -571,7 +591,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         assert self.initial_partitioning.initial is not None
         set = self.initial_partitioning.initial
 
-        min, max = self.min_max(set, **kwargs)
+        min, max = self.min_max_gamma(set, **kwargs)
         last_gap = [torch.finfo(min.dtype).max for _ in range(19)] + [(max.max() - min.max()).item()]
 
         while not self.should_stop_beta_gamma('GAMMA', set, min, max, last_gap):
@@ -584,12 +604,32 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
             set = self.split(set, **kwargs)
             set = self.region_prune(set, self.dynamics.initial)
 
-            min, max = self.min_max(set, **kwargs)
+            min, max = self.min_max_gamma(set, **kwargs)
 
             last_gap.append((max.max() - min.max()).item())
             last_gap.pop(0)
 
         return max.max().clamp(min=0)
+
+    def min_max_gamma(self, set, **kwargs):
+        if kwargs.get('method') == 'optimal':
+            kwargs.pop('method')
+            lower, upper = bounds(self.barrier, set, method='ibp', **kwargs)
+            min_ibp = lower.partition_max()
+            max_ibp = upper.partition_max()
+
+            lower, upper = bounds(self.barrier, set, method='crown_interval', **kwargs)
+            min_crown = lower.partition_max()
+            max_crown = upper.partition_max()
+
+            min = torch.max(min_ibp, min_crown)
+            max = torch.min(max_ibp, max_crown)
+        else:
+            lower, upper = bounds(self.barrier, set, **kwargs)
+            min = lower.partition_max()
+            max = upper.partition_max()
+
+        return min.view(-1), max.view(-1)
 
     def prune_beta_gamma(self, set, min, max):
         largest_lower_bound = min.max()
@@ -670,18 +710,18 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
             kwargs.pop('method')
             lower, upper = bounds(self.barrier, set, method='ibp', **kwargs)
             min_ibp = lower.partition_min()
-            max_ibp = upper.partition_max()
+            max_ibp = upper.partition_min()
 
             lower, upper = bounds(self.barrier, set, method='crown_interval', **kwargs)
             min_crown = lower.partition_min()
-            max_crown = upper.partition_max()
+            max_crown = upper.partition_min()
 
             min = torch.max(min_ibp, min_crown)
             max = torch.min(max_ibp, max_crown)
         else:
             lower, upper = bounds(self.barrier, set, **kwargs)
             min = lower.partition_min()
-            max = upper.partition_max()
+            max = upper.partition_min()
 
         return min.view(-1), max.view(-1)
 
