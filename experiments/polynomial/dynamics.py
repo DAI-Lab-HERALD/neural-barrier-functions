@@ -243,112 +243,7 @@ def crown_backward_nominal_polynomial_jit(W_tilde: torch.Tensor, alpha: Tuple[to
     return W_tilde, bias
 
 
-class BoundNominalPolynomialUpdate(BoundModule):
-    def __init__(self, module, factory, **kwargs):
-        super().__init__(module, factory, **kwargs)
-
-        self.alpha_lower, self.beta_lower = None, None
-        self.alpha_upper, self.beta_upper = None, None
-        self.bounded = False
-
-    def func(self, x):
-        return x**3 / 3.0
-
-    def derivative(self, x):
-        return x**2
-
-    def alpha_beta(self, preactivation):
-        lower, upper = preactivation.lower[..., 0], preactivation.upper[..., 0]
-        zero_width, n, p, np = regimes(lower, upper)
-
-        self.alpha_lower, self.beta_lower = torch.zeros_like(lower), torch.zeros_like(lower)
-        self.alpha_upper, self.beta_upper = torch.zeros_like(lower), torch.zeros_like(lower)
-
-        self.alpha_lower[zero_width], self.beta_lower[zero_width] = 0, self.func(lower[zero_width])
-        self.alpha_upper[zero_width], self.beta_upper[zero_width] = 0, self.func(upper[zero_width])
-
-        lower_act, upper_act = self.func(lower), self.func(upper)
-        lower_prime, upper_prime = self.derivative(lower), self.derivative(upper)
-
-        d = (lower + upper) * 0.5  # Let d be the midpoint of the two bounds
-        d_act = self.func(d)
-        d_prime = self.derivative(d)
-
-        slope = (upper_act - lower_act) / (upper - lower)
-
-        def add_linear(alpha, beta, mask, a, x, y):
-            alpha[mask] = a[mask]
-            beta[mask] = y[mask] - a[mask] * x[mask]
-
-        ###################
-        # Negative regime #
-        ###################
-        # Upper bound
-        # - d = (lower + upper) / 2 for midpoint
-        # - Slope is sigma'(d) and it has to cross through sigma(d)
-        add_linear(self.alpha_upper, self.beta_upper, mask=n, a=d_prime, x=d, y=d_act)
-
-        # Lower bound
-        # - Exact slope between lower and upper
-        add_linear(self.alpha_lower, self.beta_lower, mask=n, a=slope, x=lower, y=lower_act)
-
-        ###################
-        # Positive regime #
-        ###################
-        # Lower bound
-        # - d = (lower + upper) / 2 for midpoint
-        # - Slope is sigma'(d) and it has to cross through sigma(d)
-        add_linear(self.alpha_lower, self.beta_lower, mask=p, a=d_prime, x=d, y=d_act)
-
-        # Upper bound
-        # - Exact slope between lower and upper
-        add_linear(self.alpha_upper, self.beta_upper, mask=p, a=slope, x=upper, y=upper_act)
-
-        #################
-        # Crossing zero #
-        #################
-        # Upper bound #
-        # If tangent to lower is above upper, then take direct slope between lower and upper
-        direct_upper = np & (slope >= lower_prime)
-        add_linear(self.alpha_upper, self.beta_upper, mask=direct_upper, a=slope, x=upper, y=upper_act)
-
-        # Else use polynomial derivative to find upper bound on slope.
-        implicit_upper = np & (slope < lower_prime)
-
-        d = -upper / 2.0
-        # Slope has to attach to (upper, upper^3)
-        add_linear(self.alpha_upper, self.beta_upper, mask=implicit_upper, a=self.derivative(d), x=upper, y=upper_act)
-
-        # Lower bound #
-        # If tangent to upper is below lower, then take direct slope between lower and upper
-        direct_lower = np & (slope >= upper_prime)
-        add_linear(self.alpha_lower, self.beta_lower, mask=direct_lower, a=slope, x=lower, y=lower_act)
-
-        # Else use polynomial derivative to find upper bound on slope.
-        implicit_lower = np & (slope < upper_prime)
-
-        d = -lower / 2.0
-        # Slope has to attach to (lower, lower^3)
-        add_linear(self.alpha_lower, self.beta_lower, mask=implicit_lower, a=self.derivative(d), x=lower, y=lower_act)
-
-    @property
-    def need_relaxation(self):
-        return not self.bounded
-
-    def set_relaxation(self, linear_bounds):
-        interval_bounds = linear_bounds.concretize()
-        self.alpha_beta(preactivation=interval_bounds)
-        self.bounded = True
-
-    def backward_relaxation(self, region):
-        linear_bounds = self.initial_linear_bounds(region, 2)
-        return linear_bounds, self
-
-    def clear_relaxation(self):
-        self.alpha_lower, self.beta_lower = None, None
-        self.alpha_upper, self.beta_upper = None, None
-        self.bounded = False
-
+class BoundNominalPolynomialUpdate(BoundPolynomialUpdate):
     def crown_backward(self, linear_bounds):
         assert self.bounded
 
@@ -372,10 +267,6 @@ class BoundNominalPolynomialUpdate(BoundModule):
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
-    def ibp_forward_x1_cubed(self, bounds):
-        # x[..., 0] ** 3 is non-decreasing (and multiplying/dividing by a positive constant preserves this)
-        return (bounds.lower[..., 0] ** 3) / 3.0, (bounds.upper[..., 0] ** 3) / 3.0
-
     @assert_bound_order
     def ibp_forward(self, bounds, save_relaxation=False):
         if save_relaxation:
@@ -393,11 +284,6 @@ class BoundNominalPolynomialUpdate(BoundModule):
         lower = torch.stack([x1_lower, x2_lower], dim=-1)
         upper = torch.stack([x1_upper, x2_upper], dim=-1)
         return IntervalBounds(bounds.region, lower, upper)
-
-    def propagate_size(self, in_size):
-        assert in_size == 2
-
-        return 2
 
 
 class Polynomial(Euler, AdditiveGaussianDynamics):

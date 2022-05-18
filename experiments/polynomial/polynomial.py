@@ -62,7 +62,7 @@ def test(certifier, test_config, kappa=None):
 
 def train(robust_learner, empirical_learner, certifier, args, config):
     logger.info('Starting training')
-    # test(certifier, config['test'])
+    test(certifier, config['test'])
 
     dataset = StochasticSystemDataset(config['training'], robust_learner.dynamics)
     dataloader = DataLoader(dataset, batch_size=None, num_workers=8)
