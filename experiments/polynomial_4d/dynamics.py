@@ -391,10 +391,10 @@ class Polynomial(Euler, AdditiveGaussianDynamics):
         else:
             lower_x, upper_x = x, x
 
-        return overlap_circle(lower_x, upper_x, torch.tensor([0.0, 0.0, 0.0, 0.0], device=x.device), 0.5)
+        return overlap_circle(lower_x, upper_x, torch.tensor([0.0, 0.0, 0.0, 0.0], device=x.device), 1.0)
 
     def sample_safe(self, num_particles):
-        dist = distributions.Uniform(torch.tensor([-0.5, -0.5, -0.5, -0.5]), torch.tensor([0.5, 0.5, 0.5, 0.5]))
+        dist = distributions.Uniform(torch.tensor([-1.0, -1.0, -1.0, -1.0]), torch.tensor([1.0, 1.0, 1.0, 1.0]))
         samples = dist.sample((8 * num_particles,))
         samples = samples[self.initial(samples)]
 
@@ -406,7 +406,7 @@ class Polynomial(Euler, AdditiveGaussianDynamics):
         else:
             lower_x, upper_x = x, x
 
-        return overlap_outside_circle(lower_x, upper_x, torch.tensor([0.0, 0.0, 0.0, 0.0], device=x.device), 0.5)
+        return overlap_outside_circle(lower_x, upper_x, torch.tensor([0.0, 0.0, 0.0, 0.0], device=x.device), 1.0)
 
     def sample_unsafe(self, num_particles):
         samples = self.sample_state_space(2 * num_particles)
