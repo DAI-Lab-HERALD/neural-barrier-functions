@@ -396,7 +396,7 @@ class Polynomial(Euler, AdditiveGaussianDynamics):
     def sample_safe(self, num_particles):
         dist = distributions.Uniform(torch.tensor([-1.0, -1.0, -1.0, -1.0]), torch.tensor([1.0, 1.0, 1.0, 1.0]))
         samples = dist.sample((8 * num_particles,))
-        samples = samples[self.initial(samples)]
+        samples = samples[self.safe(samples)]
 
         return samples[:num_particles]
 
