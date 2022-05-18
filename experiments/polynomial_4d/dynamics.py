@@ -38,17 +38,17 @@ class PolynomialUpdate(nn.Module):
 
 @torch.jit.script
 def crown_backward_polynomial_jit(W_lower: torch.Tensor, W_upper: torch.Tensor, z: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-    _lambda_lower = torch.where(W_lower[..., :2] < 0, alpha[1].unsqueeze(-2), alpha[0].unsqueeze(-2))
-    _delta_lower = torch.where(W_lower[..., :2] < 0, beta[1].unsqueeze(-2), beta[0].unsqueeze(-2))
+    _lambda_lower = torch.where(W_lower[..., :3] < 0, alpha[1].unsqueeze(-2), alpha[0].unsqueeze(-2))
+    _delta_lower = torch.where(W_lower[..., :3] < 0, beta[1].unsqueeze(-2), beta[0].unsqueeze(-2))
 
-    _lambda_upper = torch.where(W_upper[..., :2] < 0, alpha[0].unsqueeze(-2), alpha[1].unsqueeze(-2))
-    _delta_upper = torch.where(W_upper[..., :2] < 0, beta[0].unsqueeze(-2), beta[1].unsqueeze(-2))
+    _lambda_upper = torch.where(W_upper[..., :3] < 0, alpha[0].unsqueeze(-2), alpha[1].unsqueeze(-2))
+    _delta_upper = torch.where(W_upper[..., :3] < 0, beta[0].unsqueeze(-2), beta[1].unsqueeze(-2))
 
-    bias = -W_lower[..., 0] * _delta_lower[..., 2] + W_upper[..., 1] * _delta_upper[..., 0] + W_upper[..., 2] * _delta_upper[ ..., 1] + z.unsqueeze(-1) * W_upper[..., 0]
+    bias = -W_lower[..., 0] * _delta_lower[..., 0] + W_upper[..., 1] * _delta_upper[..., 1] + W_upper[..., 2] * _delta_upper[ ..., 2] + z.unsqueeze(-1) * W_upper[..., 0]
 
-    W_tilde1 = W_upper[..., 0] + W_upper[..., 1] * _lambda_upper[..., 0] - W_upper[..., 2] - W_lower[..., 3]
-    W_tilde2 = W_upper[..., 0] + W_upper[..., 1] + W_upper[..., 2] * _lambda_upper[..., 1] - W_lower[..., 3]
-    W_tilde3 = -W_lower[..., 0] * _lambda_lower[..., 2] - W_lower[..., 1] + W_upper[..., 2]
+    W_tilde1 = W_upper[..., 0] + W_upper[..., 1] * _lambda_upper[..., 1] - W_upper[..., 2] - W_lower[..., 3]
+    W_tilde2 = W_upper[..., 0] + W_upper[..., 1] + W_upper[..., 2] * _lambda_upper[..., 2] - W_lower[..., 3]
+    W_tilde3 = -W_lower[..., 0] * _lambda_lower[..., 0] - W_lower[..., 1] + W_upper[..., 2]
     W_tilde4 = -W_lower[..., 1]
 
     if W_tilde1.dim() != W_tilde2.dim():
@@ -70,13 +70,13 @@ class BoundPolynomialUpdate(BoundModule):
         self.bounded = False
 
     def func(self, x):
-        return torch.stack([x[..., 0] ** 2, x[..., 1] ** 2, x[..., 2] ** 3], dim=-1)
+        return torch.stack([x[..., 2] ** 3, x[..., 0] ** 2, x[..., 1] ** 2], dim=-1)
 
     def derivative(self, x):
-        return torch.stack([2 * x[..., 0], 2 * x[..., 1], 3 * (x[..., 2] ** 2)], dim=-1)
+        return torch.stack([3 * (x[..., 2] ** 2), 2 * x[..., 0], 2 * x[..., 1]], dim=-1)
 
     def alpha_beta(self, preactivation):
-        lower, upper = preactivation.lower[..., :3], preactivation.upper[..., :3]
+        lower, upper = preactivation.lower[..., [2, 0, 1]], preactivation.upper[..., [2, 0, 1]]
         zero_width, n, p, np = regimes(lower, upper)
 
         self.alpha_lower, self.beta_lower = torch.zeros_like(lower), torch.zeros_like(lower)
@@ -105,20 +105,6 @@ class BoundPolynomialUpdate(BoundModule):
         #######
         # All #
         #######
-        all = (n | p | np)[..., 0]
-        # Upper bound
-        # - Exact slope between lower and upper
-        add_linear(self.alpha_upper, self.beta_upper, mask=all, a=slope, x=lower, y=lower_act, order=0)
-
-        # Lower bound
-        # - d = (lower + upper) / 2 for midpoint
-        # - Slope is sigma'(d) and it has to cross through sigma(d)
-        add_linear(self.alpha_lower, self.beta_lower, mask=all, a=d_prime, x=d, y=d_act, order=0)
-
-        # ### x_2^2
-        # #######
-        # # All #
-        # #######
         all = (n | p | np)[..., 1]
         # Upper bound
         # - Exact slope between lower and upper
@@ -129,19 +115,33 @@ class BoundPolynomialUpdate(BoundModule):
         # - Slope is sigma'(d) and it has to cross through sigma(d)
         add_linear(self.alpha_lower, self.beta_lower, mask=all, a=d_prime, x=d, y=d_act, order=1)
 
+        # ### x_2^2
+        # #######
+        # # All #
+        # #######
+        all = (n | p | np)[..., 2]
+        # Upper bound
+        # - Exact slope between lower and upper
+        add_linear(self.alpha_upper, self.beta_upper, mask=all, a=slope, x=lower, y=lower_act, order=2)
+
+        # Lower bound
+        # - d = (lower + upper) / 2 for midpoint
+        # - Slope is sigma'(d) and it has to cross through sigma(d)
+        add_linear(self.alpha_lower, self.beta_lower, mask=all, a=d_prime, x=d, y=d_act, order=2)
+
         ### x_3^3
-        n, p, np = n[..., 2], p[..., 2], np[..., 2]
+        n, p, np = n[..., 0], p[..., 0], np[..., 0]
         ###################
         # Negative regime #
         ###################
         # Upper bound
         # - d = (lower + upper) / 2 for midpoint
         # - Slope is sigma'(d) and it has to cross through sigma(d)
-        add_linear(self.alpha_upper, self.beta_upper, mask=n, a=d_prime, x=d, y=d_act, order=2)
+        add_linear(self.alpha_upper, self.beta_upper, mask=n, a=d_prime, x=d, y=d_act, order=0)
 
         # Lower bound
         # - Exact slope between lower and upper
-        add_linear(self.alpha_lower, self.beta_lower, mask=n, a=slope, x=lower, y=lower_act, order=2)
+        add_linear(self.alpha_lower, self.beta_lower, mask=n, a=slope, x=lower, y=lower_act, order=0)
 
         ###################
         # Positive regime #
@@ -149,38 +149,38 @@ class BoundPolynomialUpdate(BoundModule):
         # Lower bound
         # - d = (lower + upper) / 2 for midpoint
         # - Slope is sigma'(d) and it has to cross through sigma(d)
-        add_linear(self.alpha_lower, self.beta_lower, mask=p, a=d_prime, x=d, y=d_act, order=2)
+        add_linear(self.alpha_lower, self.beta_lower, mask=p, a=d_prime, x=d, y=d_act, order=0)
 
         # Upper bound
         # - Exact slope between lower and upper
-        add_linear(self.alpha_upper, self.beta_upper, mask=p, a=slope, x=upper, y=upper_act, order=2)
+        add_linear(self.alpha_upper, self.beta_upper, mask=p, a=slope, x=upper, y=upper_act, order=0)
 
         #################
         # Crossing zero #
         #################
         # Upper bound #
         # If tangent to lower is below upper, then take direct slope between lower and upper
-        direct_upper = np & (slope[..., 2] >= lower_prime[..., 2])
-        add_linear(self.alpha_upper, self.beta_upper, mask=direct_upper, a=slope, x=upper, y=upper_act, order=2)
+        direct_upper = np & (slope[..., 0] >= lower_prime[..., 0])
+        add_linear(self.alpha_upper, self.beta_upper, mask=direct_upper, a=slope, x=upper, y=upper_act, order=0)
 
         # Else use polynomial derivative to find upper bound on slope.
-        implicit_upper = np & (slope[..., 2] < lower_prime[..., 2])
+        implicit_upper = np & (slope[..., 0] < lower_prime[..., 0])
 
         d = -upper / 2.0
         # Slope has to attach to (upper, upper^3)
-        add_linear(self.alpha_upper, self.beta_upper, mask=implicit_upper, a=self.derivative(d), x=upper, y=upper_act, order=2)
+        add_linear(self.alpha_upper, self.beta_upper, mask=implicit_upper, a=self.derivative(d), x=upper, y=upper_act, order=0)
 
         # Lower bound #
         # If tangent to upper is above lower, then take direct slope between lower and upper
-        direct_lower = np & (slope[..., 2] >= upper_prime[..., 2])
-        add_linear(self.alpha_lower, self.beta_lower, mask=direct_lower, a=slope, x=lower, y=lower_act, order=2)
+        direct_lower = np & (slope[..., 0] >= upper_prime[..., 0])
+        add_linear(self.alpha_lower, self.beta_lower, mask=direct_lower, a=slope, x=lower, y=lower_act, order=0)
 
         # Else use polynomial derivative to find upper bound on slope.
-        implicit_lower = np & (slope[..., 2] < upper_prime[..., 2])
+        implicit_lower = np & (slope[..., 0] < upper_prime[..., 0])
 
         d = -lower / 2.0
         # Slope has to attach to (lower, lower^3)
-        add_linear(self.alpha_lower, self.beta_lower, mask=implicit_lower, a=self.derivative(d), x=lower, y=lower_act, order=2)
+        add_linear(self.alpha_lower, self.beta_lower, mask=implicit_lower, a=self.derivative(d), x=lower, y=lower_act, order=0)
 
     @property
     def need_relaxation(self):
