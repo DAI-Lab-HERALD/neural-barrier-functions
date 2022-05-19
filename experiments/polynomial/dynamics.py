@@ -36,14 +36,14 @@ class PolynomialUpdate(nn.Module):
 
 
 @torch.jit.script
-def crown_backward_polynomial_jit(W_tilde: torch.Tensor, z: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-    _lambda = torch.where(W_tilde[..., 1] < 0, alpha[0].unsqueeze(-1), alpha[1].unsqueeze(-1))
-    _delta = torch.where(W_tilde[..., 1] < 0, beta[0].unsqueeze(-1), beta[1].unsqueeze(-1))
+def crown_backward_polynomial_jit(W_lower: torch.Tensor, W_upper: torch.Tensor, z: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    _lambda = torch.where(W_upper[..., 1] < 0, alpha[0].unsqueeze(-1), alpha[1].unsqueeze(-1))
+    _delta = torch.where(W_upper[..., 1] < 0, beta[0].unsqueeze(-1), beta[1].unsqueeze(-1))
 
-    bias = W_tilde[..., 1] * _delta + z.unsqueeze(-1) * W_tilde[..., 0]
+    bias = W_upper[..., 1] * _delta + z.unsqueeze(-1) * W_upper[..., 0]
 
-    W_tilde1 = W_tilde[..., 1] * _lambda - W_tilde[..., 1]
-    W_tilde2 = W_tilde[..., 0] - W_tilde[..., 1]
+    W_tilde1 = W_upper[..., 1] * _lambda - W_lower[..., 1]
+    W_tilde2 = W_upper[..., 0] - W_lower[..., 1]
     if W_tilde1.dim() != W_tilde2.dim():
         W_tilde2 = W_tilde2.unsqueeze(0).expand_as(W_tilde1)
 
@@ -162,22 +162,16 @@ class BoundPolynomialUpdate(BoundModule):
         assert self.bounded
 
         # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!
-        if linear_bounds.lower is None:
-            lower = None
-        else:
-            alpha = self.alpha_upper, self.alpha_lower
-            beta = self.beta_upper, self.beta_lower
-            lower = crown_backward_polynomial_jit(linear_bounds.lower[0], self.module.z, alpha, beta)
 
-            lower = (lower[0], lower[1] + linear_bounds.lower[1])
+        alpha = self.alpha_upper, self.alpha_lower
+        beta = self.beta_upper, self.beta_lower
+        lower = crown_backward_polynomial_jit(linear_bounds.upper[0], linear_bounds.lower[0], self.module.z, alpha, beta)
+        lower = (lower[0], lower[1] + linear_bounds.lower[1])
 
-        if linear_bounds.upper is None:
-            upper = None
-        else:
-            alpha = self.alpha_lower, self.alpha_upper
-            beta = self.beta_lower, self.beta_upper
-            upper = crown_backward_polynomial_jit(linear_bounds.upper[0], self.module.z, alpha, beta)
-            upper = (upper[0], upper[1] + linear_bounds.upper[1])
+        alpha = self.alpha_lower, self.alpha_upper
+        beta = self.beta_lower, self.beta_upper
+        upper = crown_backward_polynomial_jit(linear_bounds.lower[0], linear_bounds.upper[0], self.module.z, alpha, beta)
+        upper = (upper[0], upper[1] + linear_bounds.upper[1])
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
@@ -230,14 +224,14 @@ class NominalPolynomialUpdate(nn.Module):
 
 
 @torch.jit.script
-def crown_backward_nominal_polynomial_jit(W_tilde: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-    _lambda = torch.where(W_tilde[..., 1] < 0, alpha[0].unsqueeze(-1), alpha[1].unsqueeze(-1))
-    _delta = torch.where(W_tilde[..., 1] < 0, beta[0].unsqueeze(-1), beta[1].unsqueeze(-1))
+def crown_backward_nominal_polynomial_jit(W_lower: torch.Tensor, W_upper: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    _lambda = torch.where(W_upper[..., 1] < 0, alpha[0].unsqueeze(-1), alpha[1].unsqueeze(-1))
+    _delta = torch.where(W_upper[..., 1] < 0, beta[0].unsqueeze(-1), beta[1].unsqueeze(-1))
 
-    bias = W_tilde[..., 1] * _delta
+    bias = W_upper[..., 1] * _delta
 
-    W_tilde1 = W_tilde[..., 1] * _lambda - W_tilde[..., 1]
-    W_tilde2 = W_tilde[..., 0] - W_tilde[..., 1]
+    W_tilde1 = W_upper[..., 1] * _lambda - W_lower[..., 1]
+    W_tilde2 = W_upper[..., 0] - W_lower[..., 1]
     W_tilde = torch.stack([W_tilde1, W_tilde2], dim=-1)
 
     return W_tilde, bias
@@ -248,22 +242,15 @@ class BoundNominalPolynomialUpdate(BoundPolynomialUpdate):
         assert self.bounded
 
         # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!
-        if linear_bounds.lower is None:
-            lower = None
-        else:
-            alpha = self.alpha_upper, self.alpha_lower
-            beta = self.beta_upper, self.beta_lower
-            lower = crown_backward_nominal_polynomial_jit(linear_bounds.lower[0], alpha, beta)
+        alpha = self.alpha_upper, self.alpha_lower
+        beta = self.beta_upper, self.beta_lower
+        lower = crown_backward_nominal_polynomial_jit(linear_bounds.upper[0], linear_bounds.lower[0], alpha, beta)
+        lower = (lower[0], lower[1] + linear_bounds.lower[1])
 
-            lower = (lower[0], lower[1] + linear_bounds.lower[1])
-
-        if linear_bounds.upper is None:
-            upper = None
-        else:
-            alpha = self.alpha_lower, self.alpha_upper
-            beta = self.beta_lower, self.beta_upper
-            upper = crown_backward_nominal_polynomial_jit(linear_bounds.upper[0], alpha, beta)
-            upper = (upper[0], upper[1] + linear_bounds.upper[1])
+        alpha = self.alpha_lower, self.alpha_upper
+        beta = self.beta_lower, self.beta_upper
+        upper = crown_backward_nominal_polynomial_jit(linear_bounds.lower[0], linear_bounds.upper[0], alpha, beta)
+        upper = (upper[0], upper[1] + linear_bounds.upper[1])
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
