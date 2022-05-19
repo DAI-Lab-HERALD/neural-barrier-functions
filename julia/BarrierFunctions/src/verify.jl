@@ -77,28 +77,18 @@ function expectation_constraint!(model, system, B, β, σ, 𝔼)
 end
 
 function partition_constraint!(model, system, B, β, σ, 𝔼, p)
-    𝔼Bfx, variable_groups, domain = expectation(𝔼, system, B, σ, p)
-    domain = p ∩ domain
+    𝔼Bfx, aux_domain = expectation(𝔼, system, B, σ, p)
+    full_domain = domain(p) ∩ aux_domain
 
     cone = SOSCone()
     basis = ScaledMonomialBasis
     maxdeg = maxdegree(B)
 
-    if isnothing(variable_groups)
-        certificate = Certificate.Newton(cone, basis, tuple())
-        certificate = Certificate.Remainder(certificate)
-    else
-        certificate = Certificate.MaxDegree(cone, basis, maxdeg)
-    end
-
+    certificate = Certificate.Newton(cone, basis, tuple())
+    certificate = Certificate.Remainder(certificate)
     certificate = Certificate.Putinar(certificate, cone, basis, maxdeg)
 
-    if !isnothing(variable_groups)
-        sparsity = MonomialPartition(state(system), variable_groups...)
-        certificate = Certificate.Sparsity.Preorder(sparsity, certificate)
-    end
-
-    @constraint(model, 𝔼Bfx <= B + β, domain = domain, certificate = certificate)
+    @constraint(model, 𝔼Bfx <= B + β, domain = full_domain, certificate = certificate)
 end
 
 # Patch to ScaledMonomialBasis to match regular MonomialBasis

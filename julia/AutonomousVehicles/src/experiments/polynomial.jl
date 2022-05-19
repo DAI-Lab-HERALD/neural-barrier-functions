@@ -62,6 +62,6 @@ ellipse2 = @set (x[1] - 0.6)^2 / 0.2^2 + (x[2] - 0.2)^2 / 0.1^2 ≥ 1.0
 Xs = @set((x[1] + 1.0)^2 + (x[2] + 1.0)^2 ≥ 0.16) ∩ ellipse1 ∩ ellipse2
 
 
-partitioning = NoPartitioning()
+partitioning = IndexedEqualWidthPartitioning(x, LinRange(-3.5, 2.0, 5), LinRange(-2.0, 1.0, 5))
 polynomial_system = autonomous_system(fx, x, z, X, Xu, Xi, Xs, partitioning)
 

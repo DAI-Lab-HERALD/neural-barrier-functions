@@ -9,15 +9,15 @@ using BarrierFunctions
 dt = 0.1
 
 # Before designing system further, we want to prove the origin is an equilibrium
-@var x₁ x₂ x₃ x₄
-fx = HomotopyContinuation.System([x₁, x₂, x₃, x₄] + dt * [
-    x₁ + x₂ + x₃^3,
-    x₁^2 + x₂ - x₃ - x₄,
-    -x₁ + x₂^2 + x₃,
-    -x₁ - x₂
-])
-result = solve(fx)
-println(real_solutions(result))
+# @var x₁ x₂ x₃ x₄
+# fx = HomotopyContinuation.System([x₁, x₂, x₃, x₄] + dt * [
+#     x₁ + x₂ + x₃^3,
+#     x₁^2 + x₂ - x₃ - x₄,
+#     -x₁ + x₂^2 + x₃,
+#     -x₁ - x₂
+# ])
+# result = solve(fx)
+# println(real_solutions(result))
 
 
 @polyvar x[1:4] z

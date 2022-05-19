@@ -1,3 +1,4 @@
+import json
 import math
 from collections import OrderedDict
 from typing import Tuple
@@ -11,7 +12,8 @@ from matplotlib import pyplot as plt
 from torch import nn, distributions
 from torch.distributions import Normal
 
-from learned_cbf.discretization import Euler, RK4, Heun
+from learned_cbf.bounds import LearnedCBFBoundModelFactory
+from learned_cbf.discretization import Euler, RK4, Heun, ButcherTableau, BoundButcherTableau
 from learned_cbf.dynamics import AdditiveGaussianDynamics
 from learned_cbf.utils import overlap_circle, overlap_rectangle, overlap_outside_circle, overlap_outside_rectangle
 
@@ -1149,10 +1151,61 @@ class DubinsCarStrategyComposition(nn.Sequential, AdditiveGaussianDynamics):
     @property
     def volume(self):
         return 4.0**2 * np.pi
+    
+
+def export_bounds():
+    factory = LearnedCBFBoundModelFactory()
+    factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
+    factory.register(DubinsCarNominalUpdate, BoundDubinsCarNominalUpdate)
+    factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
+    factory.register(DubinSelect, BoundDubinSelect)
+    factory.register(ButcherTableau, BoundButcherTableau)
+    
+    dynamics_config = {
+        'mu': 1.05263157895,
+        'sigma': 0.1,
+        'num_samples': 500,
+        'dt': 0.1,
+        'velocity': 1.0,
+        'horizon': 10,
+        'initial_set': 'left',
+        'unsafe_set': 'walls'
+    }
+    dynamics = DubinsCarStrategyComposition(dynamics_config, DubinsCarNoActuation())
+    bound = factory.build(dynamics.nominal_system)
+
+    x_space = torch.linspace(-2.0, 2.0, 41)
+    x_cell_width = (x_space[1] - x_space[0]) / 2
+    x_slice_centers = (x_space[:-1] + x_space[1:]) / 2
+
+    phi_space = torch.linspace(-np.pi / 2, np.pi / 2, 41)
+    phi_cell_width = (phi_space[1] - phi_space[0]) / 2
+    phi_slice_centers = (phi_space[:-1] + phi_space[1:]) / 2
+
+    cell_width = torch.stack([x_cell_width, x_cell_width, phi_cell_width], dim=-1)
+    cell_centers = torch.cartesian_prod(x_slice_centers, x_slice_centers, phi_slice_centers)
+
+    crown_bounds = bound.crown(HyperRectangle.from_eps(cell_centers, cell_width))
+
+    print('Done computing bounds')
+    obj = {
+        'num_partitions': crown_bounds.region.lower.size(0),
+        'lowerA': crown_bounds.lower[0].tolist(),
+        'lower_bias': crown_bounds.lower[1].tolist(),
+        'upperA': crown_bounds.upper[0].tolist(),
+        'upper_bias': crown_bounds.upper[1].tolist(),
+        'region_lower': crown_bounds.region.lower.tolist(),
+        'region_upper': crown_bounds.region.upper.tolist(),
+    }
+    json_obj = json.dumps(obj, indent=4)
+    
+    with open('../../julia/AutonomousVehicles/models/dubin_bounds.json', 'w') as outfile:
+        outfile.write(json_obj)
 
 
 if __name__ == '__main__':
-    plot_dubins_car()
+    export_bounds()
+    # plot_dubins_car()
     # plot_dubins_car_fixed_strategy_div()
     # plot_dubins_car_fixed_strategy_x_sin_phi()
     # plot_dubins_car_fixed_strategy_y_cos_phi()

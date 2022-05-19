@@ -8,13 +8,13 @@ module BarrierFunctions
     include("util.jl")
 
     include("partitioning.jl")
-    export NoPartitioning, EqualWidthPartitioning
+    export NoPartitioning, EqualWidthPartitioning, IndexedEqualWidthPartitioning, AbstractPartitioning
 
     include("variables.jl")
     export AbstractSystemVariables, variables, state, noise
 
     include("dynamics.jl")
-    export AbstractDynamics, ExactDynamics, BoundDynamics, dynamics, next_state
+    export AbstractDynamics, ExactDynamics, BoundDynamics, dynamics, next_state, VectorBoundDynamics
 
     include("system.jl")
     export System, autonomous_system
