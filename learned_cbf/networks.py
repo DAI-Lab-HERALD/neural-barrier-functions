@@ -189,21 +189,23 @@ class BoundSum(BoundModule):
 
 class VRegionMixin:
     def v_region(self, region):
+        loc, scale = self.module.loc.to(region.lower.device), self.module.scale.to(region.lower.device)
+
         linear_bounds = self.initial_linear_bounds(region, self.state_size)
         dynamics_bounds = self.bound_dynamics.crown_backward(linear_bounds).concretize()
-        v_min = self.state_space_bounds[0] - dynamics_bounds.upper
-        v_max = self.state_space_bounds[1] - dynamics_bounds.lower
+        v_min = torch.max(self.state_space_bounds[0] - dynamics_bounds.upper, loc - self.sigma_cut_off * scale)
+        v_max = torch.min(self.state_space_bounds[1] - dynamics_bounds.lower, loc + self.sigma_cut_off * scale)
 
         centers = []
         half_widths = []
 
         for i, num_slices in enumerate(self.slices):
             if self.module.scale[i] == 0.0:
-                center = torch.full((v_min.size(0), 1), self.module.loc[i], device=v_min.device)
+                center = torch.full((v_min.size(0), 1), loc[i], device=v_min.device)
                 half_width = torch.zeros((v_min.size(0), 1), device=v_min.device)
             else:
                 # v_space = vector_linspace(v_min[..., i], v_max[..., i], num_slices + 1).squeeze(-1)
-                v_space = gaussian_partitioning(v_min[..., i], v_max[..., i], num_slices + 1, self.module.loc[i], self.module.scale[i]).squeeze(-1)
+                v_space = gaussian_partitioning(v_min[..., i], v_max[..., i], num_slices + 1, loc[i], scale[i]).squeeze(-1)
                 center = (v_space[:, :-1] + v_space[:, 1:]) / 2
                 half_width = (v_space[:, 1:] - v_space[:, :-1]) / 2
 
@@ -336,13 +338,14 @@ class GaussianExpectationRegion(nn.Module):
 
 
 class BoundGaussianExpectationRegion(BoundModule, VRegionMixin):
-    def __init__(self, module, factory, state_space_bounds, slices, **kwargs):
+    def __init__(self, module, factory, state_space_bounds, slices, sigma_cut_off=10.0, **kwargs):
         super().__init__(module, factory, **kwargs)
         self.state_size = None
 
         self.bound_dynamics = factory.build(module.dynamics)
         self.state_space_bounds = state_space_bounds
         self.slices = slices
+        self.sigma_cut_off = sigma_cut_off
 
     @property
     def need_relaxation(self):
@@ -413,13 +416,14 @@ class DynamicsNoise(nn.Module):
 
 
 class BoundDynamicsNoise(BoundModule, VRegionMixin):
-    def __init__(self, module, factory, state_space_bounds, slices, **kwargs):
+    def __init__(self, module, factory, state_space_bounds, slices, sigma_cut_off=10.0, **kwargs):
         super().__init__(module, factory, **kwargs)
         self.state_size = None
 
         self.bound_dynamics = factory.build(module.dynamics)
         self.state_space_bounds = state_space_bounds
         self.slices = slices
+        self.sigma_cut_off = sigma_cut_off
 
     @property
     def need_relaxation(self):

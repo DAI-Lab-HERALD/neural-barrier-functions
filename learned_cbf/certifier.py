@@ -467,7 +467,8 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
 class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
     def __init__(self, barrier: nn.Module, dynamics: AdditiveGaussianDynamics, factory, initial_partitioning, horizon,
-                 certification_threshold=1.0e-10, split_gap_stop_treshold=1e-6, max_set_size=200000, device=None):
+                 certification_threshold=1.0e-10, split_gap_stop_treshold=1e-6, max_set_size=200000,
+                 noise_partitions=1000, sigma_cut_off=10.0, device=None):
         super().__init__()
 
         assert isinstance(dynamics, AdditiveGaussianDynamics)
@@ -477,7 +478,8 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         loc, scale = dynamics.v
         loc, scale = loc.to(device), scale.to(device)
         factory.kwargs['state_space_bounds'] = initial_partitioning.state_space.lower[0], initial_partitioning.state_space.upper[0]
-        factory.kwargs['slices'] = [10000 for _ in range(initial_partitioning.state_space.lower.size(-1))]
+        factory.kwargs['slices'] = [noise_partitions for _ in range(initial_partitioning.state_space.lower.size(-1))]
+        factory.kwargs['sigma_cut_off'] = sigma_cut_off
         self.beta_network = factory.build(AdditiveGaussianBetaNetwork(nn.Sequential(barrier, Clamp(max=1.0)), dynamics.nominal_system, loc, scale))
         self.dynamics = dynamics
 
@@ -502,7 +504,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         kwargs['method'] = 'crown_linear'
         lower, upper = bounds(self.beta_network, set, **kwargs)
         min, max = self.min_max_beta(lower, upper)
-        last_gap = [torch.finfo(min.dtype).max for _ in range(1999)] + [(max.max() - min.max()).item()]
+        last_gap = [torch.finfo(min.dtype).max for _ in range(499)] + [(max.max() - min.max()).item()]
 
         while not self.should_stop_beta_gamma('BETA', set, min, max, last_gap):
             size_before = len(set)
