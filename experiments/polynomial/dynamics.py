@@ -211,8 +211,6 @@ class NominalPolynomialUpdate(nn.Module):
     def __init__(self, dynamics_config):
         super().__init__()
 
-        dist = Normal(0.0, dynamics_config['sigma'])
-
     def x1_cubed(self, x):
         return (x[..., 0] ** 3) / 3.0
 
