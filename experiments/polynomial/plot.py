@@ -288,7 +288,7 @@ def plot_dynamics(model, dynamics, args, config):
     diff = nominal_next - input
     input, diff = input.cpu().numpy(), diff.cpu().numpy()
 
-    plt.quiver(input[..., 0], input[..., 1], diff[..., 0], diff[..., 1], angles='xy', color=sns.color_palette('deep')[0])
+    plt.quiver(input[..., 0], input[..., 1], diff[..., 0], diff[..., 1], angles='xy', scale_units='xy', scale=1, color=sns.color_palette('deep')[0])
 
     plt.xlabel('$x$')
     plt.ylabel('$y$')
