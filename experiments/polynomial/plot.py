@@ -11,7 +11,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import seaborn as sns
 from tqdm import tqdm
 
-from learned_cbf.bounds import bounds, LearnedCBFBoundModelFactory
+from learned_cbf.bounds import bounds, LearnedCBFBoundModelFactory, Affine
 from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
 
 from .dynamics import PolynomialUpdate, BoundPolynomialUpdate, NominalPolynomialUpdate, BoundNominalPolynomialUpdate
@@ -44,35 +44,35 @@ def plot_partition(model, args, input_bounds, ibp_bounds, crown_bounds, initial,
     x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 10), torch.linspace(x1[1], x2[1], 10))
 
     # Plot IBP
-    y1, y2 = ibp_bounds.lower.item(), ibp_bounds.upper.item()
-    y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
-
-    surf = ax.plot_surface(x1, x2, y1, color='yellow', label='IBP', alpha=0.4)
-    surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
-    surf._edgecolors2d = surf._edgecolor3d
-
-    surf = ax.plot_surface(x1, x2, y2, color='yellow', alpha=0.4)
-    surf._facecolors2d = surf._facecolor3d
-    surf._edgecolors2d = surf._edgecolor3d
+    # y1, y2 = ibp_bounds.lower.item(), ibp_bounds.upper.item()
+    # y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+    #
+    # surf = ax.plot_surface(x1, x2, y1, color='yellow', label='IBP', alpha=0.4)
+    # surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+    # surf._edgecolors2d = surf._edgecolor3d
+    #
+    # surf = ax.plot_surface(x1, x2, y2, color='yellow', alpha=0.4)
+    # surf._facecolors2d = surf._facecolor3d
+    # surf._edgecolors2d = surf._edgecolor3d
 
     # Plot LBP interval bounds
-    crown_interval = crown_bounds.concretize()
-    y1, y2 = crown_interval.lower.item(), crown_interval.upper.item()
-    y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
-
-    surf = ax.plot_surface(x1, x2, y1, color=sns.color_palette('muted')[0], label='CROWN interval', alpha=0.8)
-    surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
-    surf._edgecolors2d = surf._edgecolor3d
-
-    surf = ax.plot_surface(x1, x2, y2, color=sns.color_palette('muted')[0], alpha=0.8)
-    surf._facecolors2d = surf._facecolor3d
-    surf._edgecolors2d = surf._edgecolor3d
+    # crown_interval = crown_bounds.concretize()
+    # y1, y2 = crown_interval.lower.item(), crown_interval.upper.item()
+    # y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
+    #
+    # surf = ax.plot_surface(x1, x2, y1, color=sns.color_palette('muted')[0], label='CROWN interval', alpha=0.8)
+    # surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
+    # surf._edgecolors2d = surf._edgecolor3d
+    #
+    # surf = ax.plot_surface(x1, x2, y2, color=sns.color_palette('muted')[0], alpha=0.8)
+    # surf._facecolors2d = surf._facecolor3d
+    # surf._edgecolors2d = surf._edgecolor3d
 
     # Plot LBP linear bounds
     y_lower = crown_bounds.lower[0][0, 0] * x1 + crown_bounds.lower[0][0, 1] * x2 + crown_bounds.lower[1]
     y_upper = crown_bounds.upper[0][0, 0] * x1 + crown_bounds.upper[0][0, 1] * x2 + crown_bounds.upper[1]
 
-    surf = ax.plot_surface(x1, x2, y_lower, color=sns.color_palette('muted')[2], label='CROWN linear', alpha=0.8, shade=False)
+    surf = ax.plot_surface(x1, x2, y_lower, color=sns.color_palette('muted')[2], label='CROWN', alpha=0.8, shade=False)
     surf._facecolors2d = surf._facecolor3d
     surf._edgecolors2d = surf._edgecolor3d
 
@@ -100,7 +100,7 @@ def plot_partition(model, args, input_bounds, ibp_bounds, crown_bounds, initial,
     ax.set_zlabel('$B(x, y)$', labelpad=20.0)
 
     plt.title(f'Bound propagation')
-    plt.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
+    plt.legend(loc='upper right', bbox_to_anchor=(1.2, 1.0))
 
     plt.savefig('figures/polynomial_partition.pdf', bbox_inches='tight')
     # plt.show()
@@ -148,11 +148,11 @@ def plot_barrier(model, args, config):
     ax.set_ylim(-2.0, 1.0)
 
     # General plot config
-    ax.set_xlabel('$x$', labelpad=12.0)
-    ax.set_ylabel('$y$', labelpad=20.0)
+    ax.set_xlabel('$x$', labelpad=30.0)
+    ax.set_ylabel('$y$', labelpad=30.0)
     ax.set_zlabel('$B(x, y)$', labelpad=12.0)
 
-    plt.legend()
+    plt.legend(loc='upper right', bbox_to_anchor=(1.2, 1.0))
     plt.title(f'Barrier function & initial and unsafe sets')
     plt.savefig('figures/barrier_3d.pdf', bbox_inches='tight')
     # plt.show()
@@ -218,7 +218,7 @@ def plot_partitions(model, dynamics, args, config):
         #     print((interval_crown.lower, interval_crown.upper), (partition_ibp.lower, partition_ibp.upper))
         #     print(initial, safe, unsafe)
 
-        if i == 657 and interval_crown.upper - interval_crown.lower > max_gap * 0.8:
+        if interval_crown.upper - interval_crown.lower > max_gap * 0.8 and i == 1110:
             print(i)
             plot_partition(model, args, partition_rect, partition_ibp, partition_crown, initial, safe, unsafe)
 
@@ -236,7 +236,7 @@ def plot_heatmaps(model, dynamics, args, config):
 
     matplotlib.rc('axes', titlepad=20)
 
-    plt.figure(figsize=(2 * 5.6, 2 * 4.8))
+    plt.figure(figsize=(2 * 5.6, 2 * 4.3))
     im = plt.imshow(lower, cmap=sns.color_palette("rocket", as_cmap=True), vmin=vmin, vmax=vmax, origin='lower',
                extent=[-3.5, 2.0, -2.0, 1.0], aspect='auto')
     plt.title('Lower bound of $B(x, y)$')
@@ -246,7 +246,7 @@ def plot_heatmaps(model, dynamics, args, config):
     # plt.show()
     plt.savefig('figures/heatmap_lower.pdf', bbox_inches='tight')
 
-    plt.figure(figsize=(2 * 5.6, 2 * 4.8))
+    plt.figure(figsize=(2 * 5.6, 2 * 4.3))
     im = plt.imshow(upper, cmap=sns.color_palette("rocket", as_cmap=True), vmin=vmin, vmax=vmax, origin='lower',
                extent=[-3.5, 2.0, -2.0, 1.0], aspect='auto')
     plt.title('Upper bound of $B(x, y)$')
@@ -256,7 +256,7 @@ def plot_heatmaps(model, dynamics, args, config):
     # plt.show()
     plt.savefig('figures/heatmap_upper.pdf', bbox_inches='tight')
 
-    plt.figure(figsize=(2 * 5.6, 2 * 4.8))
+    plt.figure(figsize=(2 * 5.6, 2 * 4.3))
     im = plt.imshow(upper - lower, cmap=sns.color_palette("rocket", as_cmap=True), origin='lower',
                extent=[-3.5, 2.0, -2.0, 1.0], aspect='auto')
     plt.title('Gap between upper and lower bound')
@@ -268,7 +268,7 @@ def plot_heatmaps(model, dynamics, args, config):
 
 
 def plot_dynamics(model, dynamics, args, config):
-    fig, ax = plt.subplots(figsize=(1.9 * 5.4, 1.9 * 4.8))
+    fig, ax = plt.subplots(figsize=(1.9 * 5.4, 1.9 * 4.3))
 
     circle_init = plt.Circle((1.5, 0), math.sqrt(0.25), facecolor=(*sns.color_palette('deep')[2], 0.4), edgecolor=(*sns.color_palette('deep')[2], 1.0), fill=True, linewidth=2, label='Initial set')
     polygon_init = plt.Polygon(np.array([[-1.2, 0.1], [-1.8, 0.1], [-1.8, -0.1], [-1.4, -0.1], [-1.4, -0.5], [-1.2, -0.5]]),
@@ -380,7 +380,7 @@ def plot_bounds_2d(model, dynamics, args, config):
 
     font = {'family': 'sans-serif',
             'weight': 'normal',
-            'size': 22}
+            'size': 30}
 
     matplotlib.rc('font', **font)
 
