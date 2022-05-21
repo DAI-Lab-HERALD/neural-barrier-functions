@@ -271,13 +271,14 @@ class GaussianProbabilityNetwork(nn.Module):
 
 
 class BoundGaussianProbabilityNetwork(BoundModule, VRegionMixin):
-    def __init__(self, module, factory, state_space_bounds, slices, **kwargs):
+    def __init__(self, module, factory, state_space_bounds, slices, sigma_cut_off=10.0, **kwargs):
         super().__init__(module, factory, **kwargs)
         self.state_size = None
 
         self.bound_dynamics = factory.build(module.dynamics)
         self.state_space_bounds = state_space_bounds
         self.slices = slices
+        self.sigma_cut_off = sigma_cut_off
 
     @property
     def need_relaxation(self):
