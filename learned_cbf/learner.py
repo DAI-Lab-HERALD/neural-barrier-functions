@@ -10,7 +10,7 @@ from .bounds import bounds
 
 
 class AdversarialNeuralSBF(nn.Module):
-    def __init__(self, barrier, dynamics, factory, horizon):
+    def __init__(self, barrier, dynamics, factory, horizon, T=0.05):
         super().__init__()
 
         self.barrier = factory.build(barrier)
@@ -18,6 +18,7 @@ class AdversarialNeuralSBF(nn.Module):
         self.dynamics = dynamics
 
         self.horizon = horizon
+        self.T = T
 
         # TODO: Sample from state space (place on partitioning) and assert output is 1-D
 
@@ -30,6 +31,8 @@ class AdversarialNeuralSBF(nn.Module):
         _, upper = bounds(self.beta_network, partitioning.safe, **kwargs)
         beta = upper.partition_max().view(-1)
 
+        # return torch.dot(beta.clamp(min=0), partitioning.safe.volumes) / partitioning.safe.volume
+        # return torch.dot(torch.softmax(beta / self.T, 0), beta.clamp(min=0))
         return beta.clamp(min=0).max()
 
     def gamma(self, partitioning, **kwargs):
@@ -41,6 +44,8 @@ class AdversarialNeuralSBF(nn.Module):
         _, upper = bounds(self.barrier, partitioning.initial, **kwargs)
         gamma = upper.partition_max().view(-1)
 
+        # return torch.dot(gamma.clamp(min=0), partitioning.initial.volumes) / partitioning.initial.volume
+        # return torch.dot(torch.softmax(gamma / self.T, 0), gamma.clamp(min=0))
         return gamma.clamp(min=0).max()
 
     def loss(self, partitioning, safety_weight=0.5, **kwargs):
@@ -66,9 +71,11 @@ class AdversarialNeuralSBF(nn.Module):
         assert partitioning.unsafe is not None
 
         lower, _ = bounds(self.barrier, partitioning.unsafe, **kwargs)
-        violation = (1 - lower).partition_max().clamp(min=0)
+        violation = (1 - lower).partition_max().view(-1)
 
-        return torch.dot(violation.view(-1), partitioning.unsafe.volumes) / partitioning.unsafe.volume
+        # return torch.dot(torch.softmax(violation / self.T, 0), violation.clamp(min=0))
+        return torch.dot(violation.clamp(min=0), partitioning.unsafe.volumes) / partitioning.unsafe.volume
+        # return violation.clamp(min=0).max()
 
     def loss_state_space(self, partitioning, **kwargs):
         """
@@ -78,9 +85,11 @@ class AdversarialNeuralSBF(nn.Module):
         """
         if partitioning.state_space is not None:
             lower, _ = bounds(self.barrier, partitioning.state_space, **kwargs)
-            violation = (0 - lower).partition_max().clamp(min=0)
+            violation = (0 - lower).partition_max().view(-1)
 
-            return torch.dot(violation.view(-1), partitioning.state_space.volumes) / partitioning.unsafe.volume
+            # return torch.dot(torch.softmax(violation / self.T, 0), violation.clamp(min=0))
+            return torch.dot(violation.clamp(min=0), partitioning.state_space.volumes) / partitioning.unsafe.volume
+            # return violation.clamp(min=0).max()
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
             return 0.0
