@@ -39,21 +39,8 @@ class NeuralSBFCertifier(nn.Module):
         :return: beta in range [0, 1)
         """
         assert self.partitioning.safe is not None
-
-        if kwargs.get('method') == 'optimal':
-            kwargs.pop('method')
-
-            _, upper_ibp = bounds(self.beta_network, self.partitioning.safe, bound_lower=False, method='ibp', **kwargs)
-            _, upper_crown = bounds(self.beta_network, self.partitioning.safe, bound_lower=False, method='crown_interval', **kwargs)
-
-            beta_ibp = upper_ibp.partition_max().max().clamp(min=0)
-            beta_crown = upper_crown.partition_max().max().clamp(min=0)
-
-            beta = torch.min(beta_ibp, beta_crown)
-        else:
-            _, upper = bounds(self.beta_network, self.partitioning.safe, bound_lower=False, **kwargs)
-
-            beta = upper.partition_max().max().clamp(min=0)
+        _, upper = bounds(self.beta_network, self.partitioning.safe, bound_lower=False, **kwargs)
+        beta = upper.partition_max().max().clamp(min=0)
 
         return beta
 
@@ -63,19 +50,8 @@ class NeuralSBFCertifier(nn.Module):
         :return: gamma in range [0, 1)
         """
         assert self.partitioning.initial is not None
-
-        if kwargs.get('method') == 'optimal':
-            kwargs.pop('method')
-
-            _, upper_ibp = bounds(self.barrier, self.partitioning.initial, bound_lower=False, method='ibp', **kwargs)
-            gamma_ibp = upper_ibp.partition_max().max().clamp(min=0)
-            _, upper_crown = bounds(self.barrier, self.partitioning.initial, bound_lower=False, method='crown_interval', **kwargs)
-            gamma_crown = upper_crown.partition_max().max().clamp(min=0)
-
-            gamma = torch.min(gamma_ibp, gamma_crown)
-        else:
-            _, upper = bounds(self.barrier, self.partitioning.initial, bound_lower=False, **kwargs)
-            gamma = upper.partition_max().max().clamp(min=0)
+        _, upper = bounds(self.barrier, self.partitioning.initial, bound_lower=False, **kwargs)
+        gamma = upper.partition_max().max().clamp(min=0)
 
         return gamma
 
@@ -109,18 +85,8 @@ class NeuralSBFCertifier(nn.Module):
 
     @torch.no_grad()
     def violation(self, set, lower_bound, volumes, **kwargs):
-        if kwargs.get('method') == 'optimal':
-            kwargs.pop('method')
-            lower, _ = bounds(self.barrier, set, bound_upper=False, method='ibp', **kwargs)
-            violation_ibp = (lower_bound - lower).partition_max().clamp(min=0)
-
-            lower, _ = bounds(self.barrier, set, bound_upper=False, method='crown_interval', **kwargs)
-            violation_crown = (lower_bound - lower).partition_max().clamp(min=0)
-
-            violation = torch.min(violation_ibp, violation_crown)
-        else:
-            lower, _ = bounds(self.barrier, set, bound_upper=False, **kwargs)
-            violation = (lower_bound - lower).partition_max().clamp(min=0)
+        lower, _ = bounds(self.barrier, set, bound_upper=False, **kwargs)
+        violation = (lower_bound - lower).partition_max().clamp(min=0)
 
         return torch.dot(violation.view(-1), volumes) / volumes.sum()
 
@@ -200,24 +166,10 @@ class SplittingNeuralSBFCertifier(nn.Module):
         return max.max().clamp(min=0)
 
     def min_max_beta(self, set, **kwargs):
-        if kwargs.get('method') == 'optimal':
-            kwargs.pop('method')
+        lower, upper = bounds(self.beta_network, set, **kwargs)
 
-            lower_ibp, upper_ibp = bounds(self.beta_network, set, method='ibp', **kwargs)
-            lower_crown, upper_crown = bounds(self.beta_network, set, method='crown_interval', **kwargs)
-
-            beta_ibp = upper_ibp.partition_max()
-            beta_crown = upper_crown.partition_max()
-            max = torch.min(beta_ibp, beta_crown)
-
-            beta_ibp = lower_ibp.partition_min()
-            beta_crown = lower_crown.partition_min()
-            min = torch.max(beta_ibp, beta_crown)
-        else:
-            lower, upper = bounds(self.beta_network, set, **kwargs)
-
-            max = upper.partition_max()
-            min = lower.partition_max()
+        max = upper.partition_max()
+        min = lower.partition_max()
 
         return min.view(-1), max.view(-1)
 
@@ -281,22 +233,9 @@ class SplittingNeuralSBFCertifier(nn.Module):
         return max.max().clamp(min=0)
 
     def min_max_gamma(self, set, **kwargs):
-        if kwargs.get('method') == 'optimal':
-            kwargs.pop('method')
-            lower, upper = bounds(self.barrier, set, method='ibp', **kwargs)
-            min_ibp = lower.partition_max()
-            max_ibp = upper.partition_max()
-
-            lower, upper = bounds(self.barrier, set, method='crown_interval', **kwargs)
-            min_crown = lower.partition_max()
-            max_crown = upper.partition_max()
-
-            min = torch.max(min_ibp, min_crown)
-            max = torch.min(max_ibp, max_crown)
-        else:
-            lower, upper = bounds(self.barrier, set, **kwargs)
-            min = lower.partition_max()
-            max = upper.partition_max()
+        lower, upper = bounds(self.barrier, set, **kwargs)
+        min = lower.partition_max()
+        max = upper.partition_max()
 
         return min.view(-1), max.view(-1)
 
@@ -372,22 +311,9 @@ class SplittingNeuralSBFCertifier(nn.Module):
         return (lower_bound - min.min()).clamp(min=0)
 
     def min_max(self, set, **kwargs):
-        if kwargs.get('method') == 'optimal':
-            kwargs.pop('method')
-            lower, upper = bounds(self.barrier, set, method='ibp', **kwargs)
-            min_ibp = lower.partition_min()
-            max_ibp = upper.partition_min()
-
-            lower, upper = bounds(self.barrier, set, method='crown_interval', **kwargs)
-            min_crown = lower.partition_min()
-            max_crown = upper.partition_min()
-
-            min = torch.max(min_ibp, min_crown)
-            max = torch.min(max_ibp, max_crown)
-        else:
-            lower, upper = bounds(self.barrier, set, **kwargs)
-            min = lower.partition_min()
-            max = upper.partition_min()
+        lower, upper = bounds(self.barrier, set, **kwargs)
+        min = lower.partition_min()
+        max = upper.partition_min()
 
         return min.view(-1), max.view(-1)
 
@@ -614,22 +540,9 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         return max.max().clamp(min=0)
 
     def min_max_gamma(self, set, **kwargs):
-        if kwargs.get('method') == 'optimal':
-            kwargs.pop('method')
-            lower, upper = bounds(self.barrier, set, method='ibp', **kwargs)
-            min_ibp = lower.partition_max()
-            max_ibp = upper.partition_max()
-
-            lower, upper = bounds(self.barrier, set, method='crown_interval', **kwargs)
-            min_crown = lower.partition_max()
-            max_crown = upper.partition_max()
-
-            min = torch.max(min_ibp, min_crown)
-            max = torch.min(max_ibp, max_crown)
-        else:
-            lower, upper = bounds(self.barrier, set, **kwargs)
-            min = lower.partition_max()
-            max = upper.partition_max()
+        lower, upper = bounds(self.barrier, set, **kwargs)
+        min = lower.partition_max()
+        max = upper.partition_max()
 
         return min.view(-1), max.view(-1)
 
@@ -708,22 +621,9 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         return (lower_bound - min.min()).clamp(min=0)
 
     def min_max(self, set, **kwargs):
-        if kwargs.get('method') == 'optimal':
-            kwargs.pop('method')
-            lower, upper = bounds(self.barrier, set, method='ibp', **kwargs)
-            min_ibp = lower.partition_min()
-            max_ibp = upper.partition_min()
-
-            lower, upper = bounds(self.barrier, set, method='crown_interval', **kwargs)
-            min_crown = lower.partition_min()
-            max_crown = upper.partition_min()
-
-            min = torch.max(min_ibp, min_crown)
-            max = torch.min(max_ibp, max_crown)
-        else:
-            lower, upper = bounds(self.barrier, set, **kwargs)
-            min = lower.partition_min()
-            max = upper.partition_min()
+        lower, upper = bounds(self.barrier, set, **kwargs)
+        min = lower.partition_min()
+        max = upper.partition_min()
 
         return min.view(-1), max.view(-1)
 
