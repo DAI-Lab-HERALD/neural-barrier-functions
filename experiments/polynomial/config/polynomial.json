@@ -28,7 +28,7 @@
     "empirical_only": false
   },
   "test": {
-    "ibp_batch_size": 1,
-    "crown_ibp_batch_size": 1
+    "ibp_batch_size": 10,
+    "crown_ibp_batch_size": 10
   }
 }
