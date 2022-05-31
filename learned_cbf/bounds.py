@@ -4,7 +4,7 @@ import torch
 from bound_propagation import HyperRectangle, BoundModule, LinearBounds, IntervalBounds, BoundModelFactory
 from torch import nn
 
-from .networks import BoundBetaNetwork, BetaNetwork, Mean, BoundMean, BoundSum, Sum, BoundGaussianExpectationRegion, \
+from .networks import Mean, BoundMean, BoundSum, Sum, BoundGaussianExpectationRegion, \
     GaussianExpectationRegion, BoundGaussianProbabilityNetwork, GaussianProbabilityNetwork, DynamicsNoise, \
     BoundDynamicsNoise, BoundAdditiveGaussianExpectation, AdditiveGaussianExpectation
 
@@ -137,7 +137,6 @@ class LearnedCBFBoundModelFactory(BoundModelFactory):
 
         self.register(Mean, BoundMean)
         self.register(Sum, BoundSum)
-        self.register(BetaNetwork, BoundBetaNetwork)
         self.register(GaussianProbabilityNetwork, BoundGaussianProbabilityNetwork)
         self.register(GaussianExpectationRegion, BoundGaussianExpectationRegion)
         self.register(DynamicsNoise, BoundDynamicsNoise)

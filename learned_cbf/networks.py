@@ -58,84 +58,12 @@ class BoundMean(BoundModule):
         return self.subnetwork.propagate_size(in_size)
 
 
-class BetaNetwork(nn.Module):
+class BetaNetwork(Sub):
     def __init__(self, dynamics, barrier):
-        super().__init__()
-
-        self.dynamics_barrier = Mean(nn.Sequential(dynamics, barrier))
-        self.barrier = barrier
+        super().__init__(Mean(nn.Sequential(dynamics, barrier)), barrier)
 
     def forward(self, x):
         return self.dynamics_barrier(x) - self.barrier(x)
-
-
-class BoundBetaNetwork(BoundModule):
-    def __init__(self, module, factory, **kwargs):
-        super().__init__(module, factory, **kwargs)
-
-        self.bound_dynamics_barrier = factory.build(module.dynamics_barrier)
-        self.bound_barrier = factory.build(module.barrier)
-
-    @property
-    def need_relaxation(self):
-        return self.bound_dynamics_barrier.need_relaxation or self.bound_barrier.need_relaxation
-
-    def clear_relaxation(self):
-        self.bound_dynamics_barrier.clear_relaxation()
-        self.bound_barrier.clear_relaxation()
-
-    def backward_relaxation(self, region):
-        if self.bound_dynamics_barrier.need_relaxation:
-            return self.bound_dynamics_barrier.backward_relaxation(region)
-        else:
-            assert self.bound_barrier.need_relaxation
-            return self.bound_barrier.backward_relaxation(region)
-
-    def crown_backward(self, linear_bounds):
-        input_bounds = LinearBounds(
-            linear_bounds.region,
-            (linear_bounds.lower[0], torch.zeros_like(linear_bounds.lower[1])) if linear_bounds.lower is not None else None,
-            (linear_bounds.upper[0], torch.zeros_like(linear_bounds.upper[1])) if linear_bounds.upper is not None else None,
-        )
-        linear_bounds1 = self.bound_dynamics_barrier.crown_backward(input_bounds)
-
-        # We can only do this inversion for a "Sub" module because we know nothing is ahead (after in the network).
-        input_bounds = LinearBounds(
-            linear_bounds.region,
-            (linear_bounds.upper[0], torch.zeros_like(linear_bounds.upper[1])) if linear_bounds.upper is not None else None,
-            (linear_bounds.lower[0], torch.zeros_like(linear_bounds.lower[1])) if linear_bounds.lower is not None else None,
-        )
-        linear_bounds2 = self.bound_barrier.crown_backward(input_bounds)
-
-        if linear_bounds.lower is None:
-            lower = None
-        else:
-            lower = (linear_bounds1.lower[0] - linear_bounds2.upper[0], linear_bounds1.lower[1] - linear_bounds2.upper[1])
-
-        if linear_bounds.upper is None:
-            upper = None
-        else:
-            upper = (linear_bounds1.upper[0] - linear_bounds2.lower[0], linear_bounds1.upper[1] - linear_bounds2.lower[1])
-
-        return LinearBounds(linear_bounds.region, lower, upper)
-
-    def ibp_forward(self, bounds, save_relaxation=False):
-        bounds1 = self.bound_dynamics_barrier.ibp_forward(bounds, save_relaxation=save_relaxation)
-        bounds2 = self.bound_barrier.ibp_forward(bounds, save_relaxation=save_relaxation)
-
-        return IntervalBounds(
-            bounds.region,
-            bounds1.lower - bounds2.upper,
-            bounds1.upper - bounds2.lower
-        )
-
-    def propagate_size(self, in_size):
-        out_size1 = self.bound_dynamics_barrier.propagate_size(in_size)
-        out_size2 = self.bound_barrier.propagate_size(in_size)
-
-        assert out_size1 == out_size2
-
-        return out_size1
 
 
 class Sum(nn.Module):
