@@ -28,7 +28,7 @@ class AdversarialNeuralSBF(nn.Module):
         """
         assert partitioning.safe is not None
 
-        _, upper = bounds(self.beta_network, partitioning.safe, **kwargs)
+        _, upper = bounds(self.beta_network, partitioning.safe, bound_lower=False, **kwargs)
         beta = upper.partition_max().view(-1)
 
         # return torch.dot(beta.clamp(min=0), partitioning.safe.volumes) / partitioning.safe.volume
@@ -41,7 +41,7 @@ class AdversarialNeuralSBF(nn.Module):
         """
         assert partitioning.initial is not None
 
-        _, upper = bounds(self.barrier, partitioning.initial, **kwargs)
+        _, upper = bounds(self.barrier, partitioning.initial, bound_lower=False, **kwargs)
         gamma = upper.partition_max().view(-1)
 
         # return torch.dot(gamma.clamp(min=0), partitioning.initial.volumes) / partitioning.initial.volume
@@ -70,7 +70,7 @@ class AdversarialNeuralSBF(nn.Module):
         """
         assert partitioning.unsafe is not None
 
-        lower, _ = bounds(self.barrier, partitioning.unsafe, **kwargs)
+        lower, _ = bounds(self.barrier, partitioning.unsafe, bound_upper=False, **kwargs)
         violation = (1 - lower).partition_max().view(-1)
 
         # return torch.dot(torch.softmax(violation / self.T, 0), violation.clamp(min=0))
@@ -84,7 +84,7 @@ class AdversarialNeuralSBF(nn.Module):
         :return: Loss for state space (zero if not partitioned)
         """
         if partitioning.state_space is not None:
-            lower, _ = bounds(self.barrier, partitioning.state_space, **kwargs)
+            lower, _ = bounds(self.barrier, partitioning.state_space, bound_upper=False, **kwargs)
             violation = (0 - lower).partition_max().view(-1)
 
             # return torch.dot(torch.softmax(violation / self.T, 0), violation.clamp(min=0))
