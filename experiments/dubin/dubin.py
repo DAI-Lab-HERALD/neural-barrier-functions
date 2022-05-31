@@ -36,7 +36,7 @@ def step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoc
     if empirical_only:
         loss = empirical_learner.loss(partitioning, kappa)
     else:
-        loss = robust_learner.loss(partitioning, kappa, method='crown_ibp_interval')
+        loss = robust_learner.loss(partitioning, kappa, method='crown_interval')
         # loss = 0.5 * empirical_learner.loss(partitioning, kappa) + 0.5 * robust_learner.loss(partitioning, kappa, method='crown_ibp_interval')
 
     loss.backward()
