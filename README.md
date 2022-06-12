@@ -12,3 +12,18 @@ To certify:
 To plot:
 
     python experiments/main.py --device=<cpu|gpu> --config-path=<config-path> --save-path=models/<model-name>.{state}.pth --task=plot
+
+
+## Authors
+- [Frederik Baymler Mathiesen](https://www.baymler.com) - PhD student @ TU Delft
+
+## Funding and support
+- TU Delft
+
+## Copyright notice:
+Technische Universiteit Delft hereby disclaims all copyright
+interest in the program “neural-barrier-functions” 
+(neural networks as barrier functions with bound propagation)
+written by the Frederik Baymler Mathiesen. Theun Baller, Dean of Mechanical, Maritime and Materials Engineering
+
+© 2022, Frederik Baymler Mathiesen, HERALD Lab, TU Delft
