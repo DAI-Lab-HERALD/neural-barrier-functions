@@ -24,7 +24,6 @@ To plot:
 Technische Universiteit Delft hereby disclaims all copyright
 interest in the program “neural-barrier-functions” 
 (neural networks as barrier functions with bound propagation)
-written by the Frederik Baymler Mathiesen. [Name
-Dean], Dean of [Name Faculty]
+written by the Frederik Baymler Mathiesen. Theun Baller, Dean of Mechanical, Maritime and Materials Engineering
 
 © 2022, Frederik Baymler Mathiesen, HERALD Lab, TU Delft
