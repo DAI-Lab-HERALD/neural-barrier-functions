@@ -21,9 +21,9 @@ function verify(system::System, σ::Number, H::Int; B_deg::Int = 4, 𝔼::Expect
 
     # Constraints
     monos = monomials(state(system), 0:B_deg)
-    @variable(model, B, Poly(ScaledMonomialBasis(monos)))
+    @variable(model, B, Poly(MonomialBasis(monos)))
 
-    @constraint(model, B >= 0, basis = ScaledMonomialBasis, domain = state_space(system))
+    @constraint(model, B >= 0, domain = state_space(system))
     unsafe_constraint!(model, system, B)
     initial_constraint!(model, system, B, γ)
 
@@ -55,14 +55,14 @@ end
 function initial_constraint!(model, system, B, γ)
     for initial_subset in initial_set(system)
         println("Initial subset ", initial_subset)
-        @constraint(model, B <= γ, domain = initial_subset, basis = ScaledMonomialBasis)
+        @constraint(model, B <= γ, domain = initial_subset)
     end
 end
 
 function unsafe_constraint!(model, system, B)
     for unsafe_subset in unsafe_set(system)
         println("Unsafe subset ", unsafe_subset)
-        @constraint(model, B >= 1, domain = unsafe_subset, basis = ScaledMonomialBasis)
+        @constraint(model, B >= 1, domain = unsafe_subset)
     end
 end
 
@@ -80,16 +80,5 @@ function partition_constraint!(model, system, B, β, σ, 𝔼, p)
     𝔼Bfx, aux_domain = expectation(𝔼, system, B, σ, p)
     full_domain = domain(p) ∩ aux_domain
 
-    cone = SOSCone()
-    basis = ScaledMonomialBasis
-    maxdeg = maxdegree(B)
-
-    certificate = Certificate.Newton(cone, basis, tuple())
-    certificate = Certificate.Remainder(certificate)
-    certificate = Certificate.Putinar(certificate, cone, basis, maxdeg)
-
-    @constraint(model, 𝔼Bfx <= B + β, domain = full_domain, certificate = certificate)
+    @constraint(model, 𝔼Bfx <= B + β, domain = full_domain)
 end
-
-# Patch to ScaledMonomialBasis to match regular MonomialBasis
-MP.polynomialtype(::Type{<:ScaledMonomialBasis{MT}}, T::Type) where MT = MP.polynomialtype(MT, promote_type(T, Float64))
