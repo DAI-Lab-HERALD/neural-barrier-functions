@@ -18,14 +18,14 @@ from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, DubinsFixedStrategy
 from .partitioning import dubins_car_partitioning
 from .plot import plot_bounds_2d
 
-from learned_cbf.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifier, \
+from neural_barrier_functions.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifier, \
     AdditiveGaussianSplittingNeuralSBFCertifier
-from learned_cbf.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
-from learned_cbf.networks import FCNNBarrierNetwork
-from learned_cbf.dataset import StochasticSystemDataset
-from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
-from learned_cbf.bounds import LearnedCBFBoundModelFactory
-from learned_cbf.monte_carlo import monte_carlo_simulation
+from neural_barrier_functions.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
+from neural_barrier_functions.networks import FCNNBarrierNetwork
+from neural_barrier_functions.dataset import StochasticSystemDataset
+from neural_barrier_functions.discretization import ButcherTableau, BoundButcherTableau
+from neural_barrier_functions.bounds import NBFBoundModelFactory
+from neural_barrier_functions.monte_carlo import monte_carlo_simulation
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +249,7 @@ def dubins_car_main(args, config):
     dynamics = DubinsCarStrategyComposition(config['dynamics'], strategy).to(args.device)
 
     if config['experiment_type'] == 'barrier_function':
-        factory = LearnedCBFBoundModelFactory()
+        factory = NBFBoundModelFactory()
         factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
         factory.register(DubinsCarNominalUpdate, BoundDubinsCarNominalUpdate)
         factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)

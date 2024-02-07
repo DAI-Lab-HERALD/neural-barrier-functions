@@ -3,15 +3,15 @@ Neural networks as barrier functions for stochastic discrete-time systems traine
 
 To train:
 
-    python experiments/main.py --device=<cpu|gpu> --config-path=<config-path> --save-path=models/<model-name>.{state}.pth --task=train
+    python experiments/main.py --device=<cpu|cuda> --config-path=<config-path> --save-path=models/<model-name>.{state}.pth --task=train
 
 To certify:
 
-    python experiments/main.py --device=<cpu|gpu> --config-path=<config-path> --save-path=models/<model-name>.{state}.pth --task=test
+    python experiments/main.py --device=<cpu|cuda> --config-path=<config-path> --save-path=models/<model-name>.{state}.pth --task=test
 
 To plot:
 
-    python experiments/main.py --device=<cpu|gpu> --config-path=<config-path> --save-path=models/<model-name>.{state}.pth --task=plot
+    python experiments/main.py --device=<cpu|cuda> --config-path=<config-path> --save-path=models/<model-name>.{state}.pth --task=plot
 
 
 ## Authors

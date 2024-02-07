@@ -3,7 +3,7 @@ import torch
 from torch import nn, Tensor, distributions
 from torch.distributions import Normal
 
-from learned_cbf.dynamics import AdditiveGaussianDynamics
+from neural_barrier_functions.dynamics import AdditiveGaussianDynamics
 
 
 class Population(nn.Linear, AdditiveGaussianDynamics):

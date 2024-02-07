@@ -11,8 +11,8 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import seaborn as sns
 from tqdm import tqdm
 
-from learned_cbf.bounds import bounds, LearnedCBFBoundModelFactory, Affine
-from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
+from neural_barrier_functions.bounds import bounds, NBFBoundModelFactory, Affine
+from neural_barrier_functions.discretization import ButcherTableau, BoundButcherTableau
 
 from .dynamics import PolynomialUpdate, BoundPolynomialUpdate, NominalPolynomialUpdate, BoundNominalPolynomialUpdate
 
@@ -20,7 +20,7 @@ from .dynamics import PolynomialUpdate, BoundPolynomialUpdate, NominalPolynomial
 def bound_propagation(model, lower_x, upper_x, config):
     input_bounds = HyperRectangle(lower_x, upper_x)
 
-    factory = LearnedCBFBoundModelFactory()
+    factory = NBFBoundModelFactory()
     factory.register(PolynomialUpdate, BoundPolynomialUpdate)
     factory.register(NominalPolynomialUpdate, BoundNominalPolynomialUpdate)
     factory.register(ButcherTableau, BoundButcherTableau)

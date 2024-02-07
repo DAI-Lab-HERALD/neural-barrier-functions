@@ -4,7 +4,7 @@ import torch
 from matplotlib import pyplot as plt
 from matplotlib.collections import PatchCollection
 
-from learned_cbf.partitioning import Partitioning
+from neural_barrier_functions.partitioning import Partitioning
 
 
 def plot_partitioning(partitioning):

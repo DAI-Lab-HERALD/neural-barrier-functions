@@ -5,8 +5,8 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from torch import nn
 from tqdm import tqdm
 
-from learned_cbf.bounds import bounds, LearnedCBFBoundModelFactory
-from learned_cbf.discretization import ButcherTableau, BoundButcherTableau
+from neural_barrier_functions.bounds import bounds, NBFBoundModelFactory
+from neural_barrier_functions.discretization import ButcherTableau, BoundButcherTableau
 from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, BoundDubinsFixedStrategy, \
     DubinsFixedStrategy, DubinSelect, BoundDubinSelect, BoundDubinsCarNominalUpdate, DubinsCarNominalUpdate
 
@@ -17,7 +17,7 @@ def bound_propagation(model, lower_x, upper_x, config):
     # ibp_bounds = bounds(model, input_bounds, method='ibp', batch_size=config['test']['ibp_batch_size'])
     # crown_bounds = bounds(model, input_bounds, method='crown_ibp_linear', batch_size=config['test']['crown_ibp_batch_size'])
 
-    factory = LearnedCBFBoundModelFactory()
+    factory = NBFBoundModelFactory()
     factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
     factory.register(DubinsCarNominalUpdate, BoundDubinsCarNominalUpdate)
     factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)

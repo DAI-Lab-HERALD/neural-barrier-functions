@@ -12,10 +12,10 @@ from matplotlib import pyplot as plt
 from torch import nn, distributions
 from torch.distributions import Normal
 
-from learned_cbf.bounds import LearnedCBFBoundModelFactory
-from learned_cbf.discretization import Euler, RK4, Heun, ButcherTableau, BoundButcherTableau
-from learned_cbf.dynamics import AdditiveGaussianDynamics
-from learned_cbf.utils import overlap_circle, overlap_rectangle, overlap_outside_circle, overlap_outside_rectangle
+from neural_barrier_functions.bounds import NBFBoundModelFactory
+from neural_barrier_functions.discretization import Euler, RK4, Heun, ButcherTableau, BoundButcherTableau
+from neural_barrier_functions.dynamics import AdditiveGaussianDynamics
+from neural_barrier_functions.utils import overlap_circle, overlap_rectangle, overlap_outside_circle, overlap_outside_rectangle
 
 
 class DubinsCarUpdate(nn.Module):
@@ -1160,7 +1160,7 @@ class DubinsCarStrategyComposition(nn.Sequential, AdditiveGaussianDynamics):
     
 
 def export_bounds():
-    factory = LearnedCBFBoundModelFactory()
+    factory = NBFBoundModelFactory()
     factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
     factory.register(DubinsCarNominalUpdate, BoundDubinsCarNominalUpdate)
     factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)

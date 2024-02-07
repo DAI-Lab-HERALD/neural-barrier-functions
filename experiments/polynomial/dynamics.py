@@ -9,9 +9,9 @@ from matplotlib import pyplot as plt
 from torch import nn, distributions
 from torch.distributions import Normal
 
-from learned_cbf.discretization import Euler, RK4
-from learned_cbf.dynamics import StochasticDynamics, AdditiveGaussianDynamics
-from learned_cbf.utils import overlap_circle, overlap_rectangle, overlap_outside_circle, overlap_outside_rectangle
+from neural_barrier_functions.discretization import Euler, RK4
+from neural_barrier_functions.dynamics import StochasticDynamics, AdditiveGaussianDynamics
+from neural_barrier_functions.utils import overlap_circle, overlap_rectangle, overlap_outside_circle, overlap_outside_rectangle
 
 
 class PolynomialUpdate(nn.Module):

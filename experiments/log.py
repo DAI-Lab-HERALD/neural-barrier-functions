@@ -44,12 +44,12 @@ LOGGING_CONFIG = {
             'level': 'DEBUG',
             'propagate': False
         },
-        'learned_cbf.monte_carlo': {  # monte_carlo logger
+        'neural_barrier_functions.monte_carlo': {  # monte_carlo logger
             'handlers': ['default'],
             'level': 'DEBUG',
             'propagate': False
         },
-        'learned_cbf.certifier': {  # certifier logger
+        'neural_barrier_functions.certifier': {  # certifier logger
             'handlers': ['default'],
             'level': 'DEBUG',
             'propagate': False

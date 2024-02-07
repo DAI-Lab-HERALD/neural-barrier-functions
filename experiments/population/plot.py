@@ -10,7 +10,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import seaborn as sns
 from tqdm import tqdm
 
-from learned_cbf.bounds import LearnedCBFBoundModelFactory
+from neural_barrier_functions.bounds import NBFBoundModelFactory
 
 
 def bound_propagation(model, lower_x, upper_x):
@@ -94,7 +94,7 @@ def plot_partition(model, args, input_bounds, ibp_bounds, crown_bounds, initial,
 def plot_bounds_2d(model, dynamics, args, config):
     num_slices = 80
 
-    factory = LearnedCBFBoundModelFactory()
+    factory = NBFBoundModelFactory()
     model = factory.build(model)
 
     if config['dynamics']['safe_set'] == 'circle':

@@ -46,6 +46,9 @@ class Partitions(nn.Module):
     def __len__(self):
         return self.lower.size(0)
 
+    def size(self, dim=None):
+        return self.lower.size(dim)
+
 
 class Partitioning(nn.Module):
     def __init__(self, initial, safe, unsafe, state_space=None):

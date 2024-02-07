@@ -27,7 +27,7 @@ def main(args):
 
 def parse_arguments():
     parser = ArgumentParser()
-    parser.add_argument('--device', choices=list(map(torch.device, ['cuda', 'cpu'])), type=torch.device, default='cuda',
+    parser.add_argument('--device', choices=list(map(torch.device, ['cuda', 'cpu'])), type=torch.device, default='cpu',
                         help='Select device for tensor operations.')
     parser.add_argument('--config-path', type=str, help='Path to configuration of experiment.')
     parser.add_argument('--save-path', type=str, default='models/sbf.pth', help='Path to save SBF to.')
