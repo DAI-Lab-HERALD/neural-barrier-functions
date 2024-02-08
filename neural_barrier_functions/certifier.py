@@ -426,7 +426,6 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
         set = self.initial_partitioning.safe
 
-        kwargs['method'] = 'ibp'
         lower, upper = bounds(self.beta_network, set, **kwargs)
         min, max = self.min_max_beta(lower, upper)
         last_gap = [torch.finfo(min.dtype).max for _ in range(499)] + [(max.max() - min.max()).item()]
@@ -647,9 +646,10 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         return Partitions((set.lower[keep], set.upper[keep])), False
 
     def split(self, set, **kwargs):
-        kwargs.pop('method', None)
+        if kwargs.get('method', None) not in ['crown_linear', 'crown_ibp_linear']:
+            kwargs['method'] = 'crown_linear'
 
-        lower, upper = bounds(self.barrier, set, method='crown_linear', **kwargs)
+        lower, upper = bounds(self.barrier, set, **kwargs)
 
         split_dim = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)

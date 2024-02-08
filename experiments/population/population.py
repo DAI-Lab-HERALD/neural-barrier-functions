@@ -51,9 +51,7 @@ def test_method(certifier, method, batch_size, kappa=None):
 
 @torch.no_grad()
 def test(certifier, status_config, kappa=None):
-    # test_method(certifier, method='ibp', batch_size=status_config['ibp_batch_size'], kappa=kappa)
-    test_method(certifier, method='crown_interval', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
-    # test_method(certifier, method='optimal', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
+    test_method(certifier, method='crown_ibp_linear', batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
 
 
 def train(robust_learner, empirical_learner, certifier, args, config):

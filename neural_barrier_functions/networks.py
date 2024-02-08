@@ -209,12 +209,73 @@ class BoundAdditiveGaussianExpectation(BoundModule, VRegionMixin):
             return self.bound_nominal_dynamics.backward_relaxation(region)
 
         linear_bounds, module, *extra = self.bound_barrier.backward_relaxation(region)
+        dynamics_linear_bounds = self.bound_nominal_dynamics.crown_backward(linear_bounds, False)
 
-        # TODO: Add v_regions to linear bounds
-        return self.bound_nominal_dynamics.crown_backward(linear_bounds, False), module, *extra
+        v_regions, _, _ = self.v_regions(region.lower.device)
+
+        num_input_regions = len(region)
+        num_noise_regions = len(v_regions)
+
+        combined_region = HyperRectangle(
+            torch.cat((
+                region.lower.unsqueeze(0).expand(num_noise_regions, -1, -1),
+                v_regions.lower.unsqueeze(1).expand(-1, num_input_regions, -1)
+            ), dim=-1),
+            torch.cat((
+                region.upper.unsqueeze(0).expand(num_noise_regions, -1, -1),
+                v_regions.upper.unsqueeze(1).expand(-1, num_input_regions, -1)
+            ), dim=-1)
+        )
+
+        combined_linear_bounds = LinearBounds(
+            combined_region,
+            (torch.cat((dynamics_linear_bounds.lower[0], linear_bounds.lower[0]), dim=-1), dynamics_linear_bounds.lower[1]),
+            (torch.cat((dynamics_linear_bounds.upper[0], linear_bounds.upper[0]), dim=-1), dynamics_linear_bounds.upper[1]),
+        )
+
+        return combined_linear_bounds, module, *extra
 
     def crown_backward(self, linear_bounds, optimize):
-        pass
+        linear_bounds = self.bound_barrier.crown_backward(linear_bounds, optimize)
+        dynamics_linear_bounds = self.bound_nominal_dynamics.crown_backward(linear_bounds, optimize)
+
+        _ , probs, part_exps = self.v_regions(linear_bounds.region.lower.device)
+
+        if linear_bounds.lower is not None:
+            lower_Av = linear_bounds.lower[0]
+            lower_Ax = dynamics_linear_bounds.lower[0]
+            lower_b = dynamics_linear_bounds.lower[1]
+
+            lower_A = lower_Ax * probs.view(-1, 1, 1, 1)
+            lower_b = lower_b * probs.view(-1, 1, 1) + lower_Av.matmul(part_exps.view(part_exps.size(0), 1, -1, 1)).squeeze(-1)
+
+            lower = (lower_A, lower_b)
+        else:
+            lower = None
+
+        if linear_bounds.upper is not None:
+            upper_Av = linear_bounds.upper[0]
+            upper_Ax = dynamics_linear_bounds.upper[0]
+            upper_b = dynamics_linear_bounds.upper[1]
+
+            upper_A = upper_Ax * probs.view(-1, 1, 1, 1)
+            upper_b = upper_b * probs.view(-1, 1, 1) + upper_Av.matmul(part_exps.view(part_exps.size(0), 1, -1, 1)).squeeze(-1)
+
+            upper = (upper_A, upper_b)
+        else:
+            upper = None
+
+        linear_bounds = LinearBounds(linear_bounds.region, lower, upper)
+        linear_bounds = self.bound_sum.crown_backward(linear_bounds, optimize)
+
+        # Do not add to lower bound (B = 0 is a lower bound for the noise regions outside the cutoff).
+        if linear_bounds.upper is not None:
+            prob_outside = self.prob_outside()
+            upper = (linear_bounds.upper[0], linear_bounds.upper[1] + self.barrier_clamp * prob_outside)
+
+            linear_bounds = LinearBounds(linear_bounds.region, linear_bounds.lower, upper)
+
+        return linear_bounds
 
     def ibp_forward(self, bounds, save_relaxation=False, save_input_bounds=False):
         v_regions, probs, _ = self.v_regions(bounds.lower.device)
@@ -235,17 +296,23 @@ class BoundAdditiveGaussianExpectation(BoundModule, VRegionMixin):
         )
         total_bounds = self.bound_sum.ibp_forward(weighted_bounds, save_relaxation=save_relaxation, save_input_bounds=save_input_bounds)
 
-        # Calculate prob_inside explicitly as it is more numerically accurate compared to summing over probs
-        nonzero_scale = torch.count_nonzero(self.scale)
-        prob_inside = (2 * (1.0 - stats.norm.cdf(self.sigma_cutoff))) ** nonzero_scale
-        prob_outside = 1.0 - prob_inside
+        # Do not add to lower bound (B = 0 is a lower bound for the noise regions outside the cutoff).
+        prob_outside = self.prob_outside()
         corrected_bounds = IntervalBounds(
             bounds.region,
-            total_bounds.lower + self.barrier_clamp * prob_outside,
+            total_bounds.lower,
             total_bounds.upper + self.barrier_clamp * prob_outside
         )
 
         return corrected_bounds
+
+    def prob_outside(self):
+        # Calculate prob_inside explicitly as it is more numerically accurate compared to summing over probs
+        nonzero_scale = torch.count_nonzero(self.scale)
+        prob_inside = (2 * (1.0 - stats.norm.cdf(self.sigma_cutoff))) ** nonzero_scale
+        prob_outside = 1.0 - prob_inside
+
+        return prob_outside
 
     def propagate_size(self, in_size):
         out_size1 = self.bound_nominal_dynamics.propagate_size(in_size)
