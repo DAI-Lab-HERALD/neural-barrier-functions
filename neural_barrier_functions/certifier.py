@@ -394,7 +394,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
 class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
     def __init__(self, barrier: nn.Module, dynamics: AdditiveGaussianDynamics, factory, initial_partitioning, horizon,
                  certification_threshold=1.0e-6, split_gap_stop_treshold=1e-6, max_set_size=200000,
-                 noise_partitions=1000, sigma_cutoff=7.2, device=None):
+                 noise_partitions=30, sigma_cutoff=7.2, device=None):
         super().__init__()
 
         assert isinstance(dynamics, AdditiveGaussianDynamics)
