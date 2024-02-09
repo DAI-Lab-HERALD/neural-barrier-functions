@@ -308,8 +308,8 @@ class BoundAdditiveGaussianExpectation(BoundModule, VRegionMixin):
 
     def prob_outside(self):
         # Calculate prob_inside explicitly as it is more numerically accurate compared to summing over probs
-        nonzero_scale = torch.count_nonzero(self.scale)
-        prob_inside = (2 * (1.0 - stats.norm.cdf(self.sigma_cutoff))) ** nonzero_scale
+        nonzero_scale = torch.count_nonzero(self.scale).item()
+        prob_inside = (1.0 - 2 * stats.norm.cdf(-self.sigma_cutoff)) ** nonzero_scale
         prob_outside = 1.0 - prob_inside
 
         return prob_outside
