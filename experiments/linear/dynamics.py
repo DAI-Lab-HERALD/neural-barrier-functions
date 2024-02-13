@@ -37,6 +37,8 @@ class LinearDynamics(nn.Linear, AdditiveGaussianDynamics):
         z = dist.sample((self.num_samples,))
         self.register_buffer('bias', z.unsqueeze(1), persistent=True)
 
+        self.safe_set = dynamics_config['safe_set']
+
     def forward(self, input: Tensor) -> Tensor:
         dist = Normal(torch.zeros((2,)), self.sigma)
         z = dist.sample((self.num_samples,))
@@ -64,6 +66,16 @@ class LinearDynamics(nn.Linear, AdditiveGaussianDynamics):
         return x
 
     def safe(self, x, eps=None):
+        def in_obstacle1(p):
+            center = torch.tensor([-0.55, 0.3], device=x.device)
+            radius = 0.02
+            return ((p - center) ** 2).sum() < radius ** 2
+
+        def in_obstacle2(p):
+            center = torch.tensor([0.55, 0.15], device=x.device)
+            radius = 0.02
+            return ((p - center) ** 2).sum() < radius ** 2
+
         if eps is not None:
             lower_x, upper_x = x - eps, x + eps
 
@@ -72,15 +84,44 @@ class LinearDynamics(nn.Linear, AdditiveGaussianDynamics):
             outside3 = upper_x[..., 1] < -0.5
             outside4 = lower_x[..., 1] > 0.5
 
-            return ~outside1 & ~outside2 & ~outside3 & ~outside4
+            inside_xs = ~outside1 & ~outside2 & ~outside3 & ~outside4
 
-        return (-1.0 <= x[..., 0]) & (x[..., 0] <= 0.5) & (-0.5 <= x[..., 1]) & (x[..., 1] <= 0.5)
+            if self.safe_set == 'convex':
+                return inside_xs
+            elif self.safe_set == 'non-convex':
+                corner1 = lower_x
+                corner2 = upper_x
+                corner3 = torch.stack((lower_x[..., 0], upper_x[..., 1]), dim=-1)
+                corner4 = torch.stack((upper_x[..., 0], lower_x[..., 1]), dim=-1)
+
+                fully_inside_obstacle1 = in_obstacle1(corner1) & in_obstacle1(corner2) & in_obstacle1(corner3) & in_obstacle1(corner4)
+                outside_obstacle1 = ~fully_inside_obstacle1
+
+                fully_inside_obstacle2 = in_obstacle2(corner1) & in_obstacle2(corner2) & in_obstacle2(corner3) & in_obstacle2(corner4)
+                outside_obstacle2 = ~fully_inside_obstacle2
+
+                return inside_xs & outside_obstacle1 & outside_obstacle2
+            else:
+                raise ValueError(f'Invalid safe set type \'{self.safe_set}\'. Expected \'convex\' or \'non-convex\'')
+
+        inside_xs = (-1.0 <= x[..., 0]) & (x[..., 0] <= 0.5) & (-0.5 <= x[..., 1]) & (x[..., 1] <= 0.5)
+        if self.safe_set == 'convex':
+            return inside_xs
+        elif self.safe_set == 'non-convex':
+            outside_obstacle1 = ~in_obstacle1(x)
+            outside_obstacle2 = ~in_obstacle2(x)
+
+            return inside_xs & outside_obstacle1 & outside_obstacle2
+        else:
+            raise ValueError(f'Invalid safe set type \'{self.safe_set}\'. Expected \'convex\' or \'non-convex\'')
 
     def sample_safe(self, num_particles):
         dist = torch.distributions.Uniform(torch.tensor([-1.0, -0.5]), torch.tensor([0.5, 0.5]))
-        x = dist.sample((num_particles,))
+        x = dist.sample((2 * num_particles,))
 
-        return x
+        x = x[self.safe(x)]
+
+        return x[:num_particles]
 
     def unsafe(self, x, eps=None):
         if eps is not None:
@@ -91,9 +132,42 @@ class LinearDynamics(nn.Linear, AdditiveGaussianDynamics):
             inside3 = lower_x[..., 1] <= -0.5
             inside4 = upper_x[..., 1] >= 0.5
 
-            return inside1 | inside2 | inside3 | inside4
+            outside_xs = inside1 | inside2 | inside3 | inside4
 
-        return (-1.0 >= x[..., 0]) | (x[..., 0] >= 0.5) | (-0.5 >= x[..., 1]) | (x[..., 1] >= 0.5)
+            if self.safe_set == 'convex':
+                return outside_xs
+            elif self.safe_set == 'non-convex':
+                center_obstacle1 = torch.tensor([-0.55, 0.3], device=x.device)
+                radius_obstacle1 = 0.02
+
+                x_near = torch.maximum(lower_x, torch.minimum(center_obstacle1, upper_x))
+                inside_obstacle1 = ((x_near - center_obstacle1) ** 2).sum() < radius_obstacle1 ** 2
+
+                center_obstacle2 = torch.tensor([0.55, 0.15], device=x.device)
+                radius_obstacle2 = 0.02
+
+                x_near = torch.maximum(lower_x, torch.minimum(center_obstacle2, upper_x))
+                inside_obstacle2 = ((x_near - center_obstacle2) ** 2).sum() < radius_obstacle2 ** 2
+
+                return outside_xs | inside_obstacle1 | inside_obstacle2
+            else:
+                raise ValueError(f'Invalid safe set type \'{self.safe_set}\'. Expected \'convex\' or \'non-convex\'')
+
+        outside_xs = (-1.0 >= x[..., 0]) | (x[..., 0] >= 0.5) | (-0.5 >= x[..., 1]) | (x[..., 1] >= 0.5)
+        if self.safe_set == 'convex':
+            return outside_xs
+        elif self.safe_set == 'non-convex':
+            center_obstacle1 = torch.tensor([-0.55, 0.3], device=x.device)
+            radius_obstacle1 = 0.02
+            in_obstacle1 = ((x - center_obstacle1) ** 2).sum() < radius_obstacle1 ** 2
+
+            center_obstacle2 = torch.tensor([0.55, 0.15], device=x.device)
+            radius_obstacle2 = 0.02
+            in_obstacle2 = ((x - center_obstacle2) ** 2).sum() < radius_obstacle2 ** 2
+
+            return outside_xs & in_obstacle1 & in_obstacle2
+        else:
+            raise ValueError(f'Invalid safe set type \'{self.safe_set}\'. Expected \'convex\' or \'non-convex\'')
 
     def sample_unsafe(self, num_particles):
         x = self.sample_state_space(num_particles * 10)

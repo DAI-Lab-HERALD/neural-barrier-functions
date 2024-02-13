@@ -41,7 +41,7 @@ def step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoc
 
 @torch.no_grad()
 def test_method(certifier, method, batch_size, kappa=None):
-    loss_barrier = certifier.barrier_violation(method=method, batch_size=batch_size)
+    loss_barrier, ce = certifier.barrier_violation(method=method, batch_size=batch_size)
     unsafety_prob, beta, gamma = certifier.unsafety_prob(return_beta_gamma=True, method=method, batch_size=batch_size)
 
     loss_barrier, unsafety_prob = loss_barrier.item(), unsafety_prob.item()
@@ -53,7 +53,7 @@ def test_method(certifier, method, batch_size, kappa=None):
 
 
 @torch.no_grad()
-def test(certifier, status_config, kappa=None, method='crown_ibp_linear'):
+def test(certifier, status_config, kappa=None, method='crown_linear'):
     test_method(certifier, method=method, batch_size=status_config['crown_ibp_batch_size'], kappa=kappa)
 
 
@@ -87,13 +87,19 @@ def train(robust_learner, empirical_learner, certifier, args, config):
     # does not ruin the safety certificate
     scheduler.step(config['training']['epochs'] * 2)
 
-    while not certifier.certify(method='crown_interval', batch_size=config['test']['ibp_batch_size']):
-        logger.info(f'Current violation: {certifier.barrier_violation(method="crown_interval", batch_size=config["test"]["ibp_batch_size"])}')
+    certified, violation, counterexample = certifier.certify(method='crown_interval', batch_size=config['test']['ibp_batch_size'])
+
+    while not certified:
+        logger.info(f'Current violation: {violation}')
+        dataset.add_counterexample(counterexample)
+
         for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
             # plot_partitioning(partitioning, config['dynamics']['safe_set'])
 
             partitioning = partitioning.to(args.device)
             step(robust_learner, empirical_learner, optimizer, partitioning, 0.0, config['training']['epochs'], config['training']['empirical_only'])
+
+        certified, violation, counterexample = certifier.certify(method='crown_interval', batch_size=config['test']['ibp_batch_size'])
 
     logger.info('Training complete')
 

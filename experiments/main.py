@@ -43,4 +43,5 @@ def parse_arguments():
 if __name__ == '__main__':
     args = parse_arguments()
     configure_logging(args.log_file)
+    torch.set_default_dtype(torch.float64)
     main(args)

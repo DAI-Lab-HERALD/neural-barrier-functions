@@ -247,7 +247,8 @@ class BoundAdditiveGaussianExpectation(BoundModule, VRegionMixin):
             lower_b = dynamics_linear_bounds.lower[1]
 
             lower_A = lower_Ax * probs.view(-1, 1, 1, 1)
-            lower_b = lower_b * probs.view(-1, 1, 1) + lower_Av.matmul(part_exps.view(part_exps.size(0), 1, -1, 1)).squeeze(-1)
+            lower_b_noise = lower_Av.matmul(part_exps.view(part_exps.size(0), 1, -1, 1)).squeeze(-1)
+            lower_b = lower_b * probs.view(-1, 1, 1) + lower_b_noise
 
             lower = (lower_A, lower_b)
         else:
@@ -259,7 +260,8 @@ class BoundAdditiveGaussianExpectation(BoundModule, VRegionMixin):
             upper_b = dynamics_linear_bounds.upper[1]
 
             upper_A = upper_Ax * probs.view(-1, 1, 1, 1)
-            upper_b = upper_b * probs.view(-1, 1, 1) + upper_Av.matmul(part_exps.view(part_exps.size(0), 1, -1, 1)).squeeze(-1)
+            upper_b_noise = upper_Av.matmul(part_exps.view(part_exps.size(0), 1, -1, 1)).squeeze(-1)
+            upper_b = upper_b * probs.view(-1, 1, 1) + upper_b_noise
 
             upper = (upper_A, upper_b)
         else:

@@ -163,7 +163,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
             min, max = self.min_max_beta(set, **kwargs)
 
-        return max.max().clamp(min=0)
+        return max.max().clamp(min=0.0)
 
     def min_max_beta(self, set, **kwargs):
         lower, upper = bounds(self.beta_network, set, **kwargs)
@@ -230,7 +230,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
             min, max = self.min_max_gamma(set, **kwargs)
 
-        return max.max().clamp(min=0)
+        return max.max().clamp(min=0.0)
 
     def min_max_gamma(self, set, **kwargs):
         lower, upper = bounds(self.barrier, set, **kwargs)
@@ -263,8 +263,10 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
     @torch.no_grad()
     def barrier_violation(self, **kwargs):
-        loss = self.state_space_violation(**kwargs) + self.unsafe_violation(**kwargs)
-        return loss
+        ss_violation, ss_ce = self.state_space_violation(**kwargs)
+        unsafe_violation, unsafe_ce = self.unsafe_violation(**kwargs)
+        violation = ss_violation + unsafe_violation
+        return violation, (ss_ce, unsafe_ce)
 
     @torch.no_grad()
     def unsafe_violation(self, **kwargs):
@@ -286,7 +288,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
             return self.violation('STATE_SPACE', self.initial_partitioning.state_space, 0, self.dynamics.state_space, **kwargs)
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
-            return 0.0
+            return 0.0, None
 
     @torch.no_grad()
     def violation(self, label, set, lower_bound, contain_func, **kwargs):
@@ -308,7 +310,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
             min, max = self.min_max(set, **kwargs)
 
-        return (lower_bound - min.min()).clamp(min=0)
+        return (lower_bound - min.min()).clamp(min=0.0), set[min.argmin()].center
 
     def min_max(self, set, **kwargs):
         lower, upper = bounds(self.barrier, set, **kwargs)
@@ -388,13 +390,17 @@ class SplittingNeuralSBFCertifier(nn.Module):
         Allow a small violation to account for potential numerical (FP) errors.
         :return: true if the barrier network is a valid barrier
         """
-        return self.barrier_violation(**kwargs).item() <= self.certification_threshold
+        violation, ce = self.barrier_violation(**kwargs)
+        violation = violation.item()
+        certified = violation <= self.certification_threshold
+
+        return certified, violation, ce
 
 
 class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
     def __init__(self, barrier: nn.Module, dynamics: AdditiveGaussianDynamics, factory, initial_partitioning, horizon,
                  certification_threshold=1.0e-6, split_gap_stop_treshold=1e-6, max_set_size=200000,
-                 noise_partitions=100, sigma_cutoff=7.2, device=None):
+                 noise_partitions=200, sigma_cutoff=3.0, device=None):
         super().__init__()
 
         assert isinstance(dynamics, AdditiveGaussianDynamics)
@@ -405,7 +411,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         loc, scale = loc.to(device), scale.to(device)
         factory.kwargs['slices'] = [noise_partitions for _ in range(initial_partitioning.state_space.size(-1))]
         factory.kwargs['sigma_cutoff'] = sigma_cutoff
-        self.beta_network = factory.build(AdditiveGaussianBetaNetwork(nn.Sequential(barrier, Clamp(max=1.0)), dynamics.nominal_system, loc, scale))
+        self.beta_network = factory.build(AdditiveGaussianBetaNetwork(barrier, dynamics.nominal_system, loc, scale))
         self.dynamics = dynamics
 
         # Assumptions:
@@ -427,7 +433,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         set = self.initial_partitioning.safe
 
         lower, upper = bounds(self.beta_network, set, **kwargs)
-        min, max = self.min_max(lower, upper)
+        min, max = self.min_max_beta(set, lower, upper)
         last_gap = [torch.finfo(min.dtype).max for _ in range(499)] + [(max.max() - min.max()).item()]
         k = 0
 
@@ -448,32 +454,32 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
             upper = upper[keep]
             logger.debug(f'Min/max pruning {size_before - len(set)}')
 
-            set = self.split(set, lower, upper, k)
-            set = self.region_prune(set, self.dynamics.safe)
+            # set = self.split(set, lower, upper, k)
+            # set = self.region_prune(set, self.dynamics.safe)
+            #
+            # lower, upper = bounds(self.beta_network, set, **kwargs)
 
-            lower, upper = bounds(self.beta_network, set, **kwargs)
+            split_index, other = self.pick_for_splitting(min[keep], max[keep], **kwargs)
 
-            # split_index, other = self.pick_for_splitting(max[keep], **kwargs)
-            #
-            # split_set = set[split_index]
-            # split_lower = lower[split_index]
-            # split_upper = upper[split_index]
-            #
-            # set = set[other]
-            # lower = lower[other]
-            # upper = upper[other]
-            #
-            # split_set = self.split(split_set, split_lower, split_upper, k)
-            # split_set = self.region_prune(split_set, self.dynamics.safe)
-            # split_lower, split_upper = bounds(self.beta_network, split_set, **kwargs)
-            #
-            # set = Partitions((torch.cat([set.lower, split_set.lower]), torch.cat([set.upper, split_set.upper])))
-            # lower_A = 0.0 if isinstance(lower.A, float) else torch.cat([lower.A, split_lower.A])
-            # lower = Affine(lower_A, torch.cat([lower.b, split_lower.b]), set)
-            # upper_A = 0.0 if isinstance(upper.A, float) else torch.cat([upper.A, split_upper.A])
-            # upper = Affine(upper_A, torch.cat([upper.b, split_upper.b]), set)
+            split_set = set[split_index]
+            split_lower = lower[split_index]
+            split_upper = upper[split_index]
 
-            min, max = self.min_max(lower, upper)
+            set = set[other]
+            lower = lower[other]
+            upper = upper[other]
+
+            split_set = self.split(split_set, split_lower, split_upper, k)
+            split_set = self.region_prune(split_set, self.dynamics.safe)
+            split_lower, split_upper = bounds(self.beta_network, split_set, **kwargs)
+
+            set = Partitions((torch.cat([set.lower, split_set.lower]), torch.cat([set.upper, split_set.upper])))
+            lower_A = 0.0 if isinstance(lower.A, float) else torch.cat([lower.A, split_lower.A])
+            lower = Affine(lower_A, torch.cat([lower.b, split_lower.b]), set)
+            upper_A = 0.0 if isinstance(upper.A, float) else torch.cat([upper.A, split_upper.A])
+            upper = Affine(upper_A, torch.cat([upper.b, split_upper.b]), set)
+
+            min, max = self.min_max_beta(set, lower, upper)
 
             last_gap.append((max.max() - min.max()).item())
             last_gap.pop(0)
@@ -481,12 +487,21 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
         return max.max().clamp(min=0)
 
-    def pick_for_splitting(self, max, batch_size=1, **kwargs):
-        split_indices = max.topk(min(batch_size, max.size(0))).indices
-        other_indices = torch.full((max.size(0),), True, dtype=torch.bool, device=max.device)
+    def pick_for_splitting(self, min_, max_, batch_size=1, **kwargs):
+        split_indices = max_.topk(min(batch_size, max_.size(0))).indices
+
+        other_indices = torch.full((max_.size(0),), True, dtype=torch.bool, device=max_.device)
         other_indices[split_indices] = False
 
         return split_indices, other_indices
+
+    def min_max_beta(self, set, lower, upper):
+        minmin = lower.partition_min().view(-1)
+        minmax = lower.partition_max().view(-1)
+        min = torch.where(self.dynamics.unsafe(set.center, set.width / 2), minmin, minmax)
+        max = upper.partition_max()
+
+        return min, max.view(-1)
 
     def min_max(self, lower, upper):
         min = lower.partition_min()
@@ -583,8 +598,10 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
 
     @torch.no_grad()
     def barrier_violation(self, **kwargs):
-        loss = self.state_space_violation(**kwargs) + self.unsafe_violation(**kwargs)
-        return loss
+        ss_violation, ss_ce = self.state_space_violation(**kwargs)
+        unsafe_violation, unsafe_ce = self.unsafe_violation(**kwargs)
+        violation = ss_violation + unsafe_violation
+        return violation, (ss_ce, unsafe_ce)
 
     @torch.no_grad()
     def unsafe_violation(self, **kwargs):
@@ -606,7 +623,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
             return self.violation('STATE_SPACE', self.initial_partitioning.state_space, 0, self.dynamics.state_space, **kwargs)
         else:
             # Assume that dynamics ends with ReLU, i.e. B(x) >= 0 for all x in R^n.
-            return 0.0
+            return 0.0, None
 
     @torch.no_grad()
     def violation(self, label, set, lower_bound, contain_func, **kwargs):
@@ -636,7 +653,7 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
             last_gap.pop(0)
             k += 1
 
-        return (lower_bound - min.min()).clamp(min=0)
+        return (lower_bound - min.min()).clamp(min=0.0), set[min.argmin()].center
 
     def prune_violation(self, min, max, lower_bound):
         least_upper_bound = max.min()
@@ -680,5 +697,9 @@ class AdditiveGaussianSplittingNeuralSBFCertifier(nn.Module):
         Allow a small violation to account for potential numerical (FP) errors.
         :return: true if the barrier network is a valid barrier
         """
-        return self.barrier_violation(**kwargs).item() <= self.certification_threshold
+        violation, ce = self.barrier_violation(**kwargs)
+        violation = violation.item()
+        certified = violation <= self.certification_threshold
+
+        return certified, violation, ce
 

@@ -34,6 +34,11 @@ LOGGING_CONFIG = {
             'level': 'DEBUG',
             'propagate': False
         },
+        'linear': {  # linear experiment logger
+            'handlers': ['default'],
+            'level': 'DEBUG',
+            'propagate': False
+        },
         'polynomial': {  # polynomial experiment logger
             'handlers': ['default'],
             'level': 'DEBUG',

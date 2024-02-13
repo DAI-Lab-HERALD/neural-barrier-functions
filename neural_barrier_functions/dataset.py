@@ -1,8 +1,12 @@
+import logging
+
 import numpy as np
 import torch.distributions
 from torch.utils.data import Dataset
 
 from .partitioning import Partitioning
+
+logger = logging.getLogger(__name__)
 
 
 class StochasticSystemDataset(Dataset):
@@ -14,6 +18,9 @@ class StochasticSystemDataset(Dataset):
 
         self.dynamics = dynamics
 
+        self.state_space_counterexamples = []
+        self.unsafe_set_counterexamples = []
+
     def __getitem__(self, item):
         valid, partitioning = self.generate()
 
@@ -21,6 +28,18 @@ class StochasticSystemDataset(Dataset):
             valid, partitioning = self.generate()
 
         return partitioning
+
+    def add_counterexample(self, counterexample):
+        (ss_ce, unsafe_ce) = counterexample
+
+        if ss_ce is not None:
+            self.state_space_counterexamples.append(ss_ce.cpu())
+
+        if unsafe_ce is not None:
+            self.unsafe_set_counterexamples.append(unsafe_ce.cpu())
+
+        if ss_ce is None and unsafe_ce is None:
+            logger.warning('No counterexample given')
 
     def generate(self):
         num_particles = self.batch_size // 4
@@ -44,12 +63,21 @@ class StochasticSystemDataset(Dataset):
             elif torch.any(overlap_unsafe):
                 unsafe = torch.cat([unsafe, safe[overlap_unsafe]], dim=0)
 
+        if self.state_space_counterexamples:
+            ce_state_space = torch.stack(self.state_space_counterexamples)
+            state_space = torch.cat((state_space, ce_state_space))
+
+        if self.unsafe_set_counterexamples:
+            ce_unsafe = torch.stack(self.unsafe_set_counterexamples)
+            unsafe = torch.cat((unsafe, ce_unsafe))
+
         partitioning = Partitioning(
             (initial - self.eps, initial + self.eps),
             (safe - self.eps, safe + self.eps),
             (unsafe - self.eps, unsafe + self.eps),
             (state_space - self.eps, state_space + self.eps)
         )
+
         return True, partitioning
 
         # x = self.dynamics.sample_state_space(num_particles)
