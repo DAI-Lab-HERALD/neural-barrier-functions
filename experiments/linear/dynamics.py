@@ -67,14 +67,16 @@ class LinearDynamics(nn.Linear, AdditiveGaussianDynamics):
 
     def safe(self, x, eps=None):
         def in_obstacle1(p):
+            # center and radius in L-inf norm sense
             center = torch.tensor([-0.55, 0.3], device=x.device)
             radius = 0.02
-            return ((p - center) ** 2).sum(dim=-1) < radius ** 2
+            return (p - center).abs().max(dim=-1).values < radius
 
         def in_obstacle2(p):
+            # center and radius in L-inf norm sense
             center = torch.tensor([0.55, 0.15], device=x.device)
             radius = 0.02
-            return ((p - center) ** 2).sum(dim=-1) < radius ** 2
+            return (p - center).abs().max(dim=-1).values < radius
 
         if eps is not None:
             lower_x, upper_x = x - eps, x + eps
@@ -124,6 +126,19 @@ class LinearDynamics(nn.Linear, AdditiveGaussianDynamics):
         return x[:num_particles]
 
     def unsafe(self, x, eps=None):
+        # center and radius in L-inf norm sense
+        center_obstacle1 = torch.tensor([-0.55, 0.3], device=x.device)
+        radius_obstacle1 = 0.02
+
+        center_obstacle2 = torch.tensor([0.55, 0.15], device=x.device)
+        radius_obstacle2 = 0.02
+
+        def in_obstacle1(p):
+            return (p - center_obstacle1).abs().max(dim=-1).values < radius_obstacle1
+
+        def in_obstacle2(p):
+            return (p - center_obstacle2).abs().max(dim=-1).values < radius_obstacle2
+
         if eps is not None:
             lower_x, upper_x = x - eps, x + eps
 
@@ -137,17 +152,13 @@ class LinearDynamics(nn.Linear, AdditiveGaussianDynamics):
             if self.safe_set == 'convex':
                 return outside_xs
             elif self.safe_set == 'non-convex':
-                center_obstacle1 = torch.tensor([-0.55, 0.3], device=x.device)
-                radius_obstacle1 = 0.02
-
                 x_near = torch.maximum(lower_x, torch.minimum(center_obstacle1, upper_x))
-                inside_obstacle1 = ((x_near - center_obstacle1) ** 2).sum(dim=-1) < radius_obstacle1 ** 2
+                inside_obstacle1 = in_obstacle1(x_near)
 
-                center_obstacle2 = torch.tensor([0.55, 0.15], device=x.device)
                 radius_obstacle2 = 0.02
 
                 x_near = torch.maximum(lower_x, torch.minimum(center_obstacle2, upper_x))
-                inside_obstacle2 = ((x_near - center_obstacle2) ** 2).sum(dim=-1) < radius_obstacle2 ** 2
+                inside_obstacle2 = in_obstacle2(x_near)
 
                 return outside_xs | inside_obstacle1 | inside_obstacle2
             else:
@@ -157,13 +168,8 @@ class LinearDynamics(nn.Linear, AdditiveGaussianDynamics):
         if self.safe_set == 'convex':
             return outside_xs
         elif self.safe_set == 'non-convex':
-            center_obstacle1 = torch.tensor([-0.55, 0.3], device=x.device)
-            radius_obstacle1 = 0.02
-            in_obstacle1 = ((x - center_obstacle1) ** 2).sum(dim=-1) < radius_obstacle1 ** 2
-
-            center_obstacle2 = torch.tensor([0.55, 0.15], device=x.device)
-            radius_obstacle2 = 0.02
-            in_obstacle2 = ((x - center_obstacle2) ** 2).sum(dim=-1) < radius_obstacle2 ** 2
+            in_obstacle1 = in_obstacle1(x)
+            in_obstacle2 = in_obstacle2(x)
 
             return outside_xs | in_obstacle1 | in_obstacle2
         else:
