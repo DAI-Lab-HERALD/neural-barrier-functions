@@ -6,18 +6,12 @@ from neural_barrier_functions.dynamics import AdditiveGaussianDynamics
 from torch.distributions import Normal
 
 
-class NNDM(nn.Linear, AdditiveGaussianDynamics):
-    def __init__(self, dynamics_config):
-        nn.Linear.__init__(self, 2, 2)
-        AdditiveGaussianDynamics.__init__(self, dynamics_config['num_samples'])
+class AdditiveNoise(nn.Linear):
+    def __init__(self, num_samples, sigma):
+        super().__init__(2, 2)
 
-        # Load model from ONNX
-        onnx_model_path = dynamics_config['nn_model']
-        graph_model = onnx2torch.convert(onnx_model_path)
-
-        # Assume that the model is structured as a Sequential
-        modules = graph_model.children()
-        self._nominal_system = nn.Sequential(*modules)
+        self.num_samples = num_samples
+        self.sigma = sigma
 
         del self.weight
         del self.bias
@@ -27,11 +21,34 @@ class NNDM(nn.Linear, AdditiveGaussianDynamics):
             [0.0, 1.0]
         ]).unsqueeze(0), persistent=True)
 
-        self.sigma = torch.as_tensor(dynamics_config['sigma'])
-
         dist = Normal(torch.zeros((2,)), self.sigma)
         z = dist.sample((self.num_samples,))
         self.register_buffer('bias', z.unsqueeze(1), persistent=True)
+
+    def resample(self):
+        dist = Normal(torch.zeros((2,)), self.sigma)
+        z = dist.sample((self.num_samples,))
+        self.bias = z.unsqueeze(1)
+
+    def forward(self, input: Tensor) -> Tensor:
+        self.resample()
+        return input + self.bias
+
+
+class NNDM(nn.Sequential, AdditiveGaussianDynamics):
+    def __init__(self, dynamics_config):
+        self.sigma = torch.as_tensor(dynamics_config['sigma'])
+        AdditiveGaussianDynamics.__init__(self, dynamics_config['num_samples'])
+
+        # Load model from ONNX
+        onnx_model_path = dynamics_config['nn_model']
+        graph_model = onnx2torch.convert(onnx_model_path)
+
+        # Assume that the model is structured as a Sequential
+        modules = graph_model.children()
+        nn.Sequential.__init__(self,
+                               nn.Sequential(*modules),  # Nominal system
+                               AdditiveNoise(self.num_samples, self.sigma))
 
         self.safe_set = torch.as_tensor(dynamics_config['safe_set'][0]), torch.as_tensor(dynamics_config['safe_set'][1])
         self.initial_set = torch.as_tensor(dynamics_config['initial_set'][0]), torch.as_tensor(dynamics_config['initial_set'][1])
@@ -44,14 +61,10 @@ class NNDM(nn.Linear, AdditiveGaussianDynamics):
 
     @property
     def nominal_system(self):
-        return self._nominal_system
+        return self[0]
 
-    def forward(self, input: Tensor) -> Tensor:
-        dist = Normal(torch.zeros((2,)), self.sigma)
-        z = dist.sample((self.num_samples,))
-        self.bias = z.unsqueeze(1)
-
-        return input + self.bias
+    def resample(self):
+        self[1].resample()
 
     def initial(self, x, eps=None):
         if eps is not None:

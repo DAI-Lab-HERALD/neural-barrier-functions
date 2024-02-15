@@ -39,11 +39,13 @@ class LinearDynamics(nn.Linear, AdditiveGaussianDynamics):
 
         self.safe_set = dynamics_config['safe_set']
 
-    def forward(self, input: Tensor) -> Tensor:
+    def resample(self):
         dist = Normal(torch.zeros((2,)), self.sigma)
         z = dist.sample((self.num_samples,))
         self.bias = z.unsqueeze(1)
 
+    def forward(self, input: Tensor) -> Tensor:
+        self.resample()
         return input.matmul(self.weight.transpose(-1, -2)) + self.bias
 
     def initial(self, x, eps=None):

@@ -176,7 +176,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
     def split_beta(self, set, **kwargs):
         kwargs.pop('method', None)
 
-        lower, upper = bounds(self.beta_network, set, method='crown_linear', **kwargs)
+        lower, upper = bounds(self.beta_network, set, method='crown_ibp_linear', **kwargs)
 
         split_dim = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
@@ -333,7 +333,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
     def split(self, set, **kwargs):
         kwargs.pop('method', None)
 
-        lower, upper = bounds(self.barrier, set, method='crown_linear', **kwargs)
+        lower, upper = bounds(self.barrier, set, method='crown_ibp_linear', **kwargs)
 
         split_dim = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
