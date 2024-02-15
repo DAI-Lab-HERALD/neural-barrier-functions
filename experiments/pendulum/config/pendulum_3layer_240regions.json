@@ -1,0 +1,38 @@
+{
+  "system": "pendulum",
+  "experiment_type": "barrier_function",
+  "dynamics": {
+    "dim": 2,
+    "sigma": [0.01, 0.01],
+    "num_samples": 500,
+    "horizon": 10,
+    "safe_set": [[-0.261799388, -1.0], [0.261799388, 1.0]],
+    "initial_set": [[-0.01, -0.01], [0.01, 0.01]],
+    "num_controllers": 1,
+    "nn_model": "pendulum/data/pendulum_3layer.onnx"
+  },
+  "partitioning": {
+    "method": "grid",
+    "num_slices": [24, 10]
+  },
+  "model": {
+    "type": "fcnn",
+    "input_dim": 2,
+    "hidden_nodes": 32,
+    "hidden_layers": 2,
+    "activation": "relu"
+  },
+  "training": {
+    "batch_size": 1000,
+    "iter_per_epoch": 400,
+    "eps": [0.00001, 0.00001],
+    "epochs": 150,
+    "test_every": 25,
+    "adjust_overlap": false,
+    "empirical_only": false
+  },
+  "test": {
+    "ibp_batch_size": 100,
+    "crown_ibp_batch_size": 10
+  }
+}
