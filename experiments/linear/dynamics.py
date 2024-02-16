@@ -42,7 +42,7 @@ class LinearDynamics(nn.Linear, AdditiveGaussianDynamics):
     def resample(self):
         dist = Normal(torch.zeros((2,)), self.sigma)
         z = dist.sample((self.num_samples,))
-        self.bias = z.unsqueeze(1)
+        self.bias = z.unsqueeze(1).to(self.bias.device)
 
     def forward(self, input: Tensor) -> Tensor:
         self.resample()

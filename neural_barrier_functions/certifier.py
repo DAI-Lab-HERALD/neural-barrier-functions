@@ -167,16 +167,16 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
     def min_max_beta(self, set, **kwargs):
         lower, upper = bounds(self.beta_network, set, **kwargs)
-
+        min = lower.partition_min()
         max = upper.partition_max()
-        min = lower.partition_max()
 
-        return min.view(-1), max.view(-1)
+        return min, max
 
     def split_beta(self, set, **kwargs):
-        kwargs.pop('method', None)
+        if kwargs.get('method') not in ['crown_linear', 'crown_ibp_linear']:
+            kwargs['method'] = 'crown_ibp_linear'
 
-        lower, upper = bounds(self.beta_network, set, method='crown_ibp_linear', **kwargs)
+        lower, upper = bounds(self.beta_network, set, **kwargs)
 
         split_dim = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)
@@ -234,7 +234,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
     def min_max_gamma(self, set, **kwargs):
         lower, upper = bounds(self.barrier, set, **kwargs)
-        min = lower.partition_max()
+        min = lower.partition_min()
         max = upper.partition_max()
 
         return min.view(-1), max.view(-1)
@@ -296,44 +296,44 @@ class SplittingNeuralSBFCertifier(nn.Module):
         last_gap = [torch.finfo(min.dtype).max for _ in range(10)]
 
         while not self.should_stop_violation(label, set, min, max, lower_bound, last_gap):
-            last_gap.append((max.min() - min.min()).item())
-            last_gap.pop(0)
-
-            set, prune_all = self.prune_violation(set, min, max, lower_bound)
+            keep, prune_all = self.prune_violation(min, max, lower_bound)
 
             if prune_all:
                 logger.warning(f'Pruning all in violation: {min}, {max}, last gap: {last_gap[-1]}')
                 break
 
+            set = set[keep]
+
             set = self.split(set, **kwargs)
             set = self.region_prune(set, contain_func)
 
-            min, max = self.min_max(set, **kwargs)
+            min, max = self.min_max(set)
+
+            last_gap.append((max.min() - min.min()).item())
+            last_gap.pop(0)
 
         return (lower_bound - min.min()).clamp(min=0.0), set[min.argmin()].center
 
     def min_max(self, set, **kwargs):
         lower, upper = bounds(self.barrier, set, **kwargs)
         min = lower.partition_min()
-        max = upper.partition_min()
+        max = upper.partition_max()
 
         return min.view(-1), max.view(-1)
 
-    def prune_violation(self, set, min, max, lower_bound):
+    def prune_violation(self, min, max, lower_bound):
         least_upper_bound = max.min()
 
         prune = (min >= lower_bound) | (min >= least_upper_bound)
         keep = ~prune
 
-        if torch.all(prune):
-            return set, True
-
-        return Partitions((set.lower[keep], set.upper[keep])), False
+        return keep, torch.all(prune)
 
     def split(self, set, **kwargs):
-        kwargs.pop('method', None)
+        if kwargs.get('method') not in ['crown_linear', 'crown_ibp_linear']:
+            kwargs['method'] = 'crown_ibp_linear'
 
-        lower, upper = bounds(self.barrier, set, method='crown_ibp_linear', **kwargs)
+        lower, upper = bounds(self.barrier, set, **kwargs)
 
         split_dim = ((lower.A.abs() + upper.A.abs())[:, 0] * set.width).argmax(dim=-1)
         partition_indices = torch.arange(0, set.lower.size(0), device=set.lower.device)

@@ -112,7 +112,10 @@ def linear_batching(method, lower, upper, batch_size, bound_lower=True, bound_up
     if batch_size is None:
         linear_bounds = method(HyperRectangle(lower, upper), bound_lower=bound_lower, bound_upper=bound_upper)
 
-        return linear_bounds
+        out_lower = Affine(*linear_bounds.lower, input_regions) if bound_lower else None
+        out_upper = Affine(*linear_bounds.upper, input_regions) if bound_upper else None
+
+        return out_lower, out_upper
     else:
         batches = list(zip(lower.split(batch_size), upper.split(batch_size)))
         batches = [method(HyperRectangle(*batch), bound_lower=bound_lower, bound_upper=bound_upper) for i, batch in enumerate(batches)]
