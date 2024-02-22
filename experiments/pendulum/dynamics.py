@@ -109,7 +109,7 @@ class NNDM(nn.Sequential, AdditiveGaussianDynamics):
 
             return outside1 | outside2
 
-        return torch.any(x <= self.safe_set[0].to(x.device), dim=-1) | torch.all(self.safe_set[1].to(x.device) < x, dim=-1)
+        return torch.any(x < self.safe_set[0].to(x.device), dim=-1) | torch.any(self.safe_set[1].to(x.device) < x, dim=-1)
 
     def sample_unsafe(self, num_particles):
         x = self.sample_state_space(num_particles * 10)

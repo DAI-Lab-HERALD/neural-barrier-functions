@@ -1,19 +1,15 @@
 {
-  "system": "pendulum",
+  "system": "linear",
   "experiment_type": "barrier_function",
   "dynamics": {
-    "dim": 2,
-    "sigma": [0.01, 0.01],
+    "sigma": [0.1, 0.1],
     "num_samples": 500,
     "horizon": 10,
-    "safe_set": [[-0.261799388, -1.0], [0.261799388, 1.0]],
-    "initial_set": [[-0.01, -0.01], [0.01, 0.01]],
-    "num_controllers": 1,
-    "nn_model": "pendulum/data/pendulum_3layer.onnx"
+    "safe_set": "non-convex"
   },
   "partitioning": {
     "method": "grid",
-    "num_slices": [3, 5]
+    "num_slices": [4, 4]
   },
   "model": {
     "type": "fcnn",
@@ -33,7 +29,7 @@
   },
   "test": {
     "ibp_batch_size": 100,
-    "crown_ibp_batch_size": 1,
-    "max_set_size": 120
+    "crown_ibp_batch_size": 3,
+    "max_set_size": 5890
   }
 }

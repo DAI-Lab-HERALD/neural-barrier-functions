@@ -13,7 +13,7 @@
   },
   "partitioning": {
     "method": "grid",
-    "num_slices": [12, 10]
+    "num_slices": [3, 5]
   },
   "model": {
     "type": "fcnn",
@@ -33,6 +33,7 @@
   },
   "test": {
     "ibp_batch_size": 100,
-    "crown_ibp_batch_size": 10
+    "crown_ibp_batch_size": 1,
+    "max_set_size": 120
   }
 }

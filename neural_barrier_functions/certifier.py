@@ -152,11 +152,13 @@ class SplittingNeuralSBFCertifier(nn.Module):
             last_gap.append((max.max() - min.max()).item())
             last_gap.pop(0)
 
-            set, prune_all = self.prune_beta_gamma(set, min, max)
+            keep, prune_all = self.prune_beta_gamma(min, max)
 
             if prune_all:
                 logger.warning(f'Pruning all in beta: {min}, {max}, last gap: {last_gap[-1]}')
                 break
+
+            set = set[keep]
 
             set = self.split_beta(set, **kwargs)
             set = self.region_prune(set, self.dynamics.safe)
@@ -170,7 +172,7 @@ class SplittingNeuralSBFCertifier(nn.Module):
         min = lower.partition_min()
         max = upper.partition_max()
 
-        return min, max
+        return min.view(-1), max.view(-1)
 
     def split_beta(self, set, **kwargs):
         if kwargs.get('method') not in ['crown_linear', 'crown_ibp_linear']:
@@ -219,11 +221,13 @@ class SplittingNeuralSBFCertifier(nn.Module):
             last_gap.append((max.max() - min.max()).item())
             last_gap.pop(0)
 
-            set, prune_all = self.prune_beta_gamma(set, min, max)
+            keep, prune_all = self.prune_beta_gamma(min, max)
 
             if prune_all:
                 logger.warning(f'Pruning all in gamma: {min}, {max}, last gap: {last_gap[-1]}')
                 break
+
+            set = set[keep]
 
             set = self.split(set, **kwargs)
             set = self.region_prune(set, self.dynamics.initial)
@@ -239,16 +243,13 @@ class SplittingNeuralSBFCertifier(nn.Module):
 
         return min.view(-1), max.view(-1)
 
-    def prune_beta_gamma(self, set, min, max):
+    def prune_beta_gamma(self, min, max):
         largest_lower_bound = min.max()
 
         prune = (max <= 0.0) | (max <= largest_lower_bound)
         keep = ~prune
 
-        if torch.all(prune):
-            return set, True
-
-        return Partitions((set.lower[keep], set.upper[keep])), False
+        return keep, torch.all(prune)
 
     def should_stop_beta_gamma(self, label, set, min, max, last_gap):
         gap = (max.max() - min.max()).item()

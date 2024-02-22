@@ -266,3 +266,59 @@ def plot_contours(model, args, config):
     levels = [1, 5, 10, 20, 50]
     file_path = 'figures/population_contour_sos.pdf'
     plot_contour(sos_barrier, args, config, levels, file_path, vmin=-10.0)
+
+
+@torch.no_grad()
+def plot_heatmap(model, args, config):
+    fig, ax = plt.subplots()
+
+    num_points = 1000
+    x1_space = torch.linspace(-1.2 * 0.261799388, 1.2 * 0.261799388, num_points).to(args.device)
+    x2_space = torch.linspace(-1.2, 1.2, num_points).to(args.device)
+
+    input = torch.cartesian_prod(x1_space, x2_space)
+    z = model(input).view(num_points, num_points).clamp(max=2.0).cpu().numpy()
+    input = input.view(num_points, num_points, -1).cpu().numpy()
+    x, y = input[..., 0], input[..., 1]
+
+    pos = plt.contourf(x, y, z, 20)
+    fig.colorbar(pos)
+
+    rect_init = plt.Rectangle((-0.01, -0.01), 0.02, 0.02, color='g', fill=False)
+    ax.add_patch(rect_init)
+
+    rect_safe = plt.Rectangle((-0.261799388, -1.0), 2 * 0.261799388, 2.0, color='r', fill=False)
+    ax.add_patch(rect_safe)
+
+    plt.xlim(-1.2 * 0.261799388, 1.2 * 0.261799388)
+    plt.ylim(-1.2, 1.2)
+
+    plt.show()
+
+
+@torch.no_grad()
+def plot_nominal_dynamics(nominal_dynamics, args, config):
+    fig, ax = plt.subplots()
+
+    num_points = 20
+    x1_space = torch.linspace(-1.2 * 0.261799388, 1.2 * 0.261799388, num_points).to(args.device)
+    x2_space = torch.linspace(-1.2, 1.2, num_points).to(args.device)
+
+    input = torch.cartesian_prod(x1_space, x2_space)
+    z = nominal_dynamics(input).view(num_points, num_points, -1).cpu().numpy()
+    input = input.view(num_points, num_points, -1).cpu().numpy()
+    x, y = input[..., 0], input[..., 1]
+    u, v = z[..., 0], z[..., 1]
+
+    plt.quiver(x, y, u - x, v - y, angles='xy')
+
+    rect_init = plt.Rectangle((-0.01, -0.01), 0.02, 0.02, color='g', fill=False)
+    ax.add_patch(rect_init)
+
+    rect_safe = plt.Rectangle((-0.261799388, -1.0), 2 * 0.261799388, 2.0, color='r', fill=False)
+    ax.add_patch(rect_safe)
+
+    plt.xlim(-1.2 * 0.261799388, 1.2 * 0.261799388)
+    plt.ylim(-1.2, 1.2)
+
+    plt.show()

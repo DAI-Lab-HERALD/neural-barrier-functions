@@ -8,7 +8,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 from .partitioning import plot_partitioning, nndm_partitioning
-from .plot import plot_bounds_2d, plot_contours
+from .plot import plot_bounds_2d, plot_contours, plot_heatmap, plot_nominal_dynamics
 from .dynamics import NNDM
 
 from neural_barrier_functions.certifier import SplittingNeuralSBFCertifier, AdditiveGaussianSplittingNeuralSBFCertifier
@@ -71,7 +71,7 @@ def train(robust_learner, empirical_learner, certifier, args, config):
 
     for epoch in trange(config['training']['epochs'], desc='Epoch', colour='red', position=0, leave=False):
         for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
-            # plot_partitioning(partitioning, config['dynamics']['safe_set'])
+            # plot_partitioning(partitioning)
 
             partitioning = partitioning.to(args.device)
             step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoch, config['training']['empirical_only'])
@@ -87,6 +87,9 @@ def train(robust_learner, empirical_learner, certifier, args, config):
     # Reduce learning rate massively to ensure that the last learning to ensure non-violation
     # does not ruin the safety certificate
     scheduler.step(config['training']['epochs'] * 2)
+
+    # Since we are only computing state space and unsafe, we can scale more.
+    certifier.max_set_size *= 10
 
     certified, violation, counterexample = certifier.certify(method='crown_linear', batch_size=config['test']['ibp_batch_size'])
 
@@ -140,7 +143,7 @@ def pendulum_main(args, config):
             save(robust_learner, args, 'final')
         elif args.task == 'test':
             # Use AdditiveGaussianSplittingNeuralSBFCertifier during testing for exact verification
-            certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
+            certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon'], max_set_size=config['test']['max_set_size']).to(args.device)
             test(certifier, config['test'])
         elif args.task == 'plot':
             plot_contours(barrier, args, config)

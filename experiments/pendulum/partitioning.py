@@ -26,7 +26,15 @@ def plot_partitioning(partitioning):
         patch_collection.append(rect)
     ax.add_collection(PatchCollection(patch_collection, color='r', alpha=0.1, linewidth=1))
 
-    ax.set_aspect('equal')
+    rect_init = plt.Rectangle((-0.01, -0.01), 0.02, 0.02, color='g', fill=False)
+    ax.add_patch(rect_init)
+
+    rect_safe = plt.Rectangle((-0.261799388, -1.0), 2 * 0.261799388, 2.0, color='r', fill=False)
+    ax.add_patch(rect_safe)
+
+    plt.xlim(-1.2 * 0.261799388, 1.2 * 0.261799388)
+    plt.ylim(-1.2, 1.2)
+
     plt.show()
 
 

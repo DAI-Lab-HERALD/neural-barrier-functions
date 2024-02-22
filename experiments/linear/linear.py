@@ -88,7 +88,10 @@ def train(robust_learner, empirical_learner, certifier, args, config):
     # does not ruin the safety certificate
     scheduler.step(config['training']['epochs'] * 2)
 
-    certified, violation, counterexample = certifier.certify(method='crown_interval', batch_size=config['test']['ibp_batch_size'])
+    # Since we are only computing state space and unsafe, we can scale more.
+    certifier.max_set_size *= 10
+
+    certified, violation, counterexample = certifier.certify(method='crown_linear', batch_size=config['test']['ibp_batch_size'])
 
     while not certified:
         logger.info(f'Current violation: {violation}')
@@ -100,7 +103,7 @@ def train(robust_learner, empirical_learner, certifier, args, config):
             partitioning = partitioning.to(args.device)
             step(robust_learner, empirical_learner, optimizer, partitioning, 0.0, config['training']['epochs'], config['training']['empirical_only'])
 
-        certified, violation, counterexample = certifier.certify(method='crown_interval', batch_size=config['test']['ibp_batch_size'])
+        certified, violation, counterexample = certifier.certify(method='crown_linear', batch_size=config['test']['ibp_batch_size'])
 
     logger.info('Training complete')
 
@@ -140,7 +143,7 @@ def linear_main(args, config):
             save(robust_learner, args, 'final')
         elif args.task == 'test':
             # Use AdditiveGaussianSplittingNeuralSBFCertifier during testing for exact verification
-            certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
+            certifier = AdditiveGaussianSplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon'], max_set_size=config['test']['max_set_size']).to(args.device)
             test(certifier, config['test'])
         elif args.task == 'plot':
             plot_contours(barrier, args, config)
