@@ -4,7 +4,7 @@ import torch
 from bound_propagation import HyperRectangle, BoundModule, LinearBounds, IntervalBounds, BoundModelFactory
 from torch import nn
 
-from partitioning import Partitions
+from .partitioning import Partitions
 from .networks import Mean, BoundMean, BoundSum, Sum, BoundAdditiveGaussianExpectation, AdditiveGaussianExpectation
 
 

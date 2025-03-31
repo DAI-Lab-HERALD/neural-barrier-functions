@@ -9,7 +9,7 @@ from polynomial_4d.polynomial_4d import polynomial_4d_main
 from polynomial.polynomial import polynomial_main
 from log import configure_logging
 from population.population import population_main
-from utils import load_config
+from neural_barrier_functions.utils import load_config
 
 
 def main(args):
