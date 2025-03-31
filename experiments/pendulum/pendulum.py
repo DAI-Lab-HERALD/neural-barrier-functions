@@ -124,7 +124,7 @@ def load(model, args, state):
 
 def pendulum_main(args, config):
     logger.info('Constructing model')
-    dynamics = NNDM(config['dynamics']).to(args.device)
+    dynamics = NNDM(config['dynamics']).to(device=args.device, dtype=torch.float64)
 
     if config['experiment_type'] == 'barrier_function':
         factory = NBFBoundModelFactory()
