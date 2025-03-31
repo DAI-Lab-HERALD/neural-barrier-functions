@@ -153,8 +153,8 @@ class BoundButcherTableau(BoundModule):
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
-    def ibp_forward(self, input_bounds, save_relaxation=False):
-        update_bounds = self.bound_update[0].ibp_forward(input_bounds, save_relaxation=save_relaxation)
+    def ibp_forward(self, input_bounds, save_relaxation=False, save_input_bounds=False):
+        update_bounds = self.bound_update[0].ibp_forward(input_bounds, save_relaxation=save_relaxation, save_input_bounds=save_input_bounds)
         lower = [update_bounds.lower]
         upper = [update_bounds.upper]
 
@@ -165,7 +165,7 @@ class BoundButcherTableau(BoundModule):
             bounds = IntervalBounds(input_bounds.region,
                                     input_bounds.lower + self.module.dt * weighted_lower,
                                     input_bounds.upper + self.module.dt * weighted_upper)
-            next_bounds = self.bound_update[i + 1].ibp_forward(bounds, save_relaxation=save_relaxation)
+            next_bounds = self.bound_update[i + 1].ibp_forward(bounds, save_relaxation=save_relaxation, save_input_bounds=save_input_bounds)
             lower.append(next_bounds.lower)
             upper.append(next_bounds.upper)
 

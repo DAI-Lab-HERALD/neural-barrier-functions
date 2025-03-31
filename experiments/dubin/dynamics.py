@@ -280,7 +280,7 @@ class BoundDubinsCarUpdate(BoundModule):
         return x3_lower, x3_upper
 
     @assert_bound_order
-    def ibp_forward(self, bounds, save_relaxation=False):
+    def ibp_forward(self, bounds, save_relaxation=False, save_input_bounds=False):
         if save_relaxation:
             self.alpha_beta(preactivation=bounds)
             self.bounded = True
@@ -371,7 +371,7 @@ class BoundDubinsCarNominalUpdate(BoundDubinsCarUpdate):
         return x3_lower, x3_upper
 
     @assert_bound_order
-    def ibp_forward(self, bounds, save_relaxation=False):
+    def ibp_forward(self, bounds, save_relaxation=False, save_input_bounds=False):
         if save_relaxation:
             self.alpha_beta(preactivation=bounds)
             self.bounded = True
@@ -618,7 +618,7 @@ class BoundDubinsFixedStrategy(BoundModule):
         return lower_y_cos_phi, upper_y_cos_phi
 
     @assert_bound_order
-    def ibp_forward(self, bounds, save_relaxation=False):
+    def ibp_forward(self, bounds, save_relaxation=False, save_input_bounds=False):
         lower = -bounds.upper[..., 2].sin()
         upper = -bounds.lower[..., 2].sin()
 
@@ -967,7 +967,7 @@ class BoundDubinSelect(BoundModule):
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
-    def ibp_forward(self, bounds, save_relaxation=False):
+    def ibp_forward(self, bounds, save_relaxation=False, save_input_bounds=False):
         return IntervalBounds(bounds.region, bounds.lower[..., :3], bounds.upper[..., :3])
 
     def propagate_size(self, in_size):

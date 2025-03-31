@@ -180,7 +180,7 @@ class BoundPolynomialUpdate(BoundModule):
         return (bounds.lower[..., 0] ** 3) / 3.0, (bounds.upper[..., 0] ** 3) / 3.0
 
     @assert_bound_order
-    def ibp_forward(self, bounds, save_relaxation=False):
+    def ibp_forward(self, bounds, save_relaxation=False, save_input_bounds=False):
         if save_relaxation:
             self.alpha_beta(preactivation=bounds)
             self.bounded = True
@@ -255,7 +255,7 @@ class BoundNominalPolynomialUpdate(BoundPolynomialUpdate):
         return LinearBounds(linear_bounds.region, lower, upper)
 
     @assert_bound_order
-    def ibp_forward(self, bounds, save_relaxation=False):
+    def ibp_forward(self, bounds, save_relaxation=False, save_input_bounds=False):
         if save_relaxation:
             self.alpha_beta(preactivation=bounds)
             self.bounded = True
