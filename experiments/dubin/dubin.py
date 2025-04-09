@@ -18,8 +18,7 @@ from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, DubinsFixedStrategy
 from .partitioning import dubins_car_partitioning
 from .plot import plot_bounds_2d
 
-from neural_barrier_functions.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifier, \
-    AdditiveGaussianSplittingNeuralSBFCertifier
+from neural_barrier_functions.certifier import SplittingNeuralSBFCertifier, AdditiveGaussianSplittingNeuralSBFCertifier
 from neural_barrier_functions.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from neural_barrier_functions.networks import FCNNBarrierNetwork
 from neural_barrier_functions.dataset import StochasticSystemDataset
@@ -46,7 +45,7 @@ def step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoc
 
 @torch.no_grad()
 def test_method(certifier, method, batch_size, kappa=None):
-    loss_barrier = certifier.barrier_violation(method=method, batch_size=batch_size)
+    loss_barrier, ce = certifier.barrier_violation(method=method, batch_size=batch_size)
     unsafety_prob, beta, gamma = certifier.unsafety_prob(return_beta_gamma=True, method=method, batch_size=batch_size)
 
     loss_barrier, unsafety_prob = loss_barrier.item(), unsafety_prob.item()
@@ -90,7 +89,7 @@ def train(robust_learner, empirical_learner, certifier, args, config):
         kappa *= 0.97
 
     while not certifier.certify(method='crown_interval', batch_size=config['test']['ibp_batch_size']):
-        logger.info(f'Current violation: {certifier.barrier_violation(method="crown_interval", batch_size=config["test"]["ibp_batch_size"])}')
+        logger.info(f'Current violation: {certifier.barrier_violation(method="crown_interval", batch_size=config["test"]["ibp_batch_size"])[0]}')
         for partitioning in tqdm(dataloader, desc='Iteration', colour='red', position=1, leave=False):
             # plot_partitioning(partitioning, config['dynamics']['safe_set'])
 
@@ -265,7 +264,7 @@ def dubins_car_main(args, config):
             load(robust_learner, args, 'final')
 
         if args.task == 'train':
-            certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon']).to(args.device)
+            certifier = SplittingNeuralSBFCertifier(barrier, dynamics, factory, initial_partitioning, horizon=config['dynamics']['horizon'], max_set_size=20).to(args.device)
 
             if isinstance(strategy, DubinsCarNNStrategy):
                 load(strategy, args, 'rl-final')

@@ -11,8 +11,7 @@ from .dynamics import LinearDynamics
 from .partitioning import linear_partitioning, plot_partitioning
 from .plot import plot_bounds_2d, plot_contours
 
-from neural_barrier_functions.certifier import NeuralSBFCertifier, SplittingNeuralSBFCertifier, \
-    AdditiveGaussianSplittingNeuralSBFCertifier
+from neural_barrier_functions.certifier import SplittingNeuralSBFCertifier, AdditiveGaussianSplittingNeuralSBFCertifier
 from neural_barrier_functions.learner import AdversarialNeuralSBF, EmpiricalNeuralSBF
 from neural_barrier_functions.networks import FCNNBarrierNetwork
 from neural_barrier_functions.dataset import StochasticSystemDataset
