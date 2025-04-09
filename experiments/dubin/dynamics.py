@@ -43,7 +43,7 @@ class DubinsCarUpdate(nn.Module):
         x1 = self.velocity * x[..., 2].sin()
         x2 = self.velocity * x[..., 2].cos()
         # x[..., 3] = u, i.e. the control. We assume it's concatenated on the last dimension
-        x3 = x[..., 3] + z
+        x3 = x[..., 3] + self.module.z
 
         if x1.dim() != x3.dim():
             x1 = x1.unsqueeze(0).expand_as(x3)
