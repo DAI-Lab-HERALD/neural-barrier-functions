@@ -19,11 +19,11 @@ class AdditiveNoise(nn.Linear):
         self.register_buffer('weight', torch.as_tensor([
             [1.0, 0.0],
             [0.0, 1.0]
-        ]).unsqueeze(0), persistent=True)
+        ]).unsqueeze(0))
 
         dist = Normal(torch.zeros((2,)), self.sigma)
         z = dist.sample((self.num_samples,))
-        self.register_buffer('bias', z.unsqueeze(1), persistent=True)
+        self.register_buffer('bias', z.unsqueeze(1))
 
     def resample(self):
         dist = Normal(torch.zeros((2,)), self.sigma)

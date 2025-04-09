@@ -25,10 +25,20 @@ class DubinsCarUpdate(nn.Module):
         self.velocity = dynamics_config['velocity']
 
         self.dist = Normal(torch.tensor(dynamics_config['mu']), torch.tensor(dynamics_config['sigma']))
+
+        self.register_buffer('mu', torch.tensor(dynamics_config['mu']))
+        self.register_buffer('sigma', torch.tensor(dynamics_config['sigma']))
         self.num_samples = dynamics_config['num_samples']
 
+        dist = Normal(self.mu, self.sigma)
+        self.register_buffer('z', dist.sample((self.num_samples, 1)))
+
+    def resample(self):
+        dist = Normal(self.mu, self.sigma)
+        self.z = dist.sample((self.num_samples, 1)).to(self.z.device)
+
     def forward(self, x):
-        z = self.dist.sample((self.num_samples, 1)).to(x.device)
+        self.resample()
 
         x1 = self.velocity * x[..., 2].sin()
         x2 = self.velocity * x[..., 2].cos()
@@ -70,7 +80,6 @@ class BoundDubinsCarUpdate(BoundModule):
 
         self.alpha_lower, self.beta_lower = None, None
         self.alpha_upper, self.beta_upper = None, None
-        self.z = None
         self.bounded = False
 
     def func(self, x):
@@ -80,8 +89,6 @@ class BoundDubinsCarUpdate(BoundModule):
         return torch.stack([self.module.velocity * x.cos(), -self.module.velocity * x.sin()], dim=-1)
 
     def alpha_beta(self, preactivation):
-        self.z = self.module.dist.sample((self.module.num_samples, 1)).to(preactivation.lower.device)
-
         lower, upper = preactivation.lower[..., 2], preactivation.upper[..., 2]
         zero_width, n, p, np = regimes(lower, upper)
 
@@ -231,10 +238,9 @@ class BoundDubinsCarUpdate(BoundModule):
     def clear_relaxation(self):
         self.alpha_lower, self.beta_lower = None, None
         self.alpha_upper, self.beta_upper = None, None
-        self.z = None
         self.bounded = False
 
-    def crown_backward(self, linear_bounds):
+    def crown_backward(self, linear_bounds, optimize):
         assert self.bounded
 
         # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!
@@ -243,7 +249,7 @@ class BoundDubinsCarUpdate(BoundModule):
         else:
             alpha = self.alpha_upper, self.alpha_lower
             beta = self.beta_upper, self.beta_lower
-            lower = crown_backward_dubin_jit(linear_bounds.lower[0], self.z, alpha, beta)
+            lower = crown_backward_dubin_jit(linear_bounds.lower[0], self.module.z, alpha, beta)
 
             lower = (lower[0], lower[1] + linear_bounds.lower[1])
 
@@ -252,7 +258,7 @@ class BoundDubinsCarUpdate(BoundModule):
         else:
             alpha = self.alpha_lower, self.alpha_upper
             beta = self.beta_lower, self.beta_upper
-            upper = crown_backward_dubin_jit(linear_bounds.upper[0], self.z, alpha, beta)
+            upper = crown_backward_dubin_jit(linear_bounds.upper[0], self.module.z, alpha, beta)
             upper = (upper[0], upper[1] + linear_bounds.upper[1])
 
         return LinearBounds(linear_bounds.region, lower, upper)
@@ -274,8 +280,8 @@ class BoundDubinsCarUpdate(BoundModule):
 
     def ibp_control(self, bounds):
         # x[..., 3] = u, i.e. the control. We assume it's concatenated on the last dimension
-        x3_lower = bounds.lower[..., 3] + self.z
-        x3_upper = bounds.upper[..., 3] + self.z
+        x3_lower = bounds.lower[..., 3] + self.module.z
+        x3_upper = bounds.upper[..., 3] + self.module.z
 
         return x3_lower, x3_upper
 
@@ -311,9 +317,6 @@ class DubinsCarNominalUpdate(nn.Module):
 
         self.velocity = dynamics_config['velocity']
 
-        self.dist = Normal(torch.tensor(dynamics_config['mu']), torch.tensor(dynamics_config['sigma']))
-        self.num_samples = dynamics_config['num_samples']
-
     def forward(self, x):
         x1 = self.velocity * x[..., 2].sin()
         x2 = self.velocity * x[..., 2].cos()
@@ -340,7 +343,7 @@ def crown_backward_dubin_nominal_jit(W_tilde: torch.Tensor, alpha: Tuple[torch.T
 
 
 class BoundDubinsCarNominalUpdate(BoundDubinsCarUpdate):
-    def crown_backward(self, linear_bounds):
+    def crown_backward(self, linear_bounds, optimize):
         assert self.bounded
 
         # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!
@@ -571,7 +574,7 @@ class BoundDubinsFixedStrategy(BoundModule):
     def __init__(self, module, factory, **kwargs):
         super().__init__(module, factory, **kwargs)
 
-    def crown_backward(self, linear_bounds):
+    def crown_backward(self, linear_bounds, optimize):
         raise NotImplementedError()
 
     def ibp_div(self, bounds):
@@ -948,7 +951,7 @@ class BoundDubinSelect(BoundModule):
     def need_relaxation(self):
         return False
 
-    def crown_backward(self, linear_bounds):
+    def crown_backward(self, linear_bounds, optimize):
         if linear_bounds.lower is None:
             lower = None
         else:

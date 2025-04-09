@@ -24,7 +24,13 @@ class PolynomialUpdate(nn.Module):
     def x1_cubed(self, x):
         return (x[..., 0] ** 3) / 3.0
 
+    def resample(self):
+        dist = Normal(0.0, self.dynamics_config['sigma'])
+        self.z = dist.sample((self.dynamics_config['num_samples'],)).view(-1, 1).to(self.z.device)
+
     def forward(self, x):
+        self.resample()
+
         x1 = x[..., 1] + self.z
         x2 = self.x1_cubed(x) - x.sum(dim=-1)
 
@@ -158,7 +164,7 @@ class BoundPolynomialUpdate(BoundModule):
         self.alpha_upper, self.beta_upper = None, None
         self.bounded = False
 
-    def crown_backward(self, linear_bounds):
+    def crown_backward(self, linear_bounds, optimize):
         assert self.bounded
 
         # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!
@@ -211,8 +217,6 @@ class NominalPolynomialUpdate(nn.Module):
     def __init__(self, dynamics_config):
         super().__init__()
 
-        dist = Normal(0.0, dynamics_config['sigma'])
-
     def x1_cubed(self, x):
         return (x[..., 0] ** 3) / 3.0
 
@@ -238,7 +242,7 @@ def crown_backward_nominal_polynomial_jit(W_lower: torch.Tensor, W_upper: torch.
 
 
 class BoundNominalPolynomialUpdate(BoundPolynomialUpdate):
-    def crown_backward(self, linear_bounds):
+    def crown_backward(self, linear_bounds, optimize):
         assert self.bounded
 
         # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!

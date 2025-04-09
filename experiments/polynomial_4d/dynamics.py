@@ -18,10 +18,19 @@ class PolynomialUpdate(nn.Module):
     def __init__(self, dynamics_config):
         super().__init__()
 
-        dist = Normal(0.0, dynamics_config['sigma'])
-        self.register_buffer('z', dist.sample((dynamics_config['num_samples'],)).view(-1, 1))
+        self.num_samples = dynamics_config['num_samples']
+        self.sigma = dynamics_config['sigma']
+
+        dist = Normal(0.0, self.sigma)
+        self.register_buffer('z', dist.sample((self.num_samples,)).view(-1, 1))
+
+    def resample(self):
+        dist = Normal(0.0, self.sigma)
+        self.z = dist.sample((self.num_samples,)).view(-1, 1).to(self.z.device)
 
     def forward(self, x):
+        self.resample()
+
         x1 = x[..., 0] + x[..., 1] - x[..., 2] ** 3 + self.z
         x2 = x[..., 0] ** 2 + x[..., 1] - x[..., 2] - x[..., 3]
         x3 = -x[..., 0] + x[..., 1] ** 2 + x[..., 2]
@@ -200,7 +209,7 @@ class BoundPolynomialUpdate(BoundModule):
         self.alpha_upper, self.beta_upper = None, None
         self.bounded = False
 
-    def crown_backward(self, linear_bounds):
+    def crown_backward(self, linear_bounds, optimize):
         assert self.bounded
 
         alpha = self.alpha_upper, self.alpha_lower
@@ -271,8 +280,6 @@ class NominalPolynomialUpdate(nn.Module):
     def __init__(self, dynamics_config):
         super().__init__()
 
-        dist = Normal(0.0, dynamics_config['sigma'])
-
     def forward(self, x):
         x1 = x[..., 0] + x[..., 1] - x[..., 2] ** 3
         x2 = x[..., 0] ** 2 + x[..., 1] - x[..., 2] - x[..., 3]
@@ -304,7 +311,7 @@ def crown_backward_nominal_polynomial_jit(W_lower: torch.Tensor, W_upper: torch.
 
 
 class BoundNominalPolynomialUpdate(BoundPolynomialUpdate):
-    def crown_backward(self, linear_bounds):
+    def crown_backward(self, linear_bounds, optimize):
         assert self.bounded
 
         # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!

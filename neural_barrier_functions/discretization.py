@@ -77,7 +77,7 @@ class BoundButcherTableau(BoundModule):
                 upper = (upperA, zero_bias)
 
             dt_bounds = LinearBounds(linear_bounds.region, lower, upper)
-            bounds = bound_update.crown_backward(dt_bounds)
+            bounds = bound_update.crown_backward(dt_bounds, optimize)
             update_bounds[i] = bounds
 
         if linear_bounds.lower is None:
@@ -102,7 +102,7 @@ class BoundButcherTableau(BoundModule):
 
         return LinearBounds(linear_bounds.region, lower, upper), relaxation_module
 
-    def crown_backward(self, linear_bounds):
+    def crown_backward(self, linear_bounds, optimize):
         zero_bias = torch.zeros_like(linear_bounds.lower[1] if linear_bounds.lower is not None else linear_bounds.upper[1])
         update_bounds = [None for _ in self.bound_update]
 
@@ -128,7 +128,7 @@ class BoundButcherTableau(BoundModule):
                 upper = (upperA, zero_bias)
 
             dt_bounds = LinearBounds(linear_bounds.region, lower, upper)
-            bounds = bound_update.crown_backward(dt_bounds)
+            bounds = bound_update.crown_backward(dt_bounds, optimize)
             update_bounds[i] = bounds
 
         if linear_bounds.lower is None:

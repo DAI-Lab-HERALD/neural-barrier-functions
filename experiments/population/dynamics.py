@@ -44,11 +44,13 @@ class Population(nn.Linear, AdditiveGaussianDynamics):
 
         self.safe_set_type = dynamics_config['safe_set']
 
-    def forward(self, input: Tensor) -> Tensor:
+    def resample(self):
         dist = Normal(0.0, self.sigma)
         z = dist.sample((self.num_samples,))
-        self.bias = torch.stack([torch.zeros_like(z), z], dim=-1).unsqueeze(1)
+        self.bias = torch.stack([torch.zeros_like(z), z], dim=-1).unsqueeze(1).to(self.bias.device)
 
+    def forward(self, input: Tensor) -> Tensor:
+        self.resample()
         return input.matmul(self.weight.transpose(-1, -2)) + self.bias
 
     def near_far(self, x, eps):
