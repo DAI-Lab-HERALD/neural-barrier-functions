@@ -14,51 +14,36 @@ from neural_barrier_functions.dynamics import StochasticDynamics, AdditiveGaussi
 from neural_barrier_functions.utils import overlap_circle, overlap_rectangle, overlap_outside_circle, overlap_outside_rectangle
 
 
-class PolynomialUpdate(nn.Module):
+
+class NominalPolynomialUpdate(nn.Module):
     def __init__(self, dynamics_config):
         super().__init__()
-
-        dist = Normal(0.0, dynamics_config['sigma'])
-        self.register_buffer('z', dist.sample((dynamics_config['num_samples'],)).view(-1, 1))
 
     def x1_cubed(self, x):
         return (x[..., 0] ** 3) / 3.0
 
-    def resample(self):
-        dist = Normal(0.0, self.dynamics_config['sigma'])
-        self.z = dist.sample((self.dynamics_config['num_samples'],)).view(-1, 1).to(self.z.device)
-
     def forward(self, x):
-        self.resample()
-
-        x1 = x[..., 1] + self.z
+        x1 = x[..., 1]
         x2 = self.x1_cubed(x) - x.sum(dim=-1)
-
-        if x2.dim() != x1.dim():
-            x2 = x2.unsqueeze(0).expand_as(x1)
-
         x = torch.stack([x1, x2], dim=-1)
         return x
 
 
 @torch.jit.script
-def crown_backward_polynomial_jit(W_lower: torch.Tensor, W_upper: torch.Tensor, z: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+def crown_backward_nominal_polynomial_jit(W_lower: torch.Tensor, W_upper: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
     _lambda = torch.where(W_upper[..., 1] < 0, alpha[0].unsqueeze(-1), alpha[1].unsqueeze(-1))
     _delta = torch.where(W_upper[..., 1] < 0, beta[0].unsqueeze(-1), beta[1].unsqueeze(-1))
 
-    bias = W_upper[..., 1] * _delta + z.unsqueeze(-1) * W_upper[..., 0]
+    bias = W_upper[..., 1] * _delta
 
     W_tilde1 = W_upper[..., 1] * _lambda - W_lower[..., 1]
     W_tilde2 = W_upper[..., 0] - W_lower[..., 1]
-    if W_tilde1.dim() != W_tilde2.dim():
-        W_tilde2 = W_tilde2.unsqueeze(0).expand_as(W_tilde1)
-
     W_tilde = torch.stack([W_tilde1, W_tilde2], dim=-1)
 
     return W_tilde, bias
 
 
-class BoundPolynomialUpdate(BoundModule):
+class BoundNominalPolynomialUpdate(BoundModule):
     def __init__(self, module, factory, **kwargs):
         super().__init__(module, factory, **kwargs)
 
@@ -168,84 +153,6 @@ class BoundPolynomialUpdate(BoundModule):
         assert self.bounded
 
         # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!
-
-        alpha = self.alpha_upper, self.alpha_lower
-        beta = self.beta_upper, self.beta_lower
-        lower = crown_backward_polynomial_jit(linear_bounds.upper[0], linear_bounds.lower[0], self.module.z, alpha, beta)
-        lower = (lower[0], lower[1] + linear_bounds.lower[1])
-
-        alpha = self.alpha_lower, self.alpha_upper
-        beta = self.beta_lower, self.beta_upper
-        upper = crown_backward_polynomial_jit(linear_bounds.lower[0], linear_bounds.upper[0], self.module.z, alpha, beta)
-        upper = (upper[0], upper[1] + linear_bounds.upper[1])
-
-        return LinearBounds(linear_bounds.region, lower, upper)
-
-    def ibp_forward_x1_cubed(self, bounds):
-        # x[..., 0] ** 3 is non-decreasing (and multiplying/dividing by a positive constant preserves this)
-        return (bounds.lower[..., 0] ** 3) / 3.0, (bounds.upper[..., 0] ** 3) / 3.0
-
-    @assert_bound_order
-    def ibp_forward(self, bounds, save_relaxation=False, save_input_bounds=False):
-        if save_relaxation:
-            self.alpha_beta(preactivation=bounds)
-            self.bounded = True
-
-        x1_lower = bounds.lower[..., 1] + self.module.z
-        x1_upper = bounds.upper[..., 1] + self.module.z
-
-        x1_cubed_lower, x1_cubed_upper = self.ibp_forward_x1_cubed(bounds)
-
-        x2_lower = x1_cubed_lower - bounds.upper.sum(dim=-1)
-        x2_upper = x1_cubed_upper - bounds.lower.sum(dim=-1)
-
-        if x2_lower.dim() != x1_lower.dim():
-            x2_lower = x2_lower.unsqueeze(0).expand_as(x1_lower)
-            x2_upper = x2_upper.unsqueeze(0).expand_as(x1_upper)
-
-        lower = torch.stack([x1_lower, x2_lower], dim=-1)
-        upper = torch.stack([x1_upper, x2_upper], dim=-1)
-        return IntervalBounds(bounds.region, lower, upper)
-
-    def propagate_size(self, in_size):
-        assert in_size == 2
-
-        return 2
-
-
-class NominalPolynomialUpdate(nn.Module):
-    def __init__(self, dynamics_config):
-        super().__init__()
-
-    def x1_cubed(self, x):
-        return (x[..., 0] ** 3) / 3.0
-
-    def forward(self, x):
-        x1 = x[..., 1]
-        x2 = self.x1_cubed(x) - x.sum(dim=-1)
-        x = torch.stack([x1, x2], dim=-1)
-        return x
-
-
-@torch.jit.script
-def crown_backward_nominal_polynomial_jit(W_lower: torch.Tensor, W_upper: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-    _lambda = torch.where(W_upper[..., 1] < 0, alpha[0].unsqueeze(-1), alpha[1].unsqueeze(-1))
-    _delta = torch.where(W_upper[..., 1] < 0, beta[0].unsqueeze(-1), beta[1].unsqueeze(-1))
-
-    bias = W_upper[..., 1] * _delta
-
-    W_tilde1 = W_upper[..., 1] * _lambda - W_lower[..., 1]
-    W_tilde2 = W_upper[..., 0] - W_lower[..., 1]
-    W_tilde = torch.stack([W_tilde1, W_tilde2], dim=-1)
-
-    return W_tilde, bias
-
-
-class BoundNominalPolynomialUpdate(BoundPolynomialUpdate):
-    def crown_backward(self, linear_bounds, optimize):
-        assert self.bounded
-
-        # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!
         alpha = self.alpha_upper, self.alpha_lower
         beta = self.beta_upper, self.beta_lower
         lower = crown_backward_nominal_polynomial_jit(linear_bounds.upper[0], linear_bounds.lower[0], alpha, beta)
@@ -258,6 +165,10 @@ class BoundNominalPolynomialUpdate(BoundPolynomialUpdate):
 
         return LinearBounds(linear_bounds.region, lower, upper)
 
+    def ibp_forward_x1_cubed(self, bounds):
+        # x[..., 0] ** 3 is non-decreasing (and multiplying/dividing by a positive constant preserves this)
+        return (bounds.lower[..., 0] ** 3) / 3.0, (bounds.upper[..., 0] ** 3) / 3.0
+    
     @assert_bound_order
     def ibp_forward(self, bounds, save_relaxation=False, save_input_bounds=False):
         if save_relaxation:
@@ -276,23 +187,17 @@ class BoundNominalPolynomialUpdate(BoundPolynomialUpdate):
         upper = torch.stack([x1_upper, x2_upper], dim=-1)
         return IntervalBounds(bounds.region, lower, upper)
 
+    def propagate_size(self, in_size):
+        assert in_size == 2
 
-class Polynomial(Euler, AdditiveGaussianDynamics):
+        return 2
+
+class Polynomial(AdditiveGaussianDynamics):
     def __init__(self, dynamics_config):
         self.dynamics_config = dynamics_config
-        AdditiveGaussianDynamics.__init__(self, dynamics_config['num_samples'])
-        Euler.__init__(self, PolynomialUpdate(dynamics_config), dynamics_config['dt'])
-
-    @property
-    def nominal_system(self):
-        return Euler(NominalPolynomialUpdate(self.dynamics_config), self.dynamics_config['dt'])
-
-    @property
-    def v(self):
-        return (
-            torch.tensor([0.0, 0.0]),
-            torch.tensor([self.dynamics_config['dt'] * self.dynamics_config['sigma'], 0.0])
-        )
+        nominal = Euler(NominalPolynomialUpdate(dynamics_config), dynamics_config['dt'])
+        print(dynamics_config)
+        super().__init__(nominal, **dynamics_config)
 
     def initial(self, x, eps=None):
         if eps is not None:
@@ -393,159 +298,3 @@ class Polynomial(Euler, AdditiveGaussianDynamics):
     @property
     def volume(self):
         return (2.0 - (-3.5)) * (1.0 - (-2.0))
-
-
-def plot_polynomial():
-    dynamics = PolynomialUpdate({
-        'sigma': 0.1,
-        'num_samples': 500
-    })
-
-    bound = BoundPolynomialUpdate(dynamics, None)
-
-    x1_space = torch.linspace(-3.5, 2.0, 5)
-    x1_cell_width = (x1_space[1] - x1_space[0]) / 2
-    x1_slice_centers = (x1_space[:-1] + x1_space[1:]) / 2
-
-    x2_space = torch.linspace(-2.0, 1.0, 5)
-    x2_cell_width = (x2_space[1] - x2_space[0]) / 2
-    x2_slice_centers = (x2_space[:-1] + x2_space[1:]) / 2
-
-    cell_width = torch.stack([x1_cell_width, x2_cell_width], dim=-1)
-    cell_centers = torch.cartesian_prod(x1_slice_centers, x2_slice_centers)
-
-    input_bounds = HyperRectangle.from_eps(cell_centers, cell_width)
-    ibp_bounds = bound.ibp(input_bounds)
-    crown_bounds = bound.crown_ibp(input_bounds)
-    crown_interval = crown_bounds.concretize()
-
-    for i in range(len(input_bounds)):
-        # X
-        x1, x2 = input_bounds.lower[i], input_bounds.upper[i]
-
-        plt.clf()
-        ax = plt.axes(projection='3d')
-
-        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 10), torch.linspace(x1[1], x2[1], 10))
-
-        # Plot IBP
-        y1, y2 = ibp_bounds.lower[0, i, 0].item(), ibp_bounds.upper[0, i, 0].item()
-        y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
-
-        surf = ax.plot_surface(x1, x2, y1, color='yellow', label='IBP', alpha=0.4)
-        surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
-        surf._edgecolors2d = surf._edgecolor3d
-
-        surf = ax.plot_surface(x1, x2, y2, color='yellow', alpha=0.4)
-        surf._facecolors2d = surf._facecolor3d
-        surf._edgecolors2d = surf._edgecolor3d
-
-        # Plot LBP interval bounds
-        y1, y2 = crown_interval.lower[0, i, 0].item(), crown_interval.upper[0, i, 0].item()
-        y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
-
-        surf = ax.plot_surface(x1, x2, y1, color='blue', label='CROWN interval', alpha=0.4)
-        surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
-        surf._edgecolors2d = surf._edgecolor3d
-
-        surf = ax.plot_surface(x1, x2, y2, color='blue', alpha=0.4)
-        surf._facecolors2d = surf._facecolor3d
-        surf._edgecolors2d = surf._edgecolor3d
-
-        # Plot LBP linear bounds
-        y_lower = crown_bounds.lower[0][i, 0, 0] * x1 + crown_bounds.lower[0][i, 0, 1] * x2 + crown_bounds.lower[1][0, i, 0]
-        y_upper = crown_bounds.upper[0][i, 0, 0] * x1 + crown_bounds.upper[0][i, 0, 1] * x2 + crown_bounds.upper[1][0, i, 0]
-
-        surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
-        surf._facecolors2d = surf._facecolor3d
-        surf._edgecolors2d = surf._edgecolor3d
-
-        surf = ax.plot_surface(x1, x2, y_upper, color='green', alpha=0.4, shade=False)
-        surf._facecolors2d = surf._facecolor3d
-        surf._edgecolors2d = surf._edgecolor3d
-
-        # Plot function
-        x1, x2 = input_bounds.lower[i], input_bounds.upper[i]
-        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 50), torch.linspace(x1[1], x2[1], 50))
-        X = torch.cat(tuple(torch.dstack([x1, x2])))
-        y = dynamics(X)[0, :, 0].view(50, 50)
-
-        surf = ax.plot_surface(x1, x2, y, color='red', label='Polynomial - x', shade=False)
-        surf._facecolors2d = surf._facecolor3d
-        surf._edgecolors2d = surf._edgecolor3d
-
-        # General plot config
-        plt.xlabel('x')
-        plt.ylabel('y')
-
-        plt.title(f'Bound propagation')
-        plt.legend()
-
-        plt.show()
-
-        # Y
-        x1, x2 = input_bounds.lower[i], input_bounds.upper[i]
-
-        plt.clf()
-        ax = plt.axes(projection='3d')
-
-        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 10), torch.linspace(x1[1], x2[1], 10))
-
-        # Plot IBP
-        y1, y2 = ibp_bounds.lower[0, i, 1].item(), ibp_bounds.upper[0, i, 1].item()
-        y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
-
-        surf = ax.plot_surface(x1, x2, y1, color='yellow', label='IBP', alpha=0.4)
-        surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
-        surf._edgecolors2d = surf._edgecolor3d
-
-        surf = ax.plot_surface(x1, x2, y2, color='yellow', alpha=0.4)
-        surf._facecolors2d = surf._facecolor3d
-        surf._edgecolors2d = surf._edgecolor3d
-
-        # Plot LBP interval bounds
-        y1, y2 = crown_interval.lower[0, i, 1].item(), crown_interval.upper[0, i, 1].item()
-        y1, y2 = torch.full_like(x1, y1), torch.full_like(x1, y2)
-
-        surf = ax.plot_surface(x1, x2, y1, color='blue', label='CROWN interval', alpha=0.4)
-        surf._facecolors2d = surf._facecolor3d  # These are hax due to a bug in Matplotlib
-        surf._edgecolors2d = surf._edgecolor3d
-
-        surf = ax.plot_surface(x1, x2, y2, color='blue', alpha=0.4)
-        surf._facecolors2d = surf._facecolor3d
-        surf._edgecolors2d = surf._edgecolor3d
-
-        # Plot LBP linear bounds
-        y_lower = crown_bounds.lower[0][i, 1, 0] * x1 + crown_bounds.lower[0][i, 1, 1] * x2 + crown_bounds.lower[1][0, i, 1]
-        y_upper = crown_bounds.upper[0][i, 1, 0] * x1 + crown_bounds.upper[0][i, 1, 1] * x2 + crown_bounds.upper[1][0, i, 1]
-
-        surf = ax.plot_surface(x1, x2, y_lower, color='green', label='CROWN linear', alpha=0.4, shade=False)
-        surf._facecolors2d = surf._facecolor3d
-        surf._edgecolors2d = surf._edgecolor3d
-
-        surf = ax.plot_surface(x1, x2, y_upper, color='green', alpha=0.4, shade=False)
-        surf._facecolors2d = surf._facecolor3d
-        surf._edgecolors2d = surf._edgecolor3d
-
-        # Plot function
-        x1, x2 = input_bounds.lower[i], input_bounds.upper[i]
-        x1, x2 = torch.meshgrid(torch.linspace(x1[0], x2[0], 50), torch.linspace(x1[1], x2[1], 50))
-        X = torch.cat(tuple(torch.dstack([x1, x2])))
-        y = dynamics(X)[0, :, 1].view(50, 50)
-
-        surf = ax.plot_surface(x1, x2, y, color='red', label='Polynomial - y', shade=False)
-        surf._facecolors2d = surf._facecolor3d
-        surf._edgecolors2d = surf._edgecolor3d
-
-        # General plot config
-        plt.xlabel('x')
-        plt.ylabel('y')
-
-        plt.title(f'Bound propagation')
-        plt.legend()
-
-        plt.show()
-
-
-if __name__ == '__main__':
-    plot_polynomial()

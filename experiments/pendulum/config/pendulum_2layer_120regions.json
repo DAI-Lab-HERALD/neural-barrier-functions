@@ -3,6 +3,7 @@
   "experiment_type": "barrier_function",
   "dynamics": {
     "dim": 2,
+    "mu": [0.0, 0.0],
     "sigma": [0.01, 0.01],
     "num_samples": 500,
     "horizon": 10,

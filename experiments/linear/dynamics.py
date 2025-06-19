@@ -6,47 +6,18 @@ from torch.distributions import Normal
 from neural_barrier_functions.dynamics import AdditiveGaussianDynamics
 
 
-class LinearDynamics(nn.Linear, AdditiveGaussianDynamics):
-    @property
-    def nominal_system(self):
-        nominal = nn.Linear(2, 2, bias=False)
-        with torch.no_grad():
-            nominal.weight.copy_(self.weight.squeeze(0))
-
-        return nominal
-
-    @property
-    def v(self):
-        return torch.zeros_like(self.sigma), self.sigma
-
+class LinearDynamics(AdditiveGaussianDynamics):
     def __init__(self, dynamics_config):
-        nn.Linear.__init__(self, 2, 2)
-        AdditiveGaussianDynamics.__init__(self, dynamics_config['num_samples'])
-
-        del self.weight
-        del self.bias
-
-        self.register_buffer('weight', torch.as_tensor([
+        nominal = nn.Linear(2, 2, bias=False)
+        del nominal.weight
+        nominal.register_buffer('weight', torch.as_tensor([
             [0.5, 0.0],
             [0.0, 0.5]
         ]).unsqueeze(0), persistent=True)
 
-        self.sigma = torch.as_tensor(dynamics_config['sigma'])
-
-        dist = Normal(torch.zeros((2,)), self.sigma)
-        z = dist.sample((self.num_samples,))
-        self.register_buffer('bias', z.unsqueeze(1), persistent=True)
+        super().__init__(nominal, **dynamics_config)
 
         self.safe_set = dynamics_config['safe_set']
-
-    def resample(self):
-        dist = Normal(torch.zeros((2,)), self.sigma)
-        z = dist.sample((self.num_samples,))
-        self.bias = z.unsqueeze(1).to(self.bias.device)
-
-    def forward(self, input: Tensor) -> Tensor:
-        self.resample()
-        return input.matmul(self.weight.transpose(-1, -2)) + self.bias
 
     def initial(self, x, eps=None):
         if eps is not None:

@@ -2,6 +2,7 @@
   "system": "linear",
   "experiment_type": "barrier_function",
   "dynamics": {
+    "mu": [0.0, 0.0],
     "sigma": [0.1, 0.1],
     "num_samples": 500,
     "horizon": 10,

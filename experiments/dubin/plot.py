@@ -7,8 +7,7 @@ from tqdm import tqdm
 
 from neural_barrier_functions.bounds import bounds, NBFBoundModelFactory
 from neural_barrier_functions.discretization import ButcherTableau, BoundButcherTableau
-from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, BoundDubinsFixedStrategy, \
-    DubinsFixedStrategy, DubinSelect, BoundDubinSelect, BoundDubinsCarNominalUpdate, DubinsCarNominalUpdate
+from .dynamics import BoundDubinsFixedStrategy, DubinsFixedStrategy, DubinSelect, BoundDubinSelect, BoundDubinsCarNominalUpdate, DubinsCarNominalUpdate
 
 
 def bound_propagation(model, lower_x, upper_x, config):
@@ -18,7 +17,6 @@ def bound_propagation(model, lower_x, upper_x, config):
     # crown_bounds = bounds(model, input_bounds, method='crown_ibp_linear', batch_size=config['test']['crown_ibp_batch_size'])
 
     factory = NBFBoundModelFactory()
-    factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
     factory.register(DubinsCarNominalUpdate, BoundDubinsCarNominalUpdate)
     factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
     factory.register(DubinSelect, BoundDubinSelect)

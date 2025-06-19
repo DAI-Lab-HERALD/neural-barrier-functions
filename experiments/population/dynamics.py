@@ -6,52 +6,22 @@ from torch.distributions import Normal
 from neural_barrier_functions.dynamics import AdditiveGaussianDynamics
 
 
-class Population(nn.Linear, AdditiveGaussianDynamics):
-    @property
-    def nominal_system(self):
-        nominal = nn.Linear(2, 2, bias=False)
-        with torch.no_grad():
-            nominal.weight.copy_(self.weight.squeeze(0))
-
-        return nominal
-
-    @property
-    def v(self):
-        return (
-            torch.tensor([0.0, 0.0]),
-            torch.tensor([0.0, self.sigma])
-        )
+class Population(AdditiveGaussianDynamics):
 
     # x[1] = juveniles
     # x[2] = adults
 
     def __init__(self, dynamics_config):
-        nn.Linear.__init__(self, 2, 2)
-        AdditiveGaussianDynamics.__init__(self, dynamics_config['num_samples'])
-
-        del self.weight
-        del self.bias
-
-        self.register_buffer('weight', torch.as_tensor([
+        nominal = nn.Linear(2, 2, bias=False)
+        del nominal.weight
+        nominal.register_buffer('weight', torch.as_tensor([
             [0.0, dynamics_config['fertility_rate']],
             [dynamics_config['survival_juvenile'], dynamics_config['survival_adult']]
-        ]).unsqueeze(0), persistent=True)
-
-        self.sigma = dynamics_config['sigma']
-        dist = Normal(0.0, self.sigma)
-        z = dist.sample((self.num_samples,))
-        self.register_buffer('bias', torch.stack([torch.zeros_like(z), z], dim=-1).unsqueeze(1), persistent=True)
+        ]), persistent=True)
+        
+        super().__init__(nominal, **dynamics_config)
 
         self.safe_set_type = dynamics_config['safe_set']
-
-    def resample(self):
-        dist = Normal(0.0, self.sigma)
-        z = dist.sample((self.num_samples,))
-        self.bias = torch.stack([torch.zeros_like(z), z], dim=-1).unsqueeze(1).to(self.bias.device)
-
-    def forward(self, input: Tensor) -> Tensor:
-        self.resample()
-        return input.matmul(self.weight.transpose(-1, -2)) + self.bias
 
     def near_far(self, x, eps):
         if eps is not None:

@@ -1,7 +1,7 @@
 import abc
 
 import torch
-from torch import distributions
+from torch import distributions, nn
 
 
 class StochasticDynamics(abc.ABC):
@@ -51,16 +51,58 @@ class AdditiveNoiseDynamics(StochasticDynamics, abc.ABC):
     pass
 
 
-class AdditiveGaussianDynamics(AdditiveNoiseDynamics, abc.ABC):
-    @property
-    @abc.abstractmethod
-    def nominal_system(self):
-        raise NotImplementedError()
+class AdditiveNoise(nn.Linear):
+    def __init__(self, num_samples, mu, sigma):
+        self.n = mu.size(0)
+        super().__init__(in_features=self.n, out_features=self.n)
+
+        self.num_samples = num_samples
+        self.mu = mu
+        self.sigma = sigma
+
+        del self.weight
+        del self.bias
+
+        self.register_buffer('weight', torch.eye(self.n).unsqueeze(0))
+
+        dist = distributions.Normal(torch.zeros((self.n,)), self.sigma)
+        z = dist.sample((self.num_samples,))
+        self.register_buffer('bias', z.unsqueeze(1))
 
     @property
-    @abc.abstractmethod
     def v(self):
-        raise NotImplementedError()
+        return self.mu, self.sigma
+
+    def resample(self):
+        dist = distributions.Normal(self.mu, self.sigma)
+        z = dist.sample((self.num_samples,))
+        self.bias = z.unsqueeze(1).to(self.bias.device)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        self.resample()
+        return input + self.bias
+
+
+class AdditiveGaussianDynamics(nn.Sequential, AdditiveNoiseDynamics):
+    def __init__(self, nominal_system, num_samples, mu, sigma, **kwargs):
+        additive_noise = AdditiveNoise(
+            num_samples, 
+            torch.as_tensor(mu), 
+            torch.as_tensor(sigma)
+        )
+        
+        nn.Sequential.__init__(self, nominal_system, additive_noise)
+
+    @property
+    def nominal_system(self):
+        return self[0]
+
+    @property
+    def v(self):
+        return self[1].v
+
+    def resample(self):
+        self[1].resample()
 
     def prob_v(self, rect):
         loc, scale = self.v

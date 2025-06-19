@@ -3,7 +3,8 @@
   "experiment_type": "monte_carlo",
   "num_particles": 10000,
   "dynamics": {
-    "sigma": 0.1,
+    "mu": [0.0, 0.0],
+    "sigma": [0.0, 0.1],
     "fertility_rate": 0.5,
     "survival_juvenile": 0.4,
     "survival_adult": 0.8,

@@ -14,63 +14,42 @@ from neural_barrier_functions.dynamics import AdditiveGaussianDynamics
 from neural_barrier_functions.utils import overlap_circle, overlap_rectangle, overlap_outside_circle, overlap_outside_rectangle
 
 
-class PolynomialUpdate(nn.Module):
+
+class NominalPolynomialUpdate(nn.Module):
     def __init__(self, dynamics_config):
         super().__init__()
 
-        self.num_samples = dynamics_config['num_samples']
-        self.sigma = dynamics_config['sigma']
-
-        dist = Normal(0.0, self.sigma)
-        self.register_buffer('z', dist.sample((self.num_samples,)).view(-1, 1))
-
-    def resample(self):
-        dist = Normal(0.0, self.sigma)
-        self.z = dist.sample((self.num_samples,)).view(-1, 1).to(self.z.device)
-
     def forward(self, x):
-        self.resample()
-
-        x1 = x[..., 0] + x[..., 1] - x[..., 2] ** 3 + self.z
+        x1 = x[..., 0] + x[..., 1] - x[..., 2] ** 3
         x2 = x[..., 0] ** 2 + x[..., 1] - x[..., 2] - x[..., 3]
         x3 = -x[..., 0] + x[..., 1] ** 2 + x[..., 2]
         x4 = -x[..., 0] - x[..., 1]
-
-        if x2.dim() != x1.dim():
-            x2 = x2.unsqueeze(0).expand_as(x1)
-            x3 = x3.unsqueeze(0).expand_as(x1)
-            x4 = x4.unsqueeze(0).expand_as(x1)
 
         x = torch.stack([x1, x2, x3, x4], dim=-1)
         return x
 
 
 @torch.jit.script
-def crown_backward_polynomial_jit(W_lower: torch.Tensor, W_upper: torch.Tensor, z: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-    _lambda_lower = torch.where(W_lower[..., :3] < 0, alpha[1].unsqueeze(-2), alpha[0].unsqueeze(-2))
-    _delta_lower = torch.where(W_lower[..., :3] < 0, beta[1].unsqueeze(-2), beta[0].unsqueeze(-2))
+def crown_backward_nominal_polynomial_jit(W_lower: torch.Tensor, W_upper: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    _lambda_lower = torch.where(W_lower[..., :2] < 0, alpha[1].unsqueeze(-2), alpha[0].unsqueeze(-2))
+    _delta_lower = torch.where(W_lower[..., :2] < 0, beta[1].unsqueeze(-2), beta[0].unsqueeze(-2))
 
-    _lambda_upper = torch.where(W_upper[..., :3] < 0, alpha[0].unsqueeze(-2), alpha[1].unsqueeze(-2))
-    _delta_upper = torch.where(W_upper[..., :3] < 0, beta[0].unsqueeze(-2), beta[1].unsqueeze(-2))
+    _lambda_upper = torch.where(W_upper[..., :2] < 0, alpha[0].unsqueeze(-2), alpha[1].unsqueeze(-2))
+    _delta_upper = torch.where(W_upper[..., :2] < 0, beta[0].unsqueeze(-2), beta[1].unsqueeze(-2))
 
-    bias = -W_lower[..., 0] * _delta_lower[..., 0] + W_upper[..., 1] * _delta_upper[..., 1] + W_upper[..., 2] * _delta_upper[ ..., 2] + z.unsqueeze(-1) * W_upper[..., 0]
+    bias = -W_lower[..., 0] * _delta_lower[..., 2] + W_upper[..., 1] * _delta_upper[..., 0] + W_upper[..., 2] * _delta_upper[..., 1]
 
-    W_tilde1 = W_upper[..., 0] + W_upper[..., 1] * _lambda_upper[..., 1] - W_upper[..., 2] - W_lower[..., 3]
-    W_tilde2 = W_upper[..., 0] + W_upper[..., 1] + W_upper[..., 2] * _lambda_upper[..., 2] - W_lower[..., 3]
-    W_tilde3 = -W_lower[..., 0] * _lambda_lower[..., 0] - W_lower[..., 1] + W_upper[..., 2]
+    W_tilde1 = W_upper[..., 0] + W_upper[..., 1] * _lambda_upper[..., 0] - W_upper[..., 2] - W_lower[..., 3]
+    W_tilde2 = W_upper[..., 0] + W_upper[..., 1] + W_upper[..., 2] * _lambda_upper[..., 1] - W_lower[..., 3]
+    W_tilde3 = -W_lower[..., 0] * _lambda_lower[..., 2] - W_lower[..., 1] + W_upper[..., 2]
     W_tilde4 = -W_lower[..., 1]
-
-    if W_tilde1.dim() != W_tilde2.dim():
-        W_tilde2 = W_tilde2.unsqueeze(0).expand_as(W_tilde1)
-        W_tilde3 = W_tilde3.unsqueeze(0).expand_as(W_tilde1)
-        W_tilde4 = W_tilde4.unsqueeze(0).expand_as(W_tilde1)
 
     W_tilde = torch.stack([W_tilde1, W_tilde2, W_tilde3, W_tilde4], dim=-1)
 
     return W_tilde, bias
 
 
-class BoundPolynomialUpdate(BoundModule):
+class BoundNominalPolynomialUpdate(BoundModule):
     def __init__(self, module, factory, **kwargs):
         super().__init__(module, factory, **kwargs)
 
@@ -212,15 +191,16 @@ class BoundPolynomialUpdate(BoundModule):
     def crown_backward(self, linear_bounds, optimize):
         assert self.bounded
 
+        # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!
+
         alpha = self.alpha_upper, self.alpha_lower
         beta = self.beta_upper, self.beta_lower
-        lower = crown_backward_polynomial_jit(linear_bounds.upper[0], linear_bounds.lower[0], self.module.z, alpha, beta)
-
+        lower = crown_backward_nominal_polynomial_jit(linear_bounds.upper[0], linear_bounds.lower[0], alpha, beta)
         lower = (lower[0], lower[1] + linear_bounds.lower[1])
 
         alpha = self.alpha_lower, self.alpha_upper
         beta = self.beta_lower, self.beta_upper
-        upper = crown_backward_polynomial_jit(linear_bounds.lower[0], linear_bounds.upper[0], self.module.z, alpha, beta)
+        upper = crown_backward_nominal_polynomial_jit(linear_bounds.lower[0], linear_bounds.upper[0], alpha, beta)
         upper = (upper[0], upper[1] + linear_bounds.upper[1])
 
         return LinearBounds(linear_bounds.region, lower, upper)
@@ -235,98 +215,6 @@ class BoundPolynomialUpdate(BoundModule):
         upper_out = torch.max(lower_act, upper_act)
 
         return lower_out, upper_out
-
-    @assert_bound_order
-    def ibp_forward(self, bounds, save_relaxation=False, save_input_bounds=False):
-        if save_relaxation:
-            self.alpha_beta(preactivation=bounds)
-            self.bounded = True
-
-        x1_lower = bounds.lower[..., 0] + bounds.lower[..., 1] - bounds.upper[..., 2] ** 3 + self.module.z
-        x1_upper = bounds.upper[..., 0] + bounds.upper[..., 1] - bounds.lower[..., 2] ** 3 + self.module.z
-
-        x1_squared_lower, x1_squared_upper = self.ibp_forward_squared(bounds, 0)
-        x2_lower = x1_squared_lower + bounds.lower[..., 1] - bounds.upper[..., 2] - bounds.upper[..., 3]
-        x2_upper = x1_squared_upper + bounds.upper[..., 1] - bounds.lower[..., 2] - bounds.lower[..., 3]
-
-        x2_squared_lower, x2_squared_upper = self.ibp_forward_squared(bounds, 1)
-        x3_lower = -bounds.upper[..., 0] + x2_squared_lower + bounds.lower[..., 2]
-        x3_upper = -bounds.lower[..., 0] + x2_squared_upper + bounds.upper[..., 2]
-
-        x4_lower = -bounds.upper[..., 0] - bounds.upper[..., 1]
-        x4_upper = -bounds.lower[..., 0] - bounds.lower[..., 1]
-
-        if x2_lower.dim() != x1_lower.dim():
-            x2_lower = x2_lower.unsqueeze(0).expand_as(x1_lower)
-            x2_upper = x2_upper.unsqueeze(0).expand_as(x1_upper)
-
-            x3_lower = x3_lower.unsqueeze(0).expand_as(x1_lower)
-            x3_upper = x3_upper.unsqueeze(0).expand_as(x1_upper)
-
-            x4_lower = x4_lower.unsqueeze(0).expand_as(x1_lower)
-            x4_upper = x4_upper.unsqueeze(0).expand_as(x1_upper)
-
-        lower = torch.stack([x1_lower, x2_lower, x3_lower, x4_lower], dim=-1)
-        upper = torch.stack([x1_upper, x2_upper, x3_upper, x4_upper], dim=-1)
-        return IntervalBounds(bounds.region, lower, upper)
-
-    def propagate_size(self, in_size):
-        assert in_size == 4
-
-        return 4
-
-
-class NominalPolynomialUpdate(nn.Module):
-    def __init__(self, dynamics_config):
-        super().__init__()
-
-    def forward(self, x):
-        x1 = x[..., 0] + x[..., 1] - x[..., 2] ** 3
-        x2 = x[..., 0] ** 2 + x[..., 1] - x[..., 2] - x[..., 3]
-        x3 = -x[..., 0] + x[..., 1] ** 2 + x[..., 2]
-        x4 = -x[..., 0] - x[..., 1]
-
-        x = torch.stack([x1, x2, x3, x4], dim=-1)
-        return x
-
-
-@torch.jit.script
-def crown_backward_nominal_polynomial_jit(W_lower: torch.Tensor, W_upper: torch.Tensor, alpha: Tuple[torch.Tensor, torch.Tensor], beta: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-    _lambda_lower = torch.where(W_lower[..., :2] < 0, alpha[1].unsqueeze(-2), alpha[0].unsqueeze(-2))
-    _delta_lower = torch.where(W_lower[..., :2] < 0, beta[1].unsqueeze(-2), beta[0].unsqueeze(-2))
-
-    _lambda_upper = torch.where(W_upper[..., :2] < 0, alpha[0].unsqueeze(-2), alpha[1].unsqueeze(-2))
-    _delta_upper = torch.where(W_upper[..., :2] < 0, beta[0].unsqueeze(-2), beta[1].unsqueeze(-2))
-
-    bias = -W_lower[..., 0] * _delta_lower[..., 2] + W_upper[..., 1] * _delta_upper[..., 0] + W_upper[..., 2] * _delta_upper[..., 1]
-
-    W_tilde1 = W_upper[..., 0] + W_upper[..., 1] * _lambda_upper[..., 0] - W_upper[..., 2] - W_lower[..., 3]
-    W_tilde2 = W_upper[..., 0] + W_upper[..., 1] + W_upper[..., 2] * _lambda_upper[..., 1] - W_lower[..., 3]
-    W_tilde3 = -W_lower[..., 0] * _lambda_lower[..., 2] - W_lower[..., 1] + W_upper[..., 2]
-    W_tilde4 = -W_lower[..., 1]
-
-    W_tilde = torch.stack([W_tilde1, W_tilde2, W_tilde3, W_tilde4], dim=-1)
-
-    return W_tilde, bias
-
-
-class BoundNominalPolynomialUpdate(BoundPolynomialUpdate):
-    def crown_backward(self, linear_bounds, optimize):
-        assert self.bounded
-
-        # NOTE: The order of alpha and beta are deliberately reversed - this is not a mistake!
-
-        alpha = self.alpha_upper, self.alpha_lower
-        beta = self.beta_upper, self.beta_lower
-        lower = crown_backward_nominal_polynomial_jit(linear_bounds.upper[0], linear_bounds.lower[0], alpha, beta)
-        lower = (lower[0], lower[1] + linear_bounds.lower[1])
-
-        alpha = self.alpha_lower, self.alpha_upper
-        beta = self.beta_lower, self.beta_upper
-        upper = crown_backward_nominal_polynomial_jit(linear_bounds.lower[0], linear_bounds.upper[0], alpha, beta)
-        upper = (upper[0], upper[1] + linear_bounds.upper[1])
-
-        return LinearBounds(linear_bounds.region, lower, upper)
 
     @assert_bound_order
     def ibp_forward(self, bounds, save_relaxation=False, save_input_bounds=False):
@@ -352,23 +240,16 @@ class BoundNominalPolynomialUpdate(BoundPolynomialUpdate):
         upper = torch.stack([x1_upper, x2_upper, x3_upper, x4_upper], dim=-1)
         return IntervalBounds(bounds.region, lower, upper)
 
+    def propagate_size(self, in_size):
+        assert in_size == 4
 
-class Polynomial(Euler, AdditiveGaussianDynamics):
+        return 4
+
+class Polynomial(AdditiveGaussianDynamics):
     def __init__(self, dynamics_config):
         self.dynamics_config = dynamics_config
-        AdditiveGaussianDynamics.__init__(self, dynamics_config['num_samples'])
-        Euler.__init__(self, PolynomialUpdate(dynamics_config), dynamics_config['dt'])
-
-    @property
-    def nominal_system(self):
-        return Euler(NominalPolynomialUpdate(self.dynamics_config), self.dynamics_config['dt'])
-
-    @property
-    def v(self):
-        return (
-            torch.tensor([0.0, 0.0]),
-            torch.tensor([self.dynamics_config['dt'] * self.dynamics_config['sigma'], 0.0])
-        )
+        nominal = Euler(NominalPolynomialUpdate(dynamics_config), dynamics_config['dt'])
+        super().__init__(nominal, **dynamics_config)
 
     def initial(self, x, eps=None):
         if eps is not None:

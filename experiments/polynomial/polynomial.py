@@ -8,8 +8,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
 
-from .dynamics import Polynomial, PolynomialUpdate, BoundPolynomialUpdate, NominalPolynomialUpdate, \
-    BoundNominalPolynomialUpdate
+from .dynamics import Polynomial, NominalPolynomialUpdate, BoundNominalPolynomialUpdate
 from .partitioning import polynomial_partitioning, plot_partitioning
 from .plot import plot_bounds_2d
 
@@ -28,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 def step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoch, empirical_only):
     optimizer.zero_grad(set_to_none=True)
+    robust_learner.dynamics.resample()
 
     if empirical_only:
         loss = empirical_learner.loss(partitioning, kappa)
@@ -116,7 +116,6 @@ def polynomial_main(args, config):
 
     if config['experiment_type'] == 'barrier_function':
         factory = NBFBoundModelFactory()
-        factory.register(PolynomialUpdate, BoundPolynomialUpdate)
         factory.register(NominalPolynomialUpdate, BoundNominalPolynomialUpdate)
         factory.register(ButcherTableau, BoundButcherTableau)
 

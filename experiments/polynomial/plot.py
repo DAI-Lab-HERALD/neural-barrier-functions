@@ -14,14 +14,13 @@ from tqdm import tqdm
 from neural_barrier_functions.bounds import bounds, NBFBoundModelFactory, Affine
 from neural_barrier_functions.discretization import ButcherTableau, BoundButcherTableau
 
-from .dynamics import PolynomialUpdate, BoundPolynomialUpdate, NominalPolynomialUpdate, BoundNominalPolynomialUpdate
+from .dynamics import NominalPolynomialUpdate, BoundNominalPolynomialUpdate
 
 
 def bound_propagation(model, lower_x, upper_x, config):
     input_bounds = HyperRectangle(lower_x, upper_x)
 
     factory = NBFBoundModelFactory()
-    factory.register(PolynomialUpdate, BoundPolynomialUpdate)
     factory.register(NominalPolynomialUpdate, BoundNominalPolynomialUpdate)
     factory.register(ButcherTableau, BoundButcherTableau)
     model = factory.build(model)

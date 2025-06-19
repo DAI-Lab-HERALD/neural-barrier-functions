@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tqdm import trange, tqdm
 
-from .dynamics import DubinsCarUpdate, BoundDubinsCarUpdate, DubinsFixedStrategy, BoundDubinsFixedStrategy, \
+from .dynamics import DubinsFixedStrategy, BoundDubinsFixedStrategy, \
     DubinsCarNoActuation, DubinsCarStrategyComposition, DubinsCarNNStrategy, \
     BoundDubinSelect, DubinSelect, BoundDubinsCarNominalUpdate, DubinsCarNominalUpdate
 from .partitioning import dubins_car_partitioning
@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 def step(robust_learner, empirical_learner, optimizer, partitioning, kappa, epoch, empirical_only):
     optimizer.zero_grad(set_to_none=True)
+    robust_learner.dynamics.resample()
 
     if empirical_only:
         loss = empirical_learner.loss(partitioning, kappa)
@@ -249,7 +250,6 @@ def dubins_car_main(args, config):
 
     if config['experiment_type'] == 'barrier_function':
         factory = NBFBoundModelFactory()
-        factory.register(DubinsCarUpdate, BoundDubinsCarUpdate)
         factory.register(DubinsCarNominalUpdate, BoundDubinsCarNominalUpdate)
         factory.register(DubinsFixedStrategy, BoundDubinsFixedStrategy)
         factory.register(DubinSelect, BoundDubinSelect)

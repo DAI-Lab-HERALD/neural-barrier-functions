@@ -3,8 +3,8 @@
   "experiment_type": "barrier_function",
   "strategy": "no_actuation",
   "dynamics": {
-    "mu": 0.5,
-    "sigma": 0.02,
+    "mu": [0.0, 0.0, 0.05],
+    "sigma": [0.0, 0.0, 0.002],
     "num_samples": 200,
     "dt": 0.1,
     "velocity": 1.0,
