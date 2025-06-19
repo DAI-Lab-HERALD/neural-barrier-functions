@@ -196,7 +196,6 @@ class Polynomial(AdditiveGaussianDynamics):
     def __init__(self, dynamics_config):
         self.dynamics_config = dynamics_config
         nominal = Euler(NominalPolynomialUpdate(dynamics_config), dynamics_config['dt'])
-        print(dynamics_config)
         super().__init__(nominal, **dynamics_config)
 
     def initial(self, x, eps=None):
